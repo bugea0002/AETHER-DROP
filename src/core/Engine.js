@@ -129,8 +129,14 @@ class Engine {
   _computeTargetDpr() {
     const deviceDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const presetMax = this._qualityConfig.dprMax ?? 1.0;
-    const targetDpr = Math.min(deviceDpr, presetMax);
-    return Math.max(0.75, Math.min(presetMax, targetDpr));
+    const renderScale = this._qualityConfig.renderScale ?? presetMax;
+    if (renderScale < 1.0) {
+      return Math.max(0.55, Math.min(presetMax, renderScale));
+    }
+    if (renderScale > 1.0) {
+      return Math.max(renderScale, Math.min(deviceDpr, presetMax));
+    }
+    return Math.max(0.75, Math.min(presetMax, Math.min(deviceDpr, 1.0)));
   }
 
   /** @private */
@@ -501,11 +507,36 @@ class Engine {
     const q = this._qualityConfig;
 
     const shadowsEnabled = Boolean(q.shadowsEnabled);
-    if (this.renderer.shadowMap.enabled !== shadowsEnabled) {
-      this.renderer.shadowMap.enabled = shadowsEnabled;
+    const targetShadowType =
+      q.shadowType === 'pcfSoft' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const shadowModeChanged =
+      this.renderer.shadowMap.enabled !== shadowsEnabled ||
+      this.renderer.shadowMap.type !== targetShadowType;
+
+    this.renderer.shadowMap.enabled = shadowsEnabled;
+    this.renderer.shadowMap.type = targetShadowType;
+
+    if (shadowModeChanged) {
+      this.scene.traverse((obj) => {
+        if (obj && obj.material) {
+          if (Array.isArray(obj.material)) {
+            for (let i = 0; i < obj.material.length; i++) obj.material[i].needsUpdate = true;
+          } else {
+            obj.material.needsUpdate = true;
+          }
+        }
+      });
       if (shadowsEnabled) {
         this.renderer.shadowMap.needsUpdate = true;
       }
+    }
+
+    if ('environmentIntensity' in this.scene) {
+      this.scene.environmentIntensity = q.envIntensity ?? 0.85;
+      this.viewmodelScene.environmentIntensity = q.vmEnvIntensity ?? 1.15;
+    }
+    if (Number.isFinite(q.exposure)) {
+      this.renderer.toneMappingExposure = q.exposure;
     }
 
     if (this.scene.fog && 'density' in this.scene.fog) {

@@ -305,6 +305,127 @@ class WeaponModelFactory {
     this._texCopperColor = this._registerTexture(coilColorCanvas, { repeatX: 3, repeatY: 2, isColor: true });
     this._texCopperBump = this._registerTexture(coilBumpCanvas, { repeatX: 3, repeatY: 2 });
 
+    // 8.5. Procedural Weapon Skin PBR Maps (Carbon Weave, Arctic Digital, Obsidian Magma, Omega Gold Hex)
+    const carbonCanvas = this._makeCanvas(256, 256);
+    const caCtx = carbonCanvas.getContext('2d');
+    if (caCtx) {
+      caCtx.fillStyle = '#1b1e24';
+      caCtx.fillRect(0, 0, 256, 256);
+      const cw = 16;
+      for (let y = 0; y < 256; y += cw) {
+        for (let x = 0; x < 256; x += cw) {
+          const alt = ((x / cw) + (y / cw)) % 2 === 0;
+          caCtx.fillStyle = alt ? '#2a2f3a' : '#14171d';
+          caCtx.fillRect(x, y, cw - 1, cw - 1);
+          caCtx.fillStyle = alt ? 'rgba(90, 105, 130, 0.25)' : 'rgba(10, 12, 16, 0.35)';
+          caCtx.fillRect(x + 2, y + 2, cw - 5, 3);
+        }
+      }
+      caCtx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+      caCtx.lineWidth = 3;
+      caCtx.beginPath();
+      caCtx.moveTo(0, 128); caCtx.lineTo(256, 128);
+      caCtx.stroke();
+      caCtx.strokeStyle = 'rgba(20, 24, 30, 0.9)';
+      caCtx.lineWidth = 2;
+      caCtx.strokeRect(4, 4, 248, 248);
+    }
+    this._texSkinCarbon = this._registerTexture(carbonCanvas, { repeatX: 3, repeatY: 3, isColor: true });
+
+    const arcticCanvas = this._makeCanvas(256, 256);
+    const arCtx = arcticCanvas.getContext('2d');
+    if (arCtx) {
+      arCtx.fillStyle = '#e2e8f0';
+      arCtx.fillRect(0, 0, 256, 256);
+      const shades = ['#cbd5e1', '#94a3b8', '#f8fafc', '#475569'];
+      for (let i = 0; i < 96; i++) {
+        const bx = ((i * 53) % 16) * 16;
+        const by = ((i * 97) % 16) * 16;
+        const bw = (1 + (i % 3)) * 16;
+        const bh = (1 + ((i * 7) % 2)) * 16;
+        arCtx.fillStyle = shades[i % shades.length];
+        arCtx.fillRect(bx, by, bw, bh);
+      }
+      arCtx.strokeStyle = 'rgba(34, 211, 238, 0.78)';
+      arCtx.lineWidth = 3;
+      arCtx.strokeRect(6, 6, 244, 244);
+      arCtx.beginPath();
+      arCtx.moveTo(0, 64); arCtx.lineTo(256, 64);
+      arCtx.stroke();
+    }
+    this._texSkinArctic = this._registerTexture(arcticCanvas, { repeatX: 2, repeatY: 2, isColor: true });
+
+    const magmaCanvas = this._makeCanvas(256, 256);
+    const mgCtx = magmaCanvas.getContext('2d');
+    const magmaGlowCanvas = this._makeCanvas(256, 256);
+    const mggCtx = magmaGlowCanvas.getContext('2d');
+    if (mgCtx && mggCtx) {
+      mgCtx.fillStyle = '#1d1412';
+      mgCtx.fillRect(0, 0, 256, 256);
+      mggCtx.fillStyle = '#000000';
+      mggCtx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 36; i++) {
+        const x0 = (i * 67) % 256;
+        const y0 = (i * 43) % 256;
+        const x1 = x0 + ((i % 2 === 0 ? 1 : -1) * (32 + (i % 48)));
+        const y1 = y0 + (24 + ((i * 5) % 44));
+        mgCtx.strokeStyle = '#ff4500';
+        mgCtx.lineWidth = 2.6 + (i % 2);
+        mgCtx.beginPath();
+        mgCtx.moveTo(x0, y0);
+        mgCtx.lineTo((x0 + x1) * 0.5 + 8, (y0 + y1) * 0.5 - 6);
+        mgCtx.lineTo(x1, y1);
+        mgCtx.stroke();
+
+        mggCtx.strokeStyle = i % 3 === 0 ? '#ffb703' : '#ff5500';
+        mggCtx.lineWidth = 2.4 + (i % 2);
+        mggCtx.beginPath();
+        mggCtx.moveTo(x0, y0);
+        mggCtx.lineTo((x0 + x1) * 0.5 + 8, (y0 + y1) * 0.5 - 6);
+        mggCtx.lineTo(x1, y1);
+        mggCtx.stroke();
+      }
+      mgCtx.strokeStyle = 'rgba(251, 146, 60, 0.35)';
+      mgCtx.lineWidth = 2;
+      mgCtx.strokeRect(4, 4, 248, 248);
+    }
+    this._texSkinMagma = this._registerTexture(magmaCanvas, { repeatX: 2, repeatY: 2, isColor: true });
+    this._texSkinMagmaGlow = this._registerTexture(magmaGlowCanvas, { repeatX: 2, repeatY: 2, isColor: true });
+
+    const goldCanvas = this._makeCanvas(256, 256);
+    const goCtx = goldCanvas.getContext('2d');
+    if (goCtx) {
+      const grad = goCtx.createLinearGradient(0, 0, 256, 256);
+      grad.addColorStop(0, '#f59e0b');
+      grad.addColorStop(0.5, '#fde047');
+      grad.addColorStop(1, '#d97706');
+      goCtx.fillStyle = grad;
+      goCtx.fillRect(0, 0, 256, 256);
+      goCtx.strokeStyle = 'rgba(28, 22, 16, 0.72)';
+      goCtx.lineWidth = 2;
+      const r = 20;
+      for (let row = 0; row < 10; row++) {
+        for (let col = 0; col < 10; col++) {
+          const cx = col * r * 1.65;
+          const cy = row * r * 1.45 + (col % 2 === 0 ? 0 : r * 0.72);
+          goCtx.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = (k * Math.PI) / 3;
+            const px = cx + Math.cos(a) * (r * 0.65);
+            const py = cy + Math.sin(a) * (r * 0.65);
+            if (k === 0) goCtx.moveTo(px, py);
+            else goCtx.lineTo(px, py);
+          }
+          goCtx.closePath();
+          goCtx.stroke();
+        }
+      }
+      goCtx.strokeStyle = '#fffbeb';
+      goCtx.lineWidth = 3;
+      goCtx.strokeRect(4, 4, 248, 248);
+    }
+    this._texSkinGoldHex = this._registerTexture(goldCanvas, { repeatX: 2, repeatY: 2, isColor: true });
+
     // 9. Crisp Warm Military-SF Optic Reticle Textures (Zero Neon)
     this._reticleTextures = {
       pulse_rifle: this._createReticleTexture('pulse_rifle', '#f59e0b'),
@@ -955,29 +1076,34 @@ class WeaponModelFactory {
    * @param {'pistol'|'forend'|'fist'} [gripStyle='pistol']
    * @private
    */
-  setPilotFrameStyle(frameId) {
+  setPilotFrameStyle(frameId, frameSkinCfg = null) {
     const styles = {
       vanguard: { armor: 0xdce4ee, accent: 0x4d5b44, glow: 0xf59e0b, em: 0x101010, scale: [1.0, 1.0, 1.0] },
       strider:  { armor: 0x93c5fd, accent: 0x0c4a6e, glow: 0x00f0ff, em: 0x062a42, scale: [0.84, 0.88, 1.08] },
       bastion:  { armor: 0x334155, accent: 0x16a34a, glow: 0x22c55e, em: 0x072614, scale: [1.26, 1.24, 1.08] },
       apex:     { armor: 0x181822, accent: 0xb91c1c, glow: 0xff2a44, em: 0x2b060c, scale: [1.06, 1.06, 1.14] },
     };
-    const st = styles[frameId] || styles.vanguard;
+    const base = styles[frameId] || styles.vanguard;
+    const armorHex = frameSkinCfg && frameSkinCfg.armorHex != null ? frameSkinCfg.armorHex : base.armor;
+    const accentHex = frameSkinCfg && frameSkinCfg.accentHex != null ? frameSkinCfg.accentHex : base.accent;
+    const glowHex = frameSkinCfg && frameSkinCfg.glowHex != null ? frameSkinCfg.glowHex : base.glow;
+    const emHex = frameSkinCfg && frameSkinCfg.armorHex != null ? 0x121216 : base.em;
+
     if (this._matPilotHandArmor) {
-      this._matPilotHandArmor.color.setHex(st.armor);
-      this._matPilotHandArmor.emissive.setHex(st.em);
+      this._matPilotHandArmor.color.setHex(armorHex);
+      this._matPilotHandArmor.emissive.setHex(emHex);
     }
     if (this._matPilotHandAccent) {
-      this._matPilotHandAccent.color.setHex(st.accent);
-      this._matPilotHandAccent.emissive.setHex(st.em);
+      this._matPilotHandAccent.color.setHex(accentHex);
+      this._matPilotHandAccent.emissive.setHex(emHex);
     }
     if (this._matPilotHandGlow) {
-      this._matPilotHandGlow.color.setHex(st.glow);
-      this._matPilotHandGlow.emissive.setHex(st.glow);
+      this._matPilotHandGlow.color.setHex(glowHex);
+      this._matPilotHandGlow.emissive.setHex(glowHex);
     }
     if (this._pilotHandGroups) {
       for (let i = 0; i < this._pilotHandGroups.length; i++) {
-        this._pilotHandGroups[i].scale.set(st.scale[0], st.scale[1], st.scale[2]);
+        this._pilotHandGroups[i].scale.set(base.scale[0], base.scale[1], base.scale[2]);
       }
     }
   }
@@ -3505,6 +3631,263 @@ class WeaponModelFactory {
   }
 
   /** @private */
+  _isDescendantOf(obj, ancestor) {
+    let cur = obj;
+    while (cur) {
+      if (cur === ancestor) return true;
+      cur = cur.parent;
+    }
+    return false;
+  }
+
+  /** @private */
+  _buildWeaponSkinAttachments(root, muzzleAnchor, geos, mats) {
+    const mz = muzzleAnchor ? muzzleAnchor.position : new THREE.Vector3(0, 0.04, -0.45);
+    const isShort = mz.z > -0.52;
+    const s = isShort ? 0.78 : 1.0;
+
+    const skinPrimaryMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      metalness: 0.55,
+      roughness: 0.36,
+      bumpMap: this._texArmorBump,
+      bumpScale: 0.005,
+    });
+    const skinSecondaryMat = new THREE.MeshStandardMaterial({
+      color: 0x22262e,
+      metalness: 0.85,
+      roughness: 0.30,
+      bumpMap: this._texMetalBump,
+      bumpScale: 0.004,
+    });
+    const skinAccentGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: new THREE.Color(0x38bdf8),
+      emissiveIntensity: 2.6,
+      metalness: 0.25,
+      roughness: 0.20,
+      toneMapped: false,
+    });
+    const skinGoldTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      metalness: 0.94,
+      roughness: 0.18,
+    });
+    mats.push(skinPrimaryMat, skinSecondaryMat, skinAccentGlowMat, skinGoldTrimMat);
+
+    const group = new THREE.Group();
+    group.name = 'skinAttachments';
+
+    const mzX = mz.x;
+    const mzY = mz.y;
+    const mzZ = mz.z;
+    const flankX = isShort ? 0.038 : 0.046;
+
+    // Tier 1 (Carbon Stealth): Underbarrel tactical laser box + sleek muzzle shroud vents
+    const tier1 = new THREE.Group();
+    const laserBoxGeo = this._box(geos, 0.024 * s, 0.020 * s, 0.075 * s);
+    this._addMesh(tier1, laserBoxGeo, skinSecondaryMat, mzX, mzY - 0.036 * s, mzZ + 0.12 * s);
+    const laserLensGeo = this._cyl(geos, 0.006 * s, 0.006 * s, 0.012 * s, 10);
+    this._addMesh(tier1, laserLensGeo, skinAccentGlowMat, mzX, mzY - 0.036 * s, mzZ + 0.08 * s, Math.PI * 0.5, 0, 0);
+    const shroudGeo = this._box(geos, 0.056 * s, 0.010 * s, 0.095 * s);
+    this._addMesh(tier1, shroudGeo, skinAccentGlowMat, mzX, mzY - 0.016 * s, mzZ + 0.10 * s);
+    tier1.visible = false;
+    group.add(tier1);
+
+    // Tier 2 (Arctic Cryo): Twin cryo-radiator side fins + frosted cheek blades
+    const tier2 = new THREE.Group();
+    const finLen = isShort ? 0.15 : 0.24;
+    const cryoRailGeo = this._box(geos, 0.010 * s, 0.020 * s, finLen);
+    const cryoCoreGeo = this._box(geos, 0.006 * s, 0.008 * s, finLen * 0.82);
+    for (const side of [-1, 1]) {
+      this._addMesh(tier2, cryoRailGeo, skinPrimaryMat, side * flankX, mzY - 0.004 * s, mzZ + finLen * 0.55 + 0.08);
+      this._addMesh(tier2, cryoCoreGeo, skinAccentGlowMat, side * (flankX + 0.005 * s), mzY - 0.004 * s, mzZ + finLen * 0.55 + 0.08);
+    }
+    tier2.visible = false;
+    group.add(tier2);
+
+    // Tier 3 (Obsidian Magma): Serrated magma heat-sink blades + flared muzzle brake wings
+    const tier3 = new THREE.Group();
+    const wingGeo = this._extrudeSide(
+      geos,
+      [
+        [-0.08 * s, -0.014 * s],
+        [0.08 * s, -0.018 * s],
+        [0.10 * s, 0.018 * s],
+        [-0.03 * s, 0.022 * s],
+      ],
+      0.010 * s,
+      0.0018
+    );
+    const bladeSlitGeo = this._box(geos, 0.007 * s, 0.008 * s, 0.13 * s);
+    for (const side of [-1, 1]) {
+      this._addMesh(tier3, wingGeo, skinSecondaryMat, side * (flankX + 0.004), mzY - 0.005 * s, mzZ + 0.16 * s, 0, side * -0.10, side * 0.14);
+      this._addMesh(tier3, bladeSlitGeo, skinAccentGlowMat, side * (flankX + 0.009), mzY - 0.002 * s, mzZ + 0.16 * s);
+    }
+    const muzzleFangGeo = this._box(geos, 0.068 * s, 0.014 * s, 0.050 * s);
+    this._addMesh(tier3, muzzleFangGeo, skinAccentGlowMat, mzX, mzY - 0.024 * s, mzZ + 0.04 * s);
+    tier3.visible = false;
+    group.add(tier3);
+
+    // Tier 4 (Omega Crown Gold): Gilded fluted side rails + twin angled crown stabilizer fins + rear solar chevron
+    const tier4 = new THREE.Group();
+    const crownFinGeo = this._extrudeSide(
+      geos,
+      [
+        [-0.05 * s, 0.0],
+        [0.09 * s, 0.0],
+        [0.11 * s, 0.038 * s],
+        [0.01 * s, 0.032 * s],
+      ],
+      0.008 * s,
+      0.0015
+    );
+    const goldRailGeo = this._box(geos, 0.011 * s, 0.014 * s, (isShort ? 0.18 : 0.28));
+    for (const side of [-1, 1]) {
+      this._addMesh(tier4, goldRailGeo, skinGoldTrimMat, side * (flankX + 0.005), mzY - 0.010 * s, mzZ + 0.20 * s);
+      this._addMesh(tier4, crownFinGeo, skinGoldTrimMat, side * (flankX * 0.85), mzY + 0.022 * s, mzZ + 0.22 * s, 0, 0, side * -0.48);
+      this._addMesh(tier4, crownFinGeo, skinAccentGlowMat, side * (flankX * 0.76), mzY + 0.018 * s, mzZ + 0.34 * s, 0, 0, side * -0.52);
+    }
+    const crownBarGeo = this._box(geos, 0.032 * s, 0.008 * s, 0.11 * s);
+    this._addMesh(tier4, crownBarGeo, skinAccentGlowMat, mzX, mzY - 0.032 * s, mzZ + 0.15 * s);
+    tier4.visible = false;
+    group.add(tier4);
+
+    root.add(group);
+    return {
+      group,
+      tier1,
+      tier2,
+      tier3,
+      tier4,
+      skinPrimaryMat,
+      skinSecondaryMat,
+      skinAccentGlowMat,
+      skinGoldTrimMat,
+    };
+  }
+
+  /**
+   * Apply a Weapon Skin (procedural PBR coat + 3D modeled attachments + emissive/LED hue) to a weapon rig.
+   */
+  applyWeaponSkin(rig, weaponCfg, skinCfg) {
+    if (!rig || !rig.skinSystem) return;
+    const ss = rig.skinSystem;
+    const isStandard = !skinCfg || skinCfg.id === 'standard';
+
+    const primaryMeshes = ss.primaryMeshes;
+    const secondaryMeshes = ss.secondaryMeshes;
+
+    if (isStandard) {
+      for (let i = 0; i < primaryMeshes.length; i++) {
+        const m = primaryMeshes[i];
+        m.material = m.userData._origSkinMat || m.material;
+      }
+      for (let i = 0; i < secondaryMeshes.length; i++) {
+        const m = secondaryMeshes[i];
+        m.material = m.userData._origSkinMat || m.material;
+      }
+      ss.tier1.visible = false;
+      ss.tier2.visible = false;
+      ss.tier3.visible = false;
+      ss.tier4.visible = false;
+
+      const baseCol = weaponCfg && weaponCfg.color != null ? weaponCfg.color : 0xf59e0b;
+      if (rig.chargeEmissives) {
+        for (let i = 0; i < rig.chargeEmissives.length; i++) {
+          const mat = rig.chargeEmissives[i];
+          const orig = mat.userData && mat.userData._origEmColor != null ? mat.userData._origEmColor : baseCol;
+          mat.color.setHex(orig);
+          mat.emissive.setHex(orig);
+        }
+      }
+      if (rig.ammoBarSegments) {
+        for (let i = 0; i < rig.ammoBarSegments.length; i++) {
+          const seg = rig.ammoBarSegments[i];
+          const origSeg = seg.userData._origBaseColor != null ? seg.userData._origBaseColor : baseCol;
+          seg.userData.baseColor = origSeg;
+        }
+      }
+      return;
+    }
+
+    // Apply custom PBR texture & metallic coating to primary and secondary receiver meshes
+    const pMat = ss.skinPrimaryMat;
+    const sMat = ss.skinSecondaryMat;
+    let mapTex = null;
+    let emMap = null;
+    let emCol = 0x000000;
+    let emInt = 0.0;
+    if (skinCfg.pattern === 'carbon') {
+      mapTex = this._texSkinCarbon;
+    } else if (skinCfg.pattern === 'digital') {
+      mapTex = this._texSkinArctic;
+    } else if (skinCfg.pattern === 'magma') {
+      mapTex = this._texSkinMagma;
+      emMap = this._texSkinMagmaGlow;
+      emCol = skinCfg.emissiveColor || 0xff4500;
+      emInt = 1.65;
+    } else if (skinCfg.pattern === 'hex_gold') {
+      mapTex = this._texSkinGoldHex;
+      emCol = 0x523400;
+      emInt = 0.25;
+    }
+
+    pMat.map = mapTex;
+    pMat.color.setHex(mapTex ? 0xffffff : (skinCfg.primaryColor || 0xffffff));
+    pMat.metalness = skinCfg.metalness != null ? skinCfg.metalness : 0.55;
+    pMat.roughness = skinCfg.roughness != null ? skinCfg.roughness : 0.35;
+    pMat.emissive.setHex(emCol);
+    pMat.emissiveMap = emMap;
+    pMat.emissiveIntensity = emInt;
+    pMat.needsUpdate = true;
+
+    sMat.color.setHex(skinCfg.secondaryColor != null ? skinCfg.secondaryColor : 0x1c2026);
+    sMat.metalness = Math.min(0.95, (skinCfg.metalness != null ? skinCfg.metalness : 0.7) + 0.12);
+    sMat.roughness = Math.max(0.16, (skinCfg.roughness != null ? skinCfg.roughness : 0.32) - 0.04);
+    sMat.needsUpdate = true;
+
+    const accentHex = skinCfg.accentColor != null ? skinCfg.accentColor : 0x38bdf8;
+    const emissiveHex = skinCfg.emissiveColor != null ? skinCfg.emissiveColor : accentHex;
+    ss.skinAccentGlowMat.color.setHex(accentHex);
+    ss.skinAccentGlowMat.emissive.setHex(emissiveHex);
+
+    for (let i = 0; i < primaryMeshes.length; i++) {
+      primaryMeshes[i].material = pMat;
+    }
+    for (let i = 0; i < secondaryMeshes.length; i++) {
+      secondaryMeshes[i].material = sMat;
+    }
+
+    const tier = skinCfg.attachmentTier || 0;
+    ss.tier1.visible = tier === 1;
+    ss.tier2.visible = tier === 2;
+    ss.tier3.visible = tier === 3;
+    ss.tier4.visible = tier >= 4;
+
+    if (rig.chargeEmissives) {
+      for (let i = 0; i < rig.chargeEmissives.length; i++) {
+        const mat = rig.chargeEmissives[i];
+        if (!mat.userData) mat.userData = {};
+        if (mat.userData._origEmColor == null) {
+          mat.userData._origEmColor = mat.emissive ? mat.emissive.getHex() : (weaponCfg ? weaponCfg.color : 0xf59e0b);
+        }
+        mat.color.setHex(emissiveHex);
+        mat.emissive.setHex(emissiveHex);
+      }
+    }
+    if (rig.ammoBarSegments) {
+      for (let i = 0; i < rig.ammoBarSegments.length; i++) {
+        const seg = rig.ammoBarSegments[i];
+        if (seg.userData._origBaseColor == null) {
+          seg.userData._origBaseColor = seg.userData.baseColor;
+        }
+        seg.userData.baseColor = emissiveHex;
+      }
+    }
+  }
+
+  /** @private */
   _finalizeRig({
     root,
     muzzleAnchor,
@@ -3521,6 +3904,32 @@ class WeaponModelFactory {
     pumpLinkedLeftHand,
     boltKickDist,
   }) {
+    const primaryMeshes = [];
+    const secondaryMeshes = [];
+    root.traverse((obj) => {
+      if (!obj || !obj.isMesh) return;
+      if (leftHand && this._isDescendantOf(obj, leftHand)) return;
+      if (rightHand && this._isDescendantOf(obj, rightHand)) return;
+      const mat = obj.material;
+      if (
+        mat === this._matOliveArmor ||
+        mat === this._matCeramicWhite ||
+        mat === this._matRustPlate
+      ) {
+        obj.userData._origSkinMat = mat;
+        primaryMeshes.push(obj);
+      } else if (mat === this._matGunmetal) {
+        obj.userData._origSkinMat = mat;
+        secondaryMeshes.push(obj);
+      }
+    });
+
+    const attachInfo = this._buildWeaponSkinAttachments(root, muzzleAnchor, geos, mats);
+    const skinSystem = Object.assign(attachInfo, {
+      primaryMeshes,
+      secondaryMeshes,
+    });
+
     const boltRestPos = boltMesh.position.clone();
     const magRestPos = magazineGroup.position.clone();
     const magRestRot = magazineGroup.rotation.clone();
@@ -3539,6 +3948,7 @@ class WeaponModelFactory {
       leftHand,
       rightHand,
       reticleMesh,
+      skinSystem,
       pumpLinkedLeftHand,
       boltKickDist,
       boltRestPos,

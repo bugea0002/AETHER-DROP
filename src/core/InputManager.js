@@ -2,7 +2,12 @@
 __define("src/core/InputManager.js", (__exports, __require) => {
 const BASE_MOUSE_RAD_PER_PX = 0.0022;
 const TOUCH_LOOK_MULTIPLIER = 2.4;
-const MAX_MOUSE_EVENT_DELTA = 650;
+const MAX_LOCKED_SPIKE_PX = 240;
+const MAX_SAFE_EVENT_PX = 150;
+const MAX_FALLBACK_JUMP_PX = 180;
+const MAX_FRAME_LOOK_RAD = 0.42;
+const EDGE_TURN_MARGIN_NORM = 0.045;
+const EDGE_TURN_SPEED_RAD_PER_SEC = 2.65;
 const PRESSED_TTL_MS = 150;
 
 const KEY_TO_ACTION = {
@@ -87,7 +92,7 @@ const KEYBOARD_LOCK_CODES = [
 /**
  * Hybrid PC (PointerLock + Keyboard/Mouse) and Mobile/Tablet Touch InputManager.
  * Uses timestamped press edges (150ms TTL) to eliminate stale phantom inputs,
- * pointer-lock engage spike filtering for crisp PC flick shots, and zero-GC getters.
+ * Chromium pointer-warp spike rejection + edge-zone turning fallback, and zero-GC getters.
  */
 class InputManager {
   /**
@@ -116,8 +121,11 @@ class InputManager {
     /** @type {Map<string, number>} */
     this._pressedActions = new Map();
 
-    // Ignore first 2 mousemove events right after pointerlock engages (Chromium lock spike)
+    // Ignore first mousemove events right after pointerlock / focus transitions (Chromium warp spikes)
     this._ignoreMouseMoveCount = 0;
+    this._prevLockedMx = 0;
+    this._prevLockedMy = 0;
+    this._prevLockedTime = 0;
 
     // Touch virtual joystick vector (x: right/left, y: forward/backward)
     this._touchMoveX = 0;
@@ -132,6 +140,8 @@ class InputManager {
     this._cursorInsideViewport = false;
     this._cursorNormX = 0.5;
     this._cursorNormY = 0.5;
+    this._lastMouseMoveTime = 0;
+    this._lastLookConsumeTime = typeof performance !== 'undefined' ? performance.now() : 0;
     this._lastWheelTime = 0;
 
     // Scratch return objects (zero allocation in update loops)
@@ -147,6 +157,10 @@ class InputManager {
     this._onWheel = this._handleWheel.bind(this);
     this._onContextMenu = this._handleContextMenu.bind(this);
     this._onPointerLockChange = this._handlePointerLockChange.bind(this);
+    this._onPointerLockError = this._handlePointerLockError.bind(this);
+    this._onMouseLeave = this._handleMouseLeave.bind(this);
+    this._onMouseEnter = this._handleMouseEnter.bind(this);
+    this._onWindowFocus = this._handleWindowFocus.bind(this);
     this._onWindowBlur = this._handleWindowBlur.bind(this);
     this._onTouchStart = this._handleTouchStart.bind(this);
 
@@ -171,9 +185,12 @@ class InputManager {
     window.addEventListener('pointerdown', this._onMouseDown);
     window.addEventListener('pointerup', this._onMouseUp);
     window.addEventListener('wheel', this._onWheel, { passive: true });
+    window.addEventListener('focus', this._onWindowFocus);
     window.addEventListener('blur', this._onWindowBlur);
-    document.addEventListener('mouseleave', this._onWindowBlur);
+    document.addEventListener('mouseleave', this._onMouseLeave);
+    document.addEventListener('mouseenter', this._onMouseEnter);
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
+    document.addEventListener('pointerlockerror', this._onPointerLockError);
 
     if (this._canvas) {
       this._canvas.addEventListener('contextmenu', this._onContextMenu);
@@ -229,45 +246,91 @@ class InputManager {
     if (!locked && !this._isPlayingFallbackActive()) {
       this._lastFallbackMouseX = null;
       this._lastFallbackMouseY = null;
+      this._cursorInsideViewport = false;
       return;
     }
 
     if (this._controlMode === 'auto') this._touchMode = false;
 
+    const now = performance.now();
     let mx = 0;
     let my = 0;
 
     if (locked) {
       this._lastFallbackMouseX = null;
       this._lastFallbackMouseY = null;
+      this._cursorInsideViewport = true;
+
       if (this._ignoreMouseMoveCount > 0) {
         this._ignoreMouseMoveCount--;
+        this._prevLockedMx = 0;
+        this._prevLockedMy = 0;
         return;
       }
-      mx = e.movementX || 0;
-      my = e.movementY || 0;
+
+      mx = Number(e.movementX) || 0;
+      my = Number(e.movementY) || 0;
+
+      // Reject Chromium pointer-warp teleport spikes when hidden cursor touches screen/iframe edges
+      if (Math.abs(mx) > MAX_LOCKED_SPIKE_PX || Math.abs(my) > MAX_LOCKED_SPIKE_PX) {
+        this._prevLockedMx = 0;
+        this._prevLockedMy = 0;
+        return;
+      }
+
+      // Reject instantaneous warp-back bounce pairs within 45ms
+      if (now - this._prevLockedTime < 45) {
+        if (
+          (Math.abs(mx) > 95 && Math.abs(this._prevLockedMx) > 95 && Math.sign(mx) !== Math.sign(this._prevLockedMx)) ||
+          (Math.abs(my) > 95 && Math.abs(this._prevLockedMy) > 95 && Math.sign(my) !== Math.sign(this._prevLockedMy))
+        ) {
+          this._prevLockedMx = 0;
+          this._prevLockedMy = 0;
+          return;
+        }
+      }
+
+      this._prevLockedMx = mx;
+      this._prevLockedMy = my;
+      this._prevLockedTime = now;
     } else {
-      // Smooth non-pointer-lock fallback + track edge-zone coords for continuous 360° turn at HTML walls
-      const cx = e.clientX;
-      const cy = e.clientY;
+      // Smooth non-pointer-lock fallback + track edge-zone coords for continuous 360° turn at HTML/Chrome walls
+      const cx = Number(e.clientX);
+      const cy = Number(e.clientY);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+
       const vw = Math.max(1, window.innerWidth || 1280);
       const vh = Math.max(1, window.innerHeight || 720);
       this._cursorNormX = Math.max(0, Math.min(1, cx / vw));
       this._cursorNormY = Math.max(0, Math.min(1, cy / vh));
       this._cursorInsideViewport = true;
-      this._lastMouseMoveTime = performance.now();
+      this._lastMouseMoveTime = now;
+
+      if (this._ignoreMouseMoveCount > 0) {
+        this._ignoreMouseMoveCount--;
+        this._lastFallbackMouseX = cx;
+        this._lastFallbackMouseY = cy;
+        return;
+      }
 
       if (this._lastFallbackMouseX !== null && this._lastFallbackMouseY !== null) {
-        mx = cx - this._lastFallbackMouseX;
-        my = cy - this._lastFallbackMouseY;
+        const dx = cx - this._lastFallbackMouseX;
+        const dy = cy - this._lastFallbackMouseY;
+        // Re-anchor cleanly instead of jumping across the screen if cursor entered at a distant border
+        if (Math.hypot(dx, dy) > MAX_FALLBACK_JUMP_PX) {
+          this._lastFallbackMouseX = cx;
+          this._lastFallbackMouseY = cy;
+          return;
+        }
+        mx = dx;
+        my = dy;
       }
       this._lastFallbackMouseX = cx;
       this._lastFallbackMouseY = cy;
     }
 
-    // Clamp spikes smoothly instead of dropping the frame (eliminates micro-stutter on fast flicks)
-    if (Math.abs(mx) > MAX_MOUSE_EVENT_DELTA) mx = Math.sign(mx) * MAX_MOUSE_EVENT_DELTA;
-    if (Math.abs(my) > MAX_MOUSE_EVENT_DELTA) my = Math.sign(my) * MAX_MOUSE_EVENT_DELTA;
+    if (Math.abs(mx) > MAX_SAFE_EVENT_PX) mx = Math.sign(mx) * MAX_SAFE_EVENT_PX;
+    if (Math.abs(my) > MAX_SAFE_EVENT_PX) my = Math.sign(my) * MAX_SAFE_EVENT_PX;
 
     this._lookDeltaX += mx * this._radPerPx;
     this._lookDeltaY += my * this._radPerPx;
@@ -329,17 +392,70 @@ class InputManager {
 
   /** @private */
   _handlePointerLockChange() {
+    this._ignoreMouseMoveCount = 4;
+    this._prevLockedMx = 0;
+    this._prevLockedMy = 0;
+    this._prevLockedTime = 0;
+    this._lastFallbackMouseX = null;
+    this._lastFallbackMouseY = null;
+    this._lookDeltaX = 0;
+    this._lookDeltaY = 0;
+
     if (this.isPointerLocked()) {
       if (this._controlMode === 'auto') this._touchMode = false;
-      this._ignoreMouseMoveCount = 2;
-      this._lookDeltaX = 0;
-      this._lookDeltaY = 0;
     } else {
-      this._ignoreMouseMoveCount = 0;
-      // Clear held inputs when pointer lock releases so fire/movement never sticks
+      // Clear held mouse fire/keys when pointer lock releases so fire/movement never sticks
       this._mouseActionsDown.clear();
       this._codesDown.clear();
     }
+  }
+
+  /** @private */
+  _handlePointerLockError() {
+    this._ignoreMouseMoveCount = 2;
+    this._lastFallbackMouseX = null;
+    this._lastFallbackMouseY = null;
+  }
+
+  /** @private */
+  _handleMouseLeave(e) {
+    // Do NOT clear WASD/keyboard state when cursor touches the browser/iframe edge;
+    // clear only fallback anchor so re-entering never creates a cross-screen delta spike.
+    this._lastFallbackMouseX = null;
+    this._lastFallbackMouseY = null;
+    const vw = typeof window !== 'undefined' ? window.innerWidth || 1280 : 1280;
+    const vh = typeof window !== 'undefined' ? window.innerHeight || 720 : 720;
+    const cx = e && Number.isFinite(e.clientX) ? e.clientX : -1;
+    const cy = e && Number.isFinite(e.clientY) ? e.clientY : -1;
+    const exitedAtWall = cx <= 6 || cx >= vw - 6 || cy <= 6 || cy >= vh - 6;
+    if (!exitedAtWall || !this._isPlayingFallbackActive()) {
+      this._cursorInsideViewport = false;
+    } else {
+      // Keep edge pin momentarily if cursor slammed into an HTML wall during fast fallback look
+      this._cursorNormX = Math.max(0, Math.min(1, cx / Math.max(1, vw)));
+      this._cursorNormY = Math.max(0, Math.min(1, cy / Math.max(1, vh)));
+      this._lastMouseMoveTime = performance.now();
+    }
+  }
+
+  /** @private */
+  _handleMouseEnter(e) {
+    if (e && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+      this._lastFallbackMouseX = e.clientX;
+      this._lastFallbackMouseY = e.clientY;
+      this._cursorInsideViewport = true;
+    }
+  }
+
+  /** @private */
+  _handleWindowFocus() {
+    this._ignoreMouseMoveCount = 3;
+    this._prevLockedMx = 0;
+    this._prevLockedMy = 0;
+    this._lastFallbackMouseX = null;
+    this._lastFallbackMouseY = null;
+    this._lookDeltaX = 0;
+    this._lookDeltaY = 0;
   }
 
   /** @private */
@@ -357,19 +473,28 @@ class InputManager {
   // ---------------------------------------------------------------------------
 
   /**
-   * Request pointer lock on the game canvas (safe on mobile/desktop).
+   * Request pointer lock on the game canvas (prefers unadjustedMovement to avoid
+   * Chromium OS pointer-acceleration & edge-warp jumps, with clean standard fallback).
    */
   requestPointerLock() {
     if (!this._canvas || typeof this._canvas.requestPointerLock !== 'function') {
       return;
     }
     try {
-      const maybePromise = this._canvas.requestPointerLock();
+      const maybePromise = this._canvas.requestPointerLock({ unadjustedMovement: true });
       if (maybePromise && typeof maybePromise.catch === 'function') {
-        maybePromise.catch(() => {});
+        maybePromise.catch(() => {
+          try {
+            const p2 = this._canvas.requestPointerLock();
+            if (p2 && typeof p2.catch === 'function') p2.catch(() => {});
+          } catch {}
+        });
       }
     } catch {
-      // Ignored when browser requires a direct user gesture or rejects pointer lock
+      try {
+        const p2 = this._canvas.requestPointerLock();
+        if (p2 && typeof p2.catch === 'function') p2.catch(() => {});
+      } catch {}
     }
   }
 
@@ -608,13 +733,49 @@ class InputManager {
   /**
    * Consume accumulated look delta (in radians) since last frame.
    * Reuses an internal scratch object.
+   * @param {number} [dt]
    * @returns {{ x: number, y: number }}
    */
-  consumeLookDelta() {
+  consumeLookDelta(dt) {
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    const stepDt =
+      Number.isFinite(dt) && dt > 0
+        ? Math.min(dt, 0.05)
+        : Math.max(0.001, Math.min(0.05, (now - (this._lastLookConsumeTime || now)) * 0.001));
+    this._lastLookConsumeTime = now;
+
     let lx = this._lookDeltaX;
     let ly = this._lookDeltaY;
     this._lookDeltaX = 0;
     this._lookDeltaY = 0;
+
+    // Continuous smooth turning when fallback cursor reaches an HTML/Chrome wall
+    if (
+      !this.isPointerLocked() &&
+      this._isPlayingFallbackActive() &&
+      this._cursorInsideViewport &&
+      !this.isTouchMode()
+    ) {
+      const m = EDGE_TURN_MARGIN_NORM;
+      const turnSpeed = EDGE_TURN_SPEED_RAD_PER_SEC * Math.max(0.4, Math.min(2.2, this._sensitivityMultiplier));
+      if (this._cursorNormX < m) {
+        const t = (m - this._cursorNormX) / m;
+        lx -= turnSpeed * (0.35 + 0.65 * t) * stepDt;
+      } else if (this._cursorNormX > 1 - m) {
+        const t = (this._cursorNormX - (1 - m)) / m;
+        lx += turnSpeed * (0.35 + 0.65 * t) * stepDt;
+      }
+      if (this._cursorNormY < m) {
+        const t = (m - this._cursorNormY) / m;
+        ly -= turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt;
+      } else if (this._cursorNormY > 1 - m) {
+        const t = (this._cursorNormY - (1 - m)) / m;
+        ly += turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt;
+      }
+    }
+
+    if (Math.abs(lx) > MAX_FRAME_LOOK_RAD) lx = Math.sign(lx) * MAX_FRAME_LOOK_RAD;
+    if (Math.abs(ly) > MAX_FRAME_LOOK_RAD) ly = Math.sign(ly) * MAX_FRAME_LOOK_RAD;
 
     this._lookOut.x = lx;
     this._lookOut.y = ly;
@@ -713,6 +874,9 @@ class InputManager {
     this._touchActionsDown.clear();
     this._pressedActions.clear();
     this._ignoreMouseMoveCount = 0;
+    this._prevLockedMx = 0;
+    this._prevLockedMy = 0;
+    this._prevLockedTime = 0;
     this._touchMoveX = 0;
     this._touchMoveY = 0;
     this._lookDeltaX = 0;
@@ -736,10 +900,15 @@ class InputManager {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
+    window.removeEventListener('pointerdown', this._onMouseDown);
+    window.removeEventListener('pointerup', this._onMouseUp);
     window.removeEventListener('wheel', this._onWheel);
+    window.removeEventListener('focus', this._onWindowFocus);
     window.removeEventListener('blur', this._onWindowBlur);
-    document.removeEventListener('mouseleave', this._onWindowBlur);
+    document.removeEventListener('mouseleave', this._onMouseLeave);
+    document.removeEventListener('mouseenter', this._onMouseEnter);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+    document.removeEventListener('pointerlockerror', this._onPointerLockError);
 
     if (this._canvas) {
       this._canvas.removeEventListener('contextmenu', this._onContextMenu);

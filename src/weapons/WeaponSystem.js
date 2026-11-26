@@ -1,7 +1,7 @@
 // Module: src/weapons/WeaponSystem.js
 __define("src/weapons/WeaponSystem.js", (__exports, __require) => {
 const { EVENTS, PLAYER_CONFIG } = __require("src/config/constants.js");
-const { WEAPONS } = __require("src/config/weapons.js");
+const { WEAPONS, WEAPON_SKINS } = __require("src/config/weapons.js");
 const { WeaponModelFactory } = __require("src/weapons/WeaponModelFactory.js");
 
 const DEG2RAD = Math.PI / 180;
@@ -105,6 +105,8 @@ class WeaponSystem {
     this.currentIndex = 0;
     this._pendingIndex = -1;
     this.weaponOverclock = new Array(WEAPONS.length).fill(0);
+    this.equippedWeaponSkins = {};
+    this.equippedFrameSkin = null;
 
     // Listen for slide/dash auto-reload card
     if (this.eventBus) {
@@ -589,11 +591,25 @@ class WeaponSystem {
     }
   }
 
-  setPilotFrameStyle(frameId) {
-    if (this._factory && typeof this._factory.setPilotFrameStyle === 'function') {
-      this._factory.setPilotFrameStyle(frameId);
+  setWeaponSkins(skinMap) {
+    this.equippedWeaponSkins = skinMap && typeof skinMap === 'object' ? Object.assign({}, skinMap) : {};
+    if (!this._factory || typeof this._factory.applyWeaponSkin !== 'function') return;
+    for (let i = 0; i < WEAPONS.length; i++) {
+      const w = WEAPONS[i];
+      const rig = this._rigs[i];
+      if (!w || !rig) continue;
+      const skinId = this.equippedWeaponSkins[w.id] || 'standard';
+      const skinCfg = WEAPON_SKINS.find((sk) => sk.id === skinId) || WEAPON_SKINS[0];
+      this._factory.applyWeaponSkin(rig, w, skinCfg);
     }
-    this._guardFrameColorHex =
+  }
+
+  setPilotFrameStyle(frameId, frameSkinCfg = null) {
+    this.equippedFrameSkin = frameSkinCfg || null;
+    if (this._factory && typeof this._factory.setPilotFrameStyle === 'function') {
+      this._factory.setPilotFrameStyle(frameId, frameSkinCfg);
+    }
+    const baseFrameHex =
       frameId === 'bastion'
         ? 0x22c55e
         : frameId === 'apex'
@@ -601,6 +617,8 @@ class WeaponSystem {
         : frameId === 'strider'
         ? 0x00f0ff
         : 0x38bdf8;
+    this._guardFrameColorHex =
+      frameSkinCfg && frameSkinCfg.shieldHex != null ? frameSkinCfg.shieldHex : baseFrameHex;
     if (this._guardRailGlowMat) {
       this._guardRailGlowMat.color.setHex(this._guardFrameColorHex);
       if (this._guardRailGlowMat.emissive) this._guardRailGlowMat.emissive.setHex(this._guardFrameColorHex);
@@ -1323,6 +1341,16 @@ class WeaponSystem {
     this._projectViewmodelToWorld(this._vmMuzzlePos, this._worldMuzzlePos);
     this._projectViewmodelToWorld(this._vmEjectPos, this._worldEjectPos);
 
+    const equippedSkinId = this.equippedWeaponSkins && this.equippedWeaponSkins[weapon.id];
+    const activeSkinCfg =
+      equippedSkinId && equippedSkinId !== 'standard'
+        ? WEAPON_SKINS.find((sk) => sk.id === equippedSkinId) || null
+        : null;
+    const muzzleColorHex =
+      activeSkinCfg && activeSkinCfg.tracerColor != null ? activeSkinCfg.tracerColor : weapon.color;
+    const skinImpactHex =
+      activeSkinCfg && activeSkinCfg.tracerColor != null ? activeSkinCfg.tracerColor : weapon.tracerColor;
+
     // Spawn 1P volumetric muzzle flash (suppressed while zoomed inside 2D railgun scope) + spinning shell casing
     const isRailgunScoped = weapon.id === 'railgun' && this._adsProgress > 0.45;
     if (!isRailgunScoped) {
@@ -1330,7 +1358,7 @@ class WeaponSystem {
         this._vmMuzzlePos,
         this._eyePos,
         this._lookDir,
-        weapon.color,
+        muzzleColorHex,
         weapon.muzzleScale * (isAds ? 0.68 : 1.0)
       );
     }
@@ -1339,7 +1367,7 @@ class WeaponSystem {
       this._camRight,
       this._camUp,
       this._camForward,
-      weapon.color
+      muzzleColorHex
     );
 
     // Build orthonormal ray basis from lookDir
@@ -1614,7 +1642,7 @@ class WeaponSystem {
         const killed = Boolean(dmgRes && dmgRes.killed);
 
         const vfxType = blocked ? 'shield' : h.isHead ? 'head' : 'body';
-        this.vfxManager.spawnImpact(this._hitPoint, this._hitNormal, weapon.tracerColor, vfxType);
+        this.vfxManager.spawnImpact(this._hitPoint, this._hitNormal, skinImpactHex, vfxType);
 
         // Accumulate per-target damage cleanly for EVENTS.DAMAGE_DEALT
         let acc = null;
@@ -1657,7 +1685,7 @@ class WeaponSystem {
       // 5. Wall impact & tracer endpoint
       if (!stoppedOnEntity) {
         if (wallHit) {
-          this.vfxManager.spawnImpact(wallHit.point, wallHit.normal, weapon.tracerColor, 'wall');
+          this.vfxManager.spawnImpact(wallHit.point, wallHit.normal, skinImpactHex, 'wall');
           this._tracerEnd.copy(wallHit.point);
         } else {
           this._tracerEnd.copy(this._eyePos).addScaledVector(this._rayDir, weapon.range);
@@ -1671,7 +1699,15 @@ class WeaponSystem {
       if (muzzleToImpactSq > 0.04) {
         const ocLv = this.weaponOverclock[this.currentIndex] || 0;
         const tColor =
-          ocLv >= 3 ? 0xffd700 : ocLv === 2 ? 0xc084fc : ocLv === 1 ? 0x38bdf8 : weapon.tracerColor;
+          activeSkinCfg && activeSkinCfg.tracerColor != null
+            ? activeSkinCfg.tracerColor
+            : ocLv >= 3
+            ? 0xffd700
+            : ocLv === 2
+            ? 0xc084fc
+            : ocLv === 1
+            ? 0x38bdf8
+            : weapon.tracerColor;
         const tWidth = weapon.tracerWidth * (1 + ocLv * 0.35);
         this.vfxManager.spawnTracer(
           this._worldMuzzlePos,

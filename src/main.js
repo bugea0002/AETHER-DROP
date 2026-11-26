@@ -1,8 +1,28 @@
 // Module: src/main.js
 __define("src/main.js", (__exports, __require) => {
-const { EVENTS, QUALITY_PRESETS, META_UPGRADES, SYNERGIES, CROSS_SYNERGIES, TACTICAL_CARDS, PILOT_FRAMES, PILOT_FRAME_ART, HEAT_CONTRACTS, DAILY_MODIFIERS, ACHIEVEMENTS, getTodayDailyModifier } = __require("src/config/constants.js");
+const {
+  EVENTS,
+  QUALITY_PRESETS,
+  META_UPGRADES,
+  SYNERGIES,
+  CROSS_SYNERGIES,
+  TACTICAL_CARDS,
+  PILOT_FRAMES,
+  PILOT_FRAME_ART,
+  HEAT_CONTRACTS,
+  DAILY_MODIFIERS,
+  ACHIEVEMENTS,
+  PLAYER_TITLES,
+  FRAME_SKINS,
+  HEAT_MILESTONE_REWARDS,
+  STREAK_REWARDS,
+  getTodayDailyModifier,
+  getTodayDateKey,
+  getDailyQuestsForDate,
+} = __require("src/config/constants.js");
 const { WAVES } = __require("src/config/waves.js");
-const { WEAPONS } = __require("src/config/weapons.js");
+const { WEAPONS, WEAPON_SKINS, WEAPON_MASTERY_TITLES } = __require("src/config/weapons.js");
+const FirebaseService = __require("src/firebase/FirebaseService.js");
 const { WeaponModelFactory } = __require("src/weapons/WeaponModelFactory.js");
 const { EventBus } = __require("src/core/EventBus.js");
 const { Engine } = __require("src/core/Engine.js");
@@ -62,13 +82,26 @@ function bootstrap() {
   const upgradeKicker = byId('upgrade-kicker');
   const upgradeCardsGrid = byId('upgrade-cards-grid');
   const btnTitleArsenal = byId('btn-title-arsenal');
+  const missionDiamondWidget = byId('title-mission-diamond');
+  const btnMissionDiamondTrigger = byId('btn-mission-diamond-trigger');
+  const diamondQuestCount = byId('diamond-quest-count');
+  const btnOpenAttendancePopup = byId('btn-open-attendance-popup');
+  const attendancePopupModal = byId('attendance-popup-modal');
+  const btnAttendanceClose = byId('btn-attendance-close');
+  const btnAttendanceLater = byId('btn-attendance-later');
+  const btnTitleLeaderboard = byId('btn-title-leaderboard');
   const btnTitleControls = byId('btn-title-controls');
   const btnTitleSettings = byId('btn-title-settings');
   const btnTitleAchievements = byId('btn-title-achievements');
   const titleAchBadge = byId('title-ach-badge');
+  const titleEquippedTitleBadge = byId('title-equipped-title-badge');
+  const titlePilotCallsign = byId('title-pilot-callsign');
+  const titleUnlockToast = byId('title-unlock-toast');
 
   const panelArsenal = byId('title-panel-arsenal');
   const btnArsenalBack = byId('btn-arsenal-back');
+  const panelLeaderboard = byId('title-panel-leaderboard');
+  const btnLeaderboardBack = byId('btn-leaderboard-back');
   const panelControls = byId('title-panel-controls');
   const btnControlsBack = byId('btn-controls-back');
   const panelSettings = byId('title-panel-settings');
@@ -151,6 +184,13 @@ function bootstrap() {
   // 1.5. Persistent Gold & Meta Armory + In-Run Tactical Cards & Synergies
   // ---------------------------------------------------------------------------
   const META_STORAGE_KEY = 'aether_drop_meta_v1';
+  const defaultWeaponStats = {};
+  const defaultWeaponSkins = {};
+  for (let wi = 0; wi < WEAPONS.length; wi++) {
+    defaultWeaponStats[WEAPONS[wi].id] = { kills: 0, headshots: 0 };
+    defaultWeaponSkins[WEAPONS[wi].id] = 'standard';
+  }
+
   const metaState = {
     gold: 0,
     levels: { firepower: 0, hull: 0, shield: 0, thruster: 0, reload: 0, crit: 0, siphon: 0, salvage: 0 },
@@ -162,6 +202,21 @@ function bootstrap() {
     bestEndlessWave: 0,
     totalKillsAllTime: 0,
     voidGatesDestroyed: 0,
+    callsign: 'PILOT',
+    equippedTitle: 'rookie_dropper',
+    unlockedTitles: ['rookie_dropper'],
+    unlockedFrameSkins: ['standard'],
+    equippedFrameSkin: 'standard',
+    claimedHeatMilestones: {},
+    weaponStats: defaultWeaponStats,
+    equippedWeaponSkins: defaultWeaponSkins,
+    dailyState: {
+      dateKey: getTodayDateKey(),
+      progress: {},
+      claimed: {},
+      streakCount: 0,
+      lastAttendanceDate: '',
+    },
   };
   const SETTINGS_STORAGE_KEY = 'aether_drop_settings_v1';
   let _initializingSettings = true;
@@ -196,7 +251,7 @@ function bootstrap() {
         settings.controlMode = ps.controlMode;
       }
       if (Number.isFinite(ps.sensitivity)) {
-        settings.sensitivity = Math.max(0.3, Math.min(2.5, ps.sensitivity));
+        settings.sensitivity = Math.max(0.01, Math.min(2.49, Math.round(ps.sensitivity * 100) / 100));
       }
       if (Number.isFinite(ps.volume)) {
         settings.volume = Math.max(0, Math.min(100, Math.round(ps.volume)));
@@ -247,6 +302,52 @@ function bootstrap() {
       }
       if (Number.isFinite(parsed.voidGatesDestroyed)) {
         metaState.voidGatesDestroyed = Math.max(0, Math.floor(parsed.voidGatesDestroyed));
+      }
+      if (typeof parsed.callsign === 'string' && parsed.callsign.trim()) {
+        metaState.callsign = parsed.callsign.trim().slice(0, 18);
+      }
+      if (Array.isArray(parsed.unlockedTitles)) {
+        metaState.unlockedTitles = Array.from(new Set(['rookie_dropper', ...parsed.unlockedTitles]));
+      }
+      if (typeof parsed.equippedTitle === 'string' && metaState.unlockedTitles.includes(parsed.equippedTitle)) {
+        metaState.equippedTitle = parsed.equippedTitle;
+      }
+      if (Array.isArray(parsed.unlockedFrameSkins)) {
+        metaState.unlockedFrameSkins = Array.from(new Set(['standard', ...parsed.unlockedFrameSkins]));
+      }
+      if (typeof parsed.equippedFrameSkin === 'string' && metaState.unlockedFrameSkins.includes(parsed.equippedFrameSkin)) {
+        metaState.equippedFrameSkin = parsed.equippedFrameSkin;
+      }
+      if (parsed.claimedHeatMilestones && typeof parsed.claimedHeatMilestones === 'object') {
+        metaState.claimedHeatMilestones = Object.assign({}, parsed.claimedHeatMilestones);
+      }
+      if (parsed.weaponStats && typeof parsed.weaponStats === 'object') {
+        for (const wid of Object.keys(metaState.weaponStats)) {
+          const st = parsed.weaponStats[wid];
+          if (st && typeof st === 'object') {
+            metaState.weaponStats[wid] = {
+              kills: Math.max(0, Math.floor(Number(st.kills) || 0)),
+              headshots: Math.max(0, Math.floor(Number(st.headshots) || 0)),
+            };
+          }
+        }
+      }
+      if (parsed.equippedWeaponSkins && typeof parsed.equippedWeaponSkins === 'object') {
+        for (const wid of Object.keys(metaState.equippedWeaponSkins)) {
+          const skId = parsed.equippedWeaponSkins[wid];
+          if (typeof skId === 'string' && WEAPON_SKINS.some((s) => s.id === skId)) {
+            metaState.equippedWeaponSkins[wid] = skId;
+          }
+        }
+      }
+      if (parsed.dailyState && typeof parsed.dailyState === 'object') {
+        metaState.dailyState = {
+          dateKey: typeof parsed.dailyState.dateKey === 'string' ? parsed.dailyState.dateKey : getTodayDateKey(),
+          progress: parsed.dailyState.progress && typeof parsed.dailyState.progress === 'object' ? Object.assign({}, parsed.dailyState.progress) : {},
+          claimed: parsed.dailyState.claimed && typeof parsed.dailyState.claimed === 'object' ? Object.assign({}, parsed.dailyState.claimed) : {},
+          streakCount: Math.max(0, Math.floor(Number(parsed.dailyState.streakCount) || 0)),
+          lastAttendanceDate: typeof parsed.dailyState.lastAttendanceDate === 'string' ? parsed.dailyState.lastAttendanceDate : '',
+        };
       }
     }
   } catch {}
@@ -400,12 +501,15 @@ function bootstrap() {
     achievementsGrid.innerHTML = html;
   }
 
-  // Lazy one-shot orthographic 3D side-profile renderer for Arsenal Briefing
+  // Lazy & live-updatable orthographic 3D side-profile renderer for Arsenal Briefing & Weapon Skins
   let arsenalPreviewsRendered = false;
-  function renderArsenalPreviews() {
-    if (arsenalPreviewsRendered) return;
-    arsenalPreviewsRendered = true;
-    const boxes = document.querySelectorAll('[data-weapon-preview]');
+  function renderArsenalPreviews(targetWeaponId = null, previewSkinOverrides = null) {
+    if (!targetWeaponId && arsenalPreviewsRendered) return;
+    if (!targetWeaponId) arsenalPreviewsRendered = true;
+    const selector = targetWeaponId
+      ? `[data-weapon-preview="${targetWeaponId}"]`
+      : '[data-weapon-preview]';
+    const boxes = document.querySelectorAll(selector);
     if (!boxes.length || typeof THREE === 'undefined') return;
 
     let renderer = null;
@@ -445,6 +549,15 @@ function bootstrap() {
         if (rig.rightHand) rig.rightHand.visible = false;
         if (rig.reticleMesh) rig.reticleMesh.visible = false;
 
+        const skinId =
+          (previewSkinOverrides && previewSkinOverrides[wid]) ||
+          (metaState.equippedWeaponSkins && metaState.equippedWeaponSkins[wid]) ||
+          'standard';
+        const skinCfg = WEAPON_SKINS.find((sk) => sk.id === skinId) || WEAPON_SKINS[0];
+        if (typeof factory.applyWeaponSkin === 'function') {
+          factory.applyWeaponSkin(rig, cfg, skinCfg);
+        }
+
         scene.add(rig.root);
         rig.root.updateMatrixWorld(true);
 
@@ -471,7 +584,7 @@ function bootstrap() {
         const dataUrl = renderer.domElement.toDataURL('image/png');
         scene.remove(rig.root);
 
-        boxEl.innerHTML = `<img class="weapon-preview-img" src="${dataUrl}" alt="${cfg.name} 3D 측면도" />`;
+        boxEl.innerHTML = `<img class="weapon-preview-img" src="${dataUrl}" alt="${cfg.name} (${skinCfg.name}) 3D 측면도" />`;
       });
     } catch (err) {
       boxes.forEach((boxEl) => {
@@ -541,6 +654,89 @@ function bootstrap() {
         const isLocked = i > maxUnlocked;
         const isCleared = i < maxUnlocked;
         const isSelected = i === selectedHeatLevel;
+        const milestone = HEAT_MILESTONE_REWARDS.find((m) => m.heat === h.level);
+
+        const cell = document.createElement('div');
+        cell.className = 'heat-step-cell';
+
+        if (milestone) {
+          const isClaimed = Boolean(metaState.claimedHeatMilestones[String(milestone.heat)]);
+          const skinObj = FRAME_SKINS.find((sk) => sk.id === milestone.frameSkinId);
+          const rewardSlot = document.createElement('div');
+          rewardSlot.className = 'heat-reward-slot';
+
+          const pinBtn = document.createElement('button');
+          pinBtn.type = 'button';
+          pinBtn.className = `heat-reward-pin${isClaimed ? ' claimed' : ''}`;
+          pinBtn.setAttribute('aria-label', `위협 ${milestone.heat} 최초 정복 보상 보기`);
+          pinBtn.innerHTML = isClaimed
+            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>';
+
+          const tooltip = document.createElement('div');
+          const alignClass = h.level >= 9 ? ' align-right' : h.level <= 2 ? ' align-left' : '';
+          tooltip.className = `heat-reward-tooltip${alignClass}`;
+
+          const tipHead = document.createElement('div');
+          tipHead.className = 'heat-reward-tip-head';
+          const tipTier = document.createElement('span');
+          tipTier.className = 'heat-reward-tip-tier';
+          tipTier.textContent = `HEAT ${milestone.heat} 최초 정복 보상`;
+          const tipState = document.createElement('span');
+          tipState.className = `heat-reward-tip-state${isClaimed ? ' done' : ''}`;
+          tipState.textContent = isClaimed ? '지급 완료' : '미달성';
+          tipHead.appendChild(tipTier);
+          tipHead.appendChild(tipState);
+          tooltip.appendChild(tipHead);
+
+          const goldRow = document.createElement('div');
+          goldRow.className = 'heat-reward-tip-row';
+          const goldK = document.createElement('span');
+          goldK.textContent = '보상 골드';
+          const goldV = document.createElement('span');
+          goldV.className = 'heat-reward-tip-gold';
+          goldV.textContent = `+${Number(milestone.gold || 0).toLocaleString()} G`;
+          goldRow.appendChild(goldK);
+          goldRow.appendChild(goldV);
+          tooltip.appendChild(goldRow);
+
+          const titleRow = document.createElement('div');
+          titleRow.className = 'heat-reward-tip-row';
+          const titleK = document.createElement('span');
+          titleK.textContent = '전용 칭호';
+          titleRow.appendChild(titleK);
+          titleRow.appendChild(createTitlePlateEl(milestone.titleId, null, 'sm'));
+          tooltip.appendChild(titleRow);
+
+          if (skinObj) {
+            const skinRow = document.createElement('div');
+            skinRow.className = 'heat-reward-tip-row';
+            const skinK = document.createElement('span');
+            skinK.textContent = '기체 스킨';
+            const skinV = document.createElement('span');
+            skinV.className = 'heat-reward-tip-skin';
+            const sw = document.createElement('span');
+            sw.className = 'heat-reward-tip-swatch';
+            sw.style.background = skinObj.previewBg;
+            const sn = document.createElement('span');
+            sn.textContent = skinObj.name;
+            skinV.appendChild(sw);
+            skinV.appendChild(sn);
+            skinRow.appendChild(skinK);
+            skinRow.appendChild(skinV);
+            tooltip.appendChild(skinRow);
+          }
+
+          rewardSlot.appendChild(pinBtn);
+          rewardSlot.appendChild(tooltip);
+          cell.appendChild(rewardSlot);
+        } else {
+          const spacer = document.createElement('div');
+          spacer.className = 'heat-reward-spacer';
+          spacer.setAttribute('aria-hidden', 'true');
+          cell.appendChild(spacer);
+        }
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `heat-step-btn${isSelected ? ' active' : ''}${i >= 5 ? ' hot' : ''}${isCleared ? ' cleared' : ''}${isLocked ? ' locked' : ''}`;
@@ -561,7 +757,8 @@ function bootstrap() {
           selectedHeatLevel = h.level;
           updateMissionConfigUI();
         });
-        deployHeatGrid.appendChild(btn);
+        cell.appendChild(btn);
+        deployHeatGrid.appendChild(cell);
       }
     }
 
@@ -830,6 +1027,9 @@ function bootstrap() {
   function startTutorialRun() {
     if (isTransitioning) return;
     unlockAudioOnGesture();
+    if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
+      soundEngine.stopBgmHard();
+    }
     engageGameplayShortcutLock(true);
 
     runFadeTransition(
@@ -881,6 +1081,7 @@ function bootstrap() {
         playerController.applyModifiers(startMods, true);
         playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
         weaponSystem.reset(primaryIndex, secondaryIndex);
+        syncCosmeticsToWeaponSystem();
         lastWeaponState = weaponSystem.getCurrentWeaponState();
 
         engine.viewmodelScene.visible = true;
@@ -907,6 +1108,12 @@ function bootstrap() {
         advanceTutorialStep(1);
 
         eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+        if (soundEngine && typeof soundEngine.setSceneMode === 'function') {
+          soundEngine.setSceneMode('playing');
+        }
+        if (soundEngine && typeof soundEngine.setBgmTrack === 'function') {
+          soundEngine.setBgmTrack('zone1_normal', true);
+        }
         syncHudImmediate();
         engine.render();
         startLoop();
@@ -1472,8 +1679,8 @@ function bootstrap() {
   }
 
   function renderArmoryUI() {
-    if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
-    if (armoryGoldAmount) armoryGoldAmount.textContent = `${metaState.gold} G`;
+    if (titleGoldBadge) titleGoldBadge.textContent = `${Number(metaState.gold || 0).toLocaleString()} G`;
+    if (armoryGoldAmount) armoryGoldAmount.textContent = `${Number(metaState.gold || 0).toLocaleString()} G`;
     updateArmoryResetBtnUI();
     const eqFrame = getEquippedFrame();
     const unitBadge = byId('title-unit-badge');
@@ -1597,6 +1804,712 @@ function bootstrap() {
         framesGrid.appendChild(card);
       }
     }
+
+    renderTitleBadgeUI();
+    renderCosmeticsTab();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 1.7. Titles, 1P Frame Skins, Daily Quests, Attendance Streak, Mastery & Leaderboard
+  // ---------------------------------------------------------------------------
+  let activeLeaderboardMode = 'campaign';
+  let lastRunRecordPayload = null;
+  let attendanceAutoShownThisSession = false;
+
+  const TITLE_EMBLEM_SVG = Object.freeze({
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l7-6 7 6"/><path d="M5 19l7-6 7 6"/></svg>',
+    pulse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>',
+    scatter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 12h6"/><path d="M13 7l6-3"/><path d="M13 12h7"/><path d="M13 17l6 3"/><circle cx="10" cy="12" r="1.8" fill="currentColor"/></svg>',
+    rail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M2 12h20"/><path d="M15 6l6 6-6 6"/><path d="M6 8v8"/></svg>',
+    smg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z"/></svg>',
+    weld: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c2.5 3.2 6 6.1 6 10.2A6 6 0 1 1 6 12.2C6 9.3 7.6 6.8 9.2 5c.3 2 1.4 3.2 2.8 3.2 0-2.1-.6-4.1 0-6.2z"/></svg>',
+    arc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2L5 13h6l-1 9 9-11h-6l1-9z"/></svg>',
+    repulsor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.6 4.6a10.5 10.5 0 0 0 0 14.8"/><path d="M19.4 4.6a10.5 10.5 0 0 1 0 14.8"/></svg>',
+    heat3: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>',
+    heat5: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5L22 12l-7 3.5L12 22l-3-6.5L2 12l7-3.5L12 2z"/></svg>',
+    heat7: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+    heat10: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18l2-10 4.5 4L12 5l2.5 7L19 8l2 10H3z"/><path d="M5 21h14"/></svg>',
+    streak3: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l8-5 8 5"/><path d="M4 12l8-5 8 5"/><path d="M4 7l8-4 8 4"/></svg>',
+    streak7: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.7 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg>',
+    endless: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.2 8.2a4.3 4.3 0 0 1 0 7.6c-2.6 1.5-5.2-1.8-6.2-3.8-1-2-3.6-5.3-6.2-3.8a4.3 4.3 0 0 0 0 7.6c2.6 1.5 5.2-1.8 6.2-3.8 1-2 3.6-5.3 6.2-3.8z"/></svg>',
+  });
+
+  function getTitleObjById(titleId) {
+    return PLAYER_TITLES.find((t) => t.id === titleId) || PLAYER_TITLES[0];
+  }
+
+  function createTitlePlateEl(titleId, overrideLabel = null, size = 'md') {
+    const tObj = getTitleObjById(titleId);
+    const sizeCls = size === 'sm' ? ' title-plate--sm' : size === 'lg' ? ' title-plate--lg' : '';
+    const plate = document.createElement('span');
+    plate.className = `title-plate title-plate--${tObj.id}${sizeCls}`;
+
+    const emblem = document.createElement('span');
+    emblem.className = 'title-plate-emblem';
+    emblem.setAttribute('aria-hidden', 'true');
+    emblem.innerHTML = TITLE_EMBLEM_SVG[tObj.icon] || TITLE_EMBLEM_SVG.chevron;
+
+    const text = document.createElement('span');
+    text.className = 'title-plate-text';
+    text.textContent = overrideLabel ? String(overrideLabel).slice(0, 28) : tObj.label;
+
+    plate.appendChild(emblem);
+    plate.appendChild(text);
+    return plate;
+  }
+
+  function getEquippedTitleObj() {
+    return getTitleObjById(metaState.equippedTitle);
+  }
+
+  function renderTitleBadgeUI() {
+    const titleObj = getEquippedTitleObj();
+    if (titlePilotCallsign) {
+      titlePilotCallsign.textContent = metaState.callsign || 'PILOT';
+    }
+    const targets = [
+      { el: titleEquippedTitleBadge, size: 'md' },
+      { el: byId('lb-equipped-title'), size: 'md' },
+      { el: byId('result-rank-title-badge'), size: 'md' },
+    ];
+    for (let i = 0; i < targets.length; i++) {
+      const slot = targets[i].el;
+      if (!slot) continue;
+      slot.textContent = '';
+      slot.appendChild(createTitlePlateEl(titleObj.id, null, targets[i].size));
+    }
+  }
+
+  function syncCosmeticsToWeaponSystem() {
+    if (!runtimeReady || !weaponSystem) return;
+    if (typeof weaponSystem.setWeaponSkins === 'function') {
+      weaponSystem.setWeaponSkins(metaState.equippedWeaponSkins || {});
+    }
+    const fid = (playerController && playerController.mods && playerController.mods.frameId) || metaState.equippedFrame || 'vanguard';
+    const skinCfg = FRAME_SKINS.find((sk) => sk.id === metaState.equippedFrameSkin) || FRAME_SKINS[0];
+    if (typeof weaponSystem.setPilotFrameStyle === 'function') {
+      weaponSystem.setPilotFrameStyle(fid, skinCfg);
+    }
+    telemetry._appliedFrameVisual = `${fid}:${skinCfg.id}`;
+  }
+
+  function unlockTitle(titleId, recordRunReward = false) {
+    if (!titleId || metaState.unlockedTitles.includes(titleId)) return false;
+    const tObj = PLAYER_TITLES.find((t) => t.id === titleId);
+    if (!tObj) return false;
+    metaState.unlockedTitles.push(titleId);
+    saveMetaState();
+    renderTitleBadgeUI();
+    renderCosmeticsTab();
+    if (recordRunReward && Array.isArray(telemetry.runUnlockedRewards)) {
+      telemetry.runUnlockedRewards.push(`칭호 [${tObj.label}]`);
+    }
+    if (eventBus) {
+      eventBus.emit(EVENTS.ANNOUNCEMENT, {
+        kicker: '새 칭호 해금',
+        title: `[${tObj.label}]`,
+        subtitle: tObj.desc,
+        duration: 3.2,
+      });
+    }
+    return true;
+  }
+
+  function unlockFrameSkin(skinId, recordRunReward = false) {
+    if (!skinId || metaState.unlockedFrameSkins.includes(skinId)) return false;
+    const sk = FRAME_SKINS.find((s) => s.id === skinId);
+    if (!sk) return false;
+    metaState.unlockedFrameSkins.push(skinId);
+    saveMetaState();
+    renderCosmeticsTab();
+    if (recordRunReward && Array.isArray(telemetry.runUnlockedRewards)) {
+      telemetry.runUnlockedRewards.push(`기체 스킨 [${sk.name}]`);
+    }
+    return true;
+  }
+
+  function checkHeatMilestoneRewards(clearedHeatLevel) {
+    const h = Math.max(0, Math.floor(Number(clearedHeatLevel) || 0));
+    for (let i = 0; i < HEAT_MILESTONE_REWARDS.length; i++) {
+      const m = HEAT_MILESTONE_REWARDS[i];
+      if (h < m.heat) continue;
+      if (metaState.claimedHeatMilestones[String(m.heat)]) continue;
+      metaState.claimedHeatMilestones[String(m.heat)] = true;
+      metaState.gold += m.gold || 0;
+      telemetry.runUnlockedRewards.push(`${m.label} (+${m.gold} G)`);
+      unlockTitle(m.titleId, true);
+      unlockFrameSkin(m.frameSkinId, true);
+      saveMetaState();
+      if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+    }
+  }
+
+  function renderCosmeticsTab() {
+    const titlesGrid = byId('titles-equip-grid');
+    if (titlesGrid) {
+      titlesGrid.innerHTML = '';
+      for (let i = 0; i < PLAYER_TITLES.length; i++) {
+        const t = PLAYER_TITLES[i];
+        const unlocked = metaState.unlockedTitles.includes(t.id);
+        const equipped = metaState.equippedTitle === t.id;
+        const card = document.createElement('div');
+        card.className = `title-chip-card${equipped ? ' equipped' : ''}${!unlocked ? ' locked' : ''}`;
+
+        const topWrap = document.createElement('div');
+        const previewWrap = document.createElement('div');
+        previewWrap.className = 'title-chip-preview';
+        previewWrap.appendChild(createTitlePlateEl(t.id, null, 'lg'));
+
+        const descEl = document.createElement('div');
+        descEl.className = 'title-chip-desc';
+        descEl.textContent = t.desc;
+
+        topWrap.appendChild(previewWrap);
+        topWrap.appendChild(descEl);
+
+        const btn = document.createElement('button');
+        btn.className = `mil-btn small${equipped ? ' primary' : ''}`;
+        btn.type = 'button';
+        btn.disabled = !unlocked || equipped;
+        btn.textContent = equipped ? '장착 중' : unlocked ? '칭호 장착' : '미해금';
+        if (unlocked && !equipped) {
+          btn.addEventListener('click', () => {
+            metaState.equippedTitle = t.id;
+            saveMetaState();
+            renderTitleBadgeUI();
+            renderCosmeticsTab();
+          });
+        }
+
+        card.appendChild(topWrap);
+        card.appendChild(btn);
+        titlesGrid.appendChild(card);
+      }
+    }
+
+    const skinsGrid = byId('frame-skins-grid');
+    if (skinsGrid) {
+      skinsGrid.innerHTML = '';
+      for (let i = 0; i < FRAME_SKINS.length; i++) {
+        const sk = FRAME_SKINS[i];
+        const unlocked = metaState.unlockedFrameSkins.includes(sk.id);
+        const equipped = metaState.equippedFrameSkin === sk.id;
+        const card = document.createElement('div');
+        card.className = `frame-skin-card${equipped ? ' equipped' : ''}${!unlocked ? ' locked' : ''}`;
+        card.innerHTML = `
+          <div class="frame-skin-swatch-row">
+            <span class="frame-skin-swatch" style="background:${sk.previewBg}"></span>
+            <div>
+              <div class="frame-skin-name">${sk.name}</div>
+              <div style="font-size:10.5px;color:#fbbf24;font-weight:700;">${sk.tier}</div>
+            </div>
+          </div>
+          <div class="frame-skin-desc">${sk.desc}</div>
+          <button class="mil-btn small ${equipped ? 'primary' : ''}" type="button" ${!unlocked || equipped ? 'disabled' : ''}>
+            ${equipped ? '적용 중' : unlocked ? '스킨 장착' : sk.unlockDesc}
+          </button>
+        `;
+        const btn = card.querySelector('button');
+        if (btn && unlocked && !equipped) {
+          btn.addEventListener('click', () => {
+            metaState.equippedFrameSkin = sk.id;
+            saveMetaState();
+            syncCosmeticsToWeaponSystem();
+            renderCosmeticsTab();
+          });
+        }
+        skinsGrid.appendChild(card);
+      }
+    }
+  }
+
+  function ensureDailyStateFresh() {
+    const today = getTodayDateKey();
+    if (!metaState.dailyState || typeof metaState.dailyState !== 'object') {
+      metaState.dailyState = { dateKey: today, progress: {}, claimed: {}, streakCount: 0, lastAttendanceDate: '' };
+    }
+    if (metaState.dailyState.dateKey !== today) {
+      metaState.dailyState.dateKey = today;
+      metaState.dailyState.progress = {};
+      metaState.dailyState.claimed = {};
+      saveMetaState();
+    }
+    return today;
+  }
+
+  function parseDateKeyToUtcMs(key) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+    if (!m) return NaN;
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  function openAttendancePopup() {
+    renderDailyPanel();
+    if (attendancePopupModal) {
+      attendancePopupModal.classList.remove('hidden');
+    }
+  }
+
+  function closeAttendancePopup() {
+    if (attendancePopupModal) {
+      attendancePopupModal.classList.add('hidden');
+    }
+  }
+
+  function maybeAutoOpenAttendancePopup() {
+    const today = ensureDailyStateFresh();
+    if (attendanceAutoShownThisSession) return;
+    if (metaState.dailyState.lastAttendanceDate !== today) {
+      attendanceAutoShownThisSession = true;
+      openAttendancePopup();
+    }
+  }
+
+  function updateDailyNavBadge() {
+    const today = ensureDailyStateFresh();
+    const quests = getDailyQuestsForDate(today);
+    let readyCount = 0;
+    let claimedCount = 0;
+    for (let i = 0; i < quests.length; i++) {
+      const q = quests[i];
+      const prog = Number(metaState.dailyState.progress[q.id]) || 0;
+      const claimed = Boolean(metaState.dailyState.claimed[q.id]);
+      if (claimed) claimedCount++;
+      else if (prog >= q.target) readyCount++;
+    }
+    if (diamondQuestCount) {
+      diamondQuestCount.textContent = readyCount > 0 ? `수령 ${readyCount}` : `${claimedCount}/${quests.length}`;
+    }
+    if (missionDiamondWidget) {
+      missionDiamondWidget.classList.toggle('has-claimable', readyCount > 0);
+    }
+  }
+
+  function claimAttendanceReward() {
+    const today = ensureDailyStateFresh();
+    if (metaState.dailyState.lastAttendanceDate === today) return;
+    const prevMs = parseDateKeyToUtcMs(metaState.dailyState.lastAttendanceDate);
+    const todayMs = parseDateKeyToUtcMs(today);
+    const diffDays = Number.isFinite(prevMs) && Number.isFinite(todayMs)
+      ? Math.round((todayMs - prevMs) / 86400000)
+      : 99;
+    let nextStreak = diffDays === 1 ? (metaState.dailyState.streakCount || 0) + 1 : 1;
+    if (nextStreak > 7) nextStreak = 1;
+
+    metaState.dailyState.streakCount = nextStreak;
+    metaState.dailyState.lastAttendanceDate = today;
+    const rewardCfg = STREAK_REWARDS[Math.max(0, Math.min(6, nextStreak - 1))] || STREAK_REWARDS[0];
+    metaState.gold += rewardCfg.gold || 100;
+    if (rewardCfg.titleId) unlockTitle(rewardCfg.titleId, false);
+    if (nextStreak >= 3) unlockTitle('streak_3', false);
+    if (nextStreak >= 7) unlockTitle('streak_7', false);
+
+    saveMetaState();
+    playUiSfx('buy');
+    renderArmoryUI();
+    renderDailyPanel();
+    updateDailyNavBadge();
+  }
+
+  function claimDailyQuestReward(questId) {
+    const today = ensureDailyStateFresh();
+    const quests = getDailyQuestsForDate(today);
+    const q = quests.find((item) => item.id === questId);
+    if (!q) return;
+    const prog = Number(metaState.dailyState.progress[q.id]) || 0;
+    if (prog < q.target || metaState.dailyState.claimed[q.id]) return;
+
+    metaState.dailyState.claimed[q.id] = true;
+    metaState.gold += q.reward || 0;
+    saveMetaState();
+    playUiSfx('buy');
+    renderArmoryUI();
+    renderDailyPanel();
+    updateDailyNavBadge();
+  }
+
+  function incrementDailyStat(statName, delta = 1) {
+    if (!statName || delta <= 0 || tutorialState.active) return;
+    const today = ensureDailyStateFresh();
+    const quests = getDailyQuestsForDate(today);
+    let dirty = false;
+    for (let i = 0; i < quests.length; i++) {
+      const q = quests[i];
+      if (q.stat !== statName) continue;
+      const cur = Number(metaState.dailyState.progress[q.id]) || 0;
+      if (cur < q.target) {
+        const next = Math.min(q.target, cur + delta);
+        metaState.dailyState.progress[q.id] = next;
+        dirty = true;
+        if (next >= q.target && !metaState.dailyState.claimed[q.id] && eventBus) {
+          eventBus.emit(EVENTS.ANNOUNCEMENT, {
+            kicker: '일일 임무 완료',
+            title: q.name,
+            subtitle: `로비 우측 [전술 임무]에서 +${q.reward} G 수령 가능`,
+            duration: 3.0,
+          });
+        }
+      }
+    }
+    if (dirty) {
+      saveMetaState();
+      updateDailyNavBadge();
+    }
+  }
+
+  function renderDailyPanel() {
+    const today = ensureDailyStateFresh();
+    const checkedToday = metaState.dailyState.lastAttendanceDate === today;
+    const streak = metaState.dailyState.streakCount || 0;
+
+    const streakSum = byId('daily-streak-summary');
+    if (streakSum) {
+      streakSum.textContent = `연속 ${streak}일 출석 완료 · ${checkedToday ? '오늘 출석 체크 완료' : '오늘 출석 보상 수령 가능'}`;
+    }
+    const checkinBtn = byId('btn-daily-checkin');
+    if (checkinBtn) {
+      checkinBtn.disabled = checkedToday;
+      checkinBtn.textContent = checkedToday ? '오늘 출석 완료' : '오늘 출석 체크 (+보상)';
+    }
+
+    const streakGrid = byId('daily-streak-grid');
+    if (streakGrid) {
+      streakGrid.innerHTML = '';
+      for (let i = 0; i < STREAK_REWARDS.length; i++) {
+        const r = STREAK_REWARDS[i];
+        const claimed = i < streak;
+        const isTodayTarget = !checkedToday && i === (streak >= 7 ? 0 : streak);
+        const card = document.createElement('div');
+        card.className = `streak-day-card${claimed ? ' claimed' : ''}${isTodayTarget ? ' today' : ''}`;
+
+        const dayNum = document.createElement('span');
+        dayNum.className = 'streak-day-num';
+        dayNum.textContent = `${r.day}일차`;
+
+        const dayGold = document.createElement('span');
+        dayGold.className = 'streak-day-reward';
+        dayGold.textContent = `+${r.gold} G`;
+
+        card.appendChild(dayNum);
+        card.appendChild(dayGold);
+
+        if (r.titleId) {
+          card.appendChild(createTitlePlateEl(r.titleId, null, 'sm'));
+        }
+
+        const stateEl = document.createElement('span');
+        stateEl.className = 'streak-day-state';
+        stateEl.textContent = claimed ? '지급됨' : isTodayTarget ? '수령 가능' : '대기';
+        card.appendChild(stateEl);
+
+        streakGrid.appendChild(card);
+      }
+    }
+
+    const questsGrid = byId('daily-quests-grid');
+    if (questsGrid) {
+      questsGrid.innerHTML = '';
+      const quests = getDailyQuestsForDate(today);
+      for (let i = 0; i < quests.length; i++) {
+        const q = quests[i];
+        const prog = Math.min(q.target, Number(metaState.dailyState.progress[q.id]) || 0);
+        const pct = Math.round((prog / Math.max(1, q.target)) * 100);
+        const claimed = Boolean(metaState.dailyState.claimed[q.id]);
+        const ready = prog >= q.target && !claimed;
+
+        const card = document.createElement('div');
+        card.className = `daily-quest-card${ready ? ' ready' : ''}${claimed ? ' claimed' : ''}`;
+        card.innerHTML = `
+          <div>
+            <div class="daily-quest-top">
+              <span class="daily-quest-name">${q.name}</span>
+              <span class="daily-quest-reward">+${q.reward} G</span>
+            </div>
+            <p class="daily-quest-desc">${q.desc}</p>
+          </div>
+          <div class="daily-quest-bar-row">
+            <div class="daily-quest-track"><div class="daily-quest-fill" style="width:${pct}%"></div></div>
+            <span class="daily-quest-pct">${prog} / ${q.target}</span>
+          </div>
+          <button class="mil-btn small ${ready ? 'primary' : ''}" type="button" ${!ready ? 'disabled' : ''}>
+            ${claimed ? '보상 수령 완료' : ready ? `보상 수령 (+${q.reward} G)` : '진행 중'}
+          </button>
+        `;
+        const btn = card.querySelector('button');
+        if (btn && ready) {
+          btn.addEventListener('click', () => claimDailyQuestReward(q.id));
+        }
+        questsGrid.appendChild(card);
+      }
+    }
+  }
+
+  function isWeaponSkinUnlocked(weaponId, skinCfg) {
+    if (!skinCfg || skinCfg.tier === 0 || (skinCfg.reqKills <= 0 && skinCfg.reqHeadshots <= 0)) {
+      return true;
+    }
+    const st = (metaState.weaponStats && metaState.weaponStats[weaponId]) || { kills: 0, headshots: 0 };
+    return st.kills >= (skinCfg.reqKills || 0) && st.headshots >= (skinCfg.reqHeadshots || 0);
+  }
+
+  function checkWeaponMasteryUnlocks(weaponId, weaponName) {
+    if (!weaponId) return;
+    const st = metaState.weaponStats[weaponId] || { kills: 0, headshots: 0 };
+    for (let i = 1; i < WEAPON_SKINS.length; i++) {
+      const sk = WEAPON_SKINS[i];
+      if (st.kills === sk.reqKills && st.headshots >= sk.reqHeadshots ||
+          st.headshots === sk.reqHeadshots && st.kills >= sk.reqKills) {
+        if (sk.tier === 2 && WEAPON_MASTERY_TITLES[weaponId]) {
+          unlockTitle(WEAPON_MASTERY_TITLES[weaponId], true);
+        }
+        if (eventBus) {
+          eventBus.emit(EVENTS.ANNOUNCEMENT, {
+            kicker: '무기 마스터리 스킨 해금',
+            title: `${weaponName || weaponId} — ${sk.name}`,
+            subtitle: '무장 브리핑에서 3D 스킨 및 탄환 이펙트를 장착할 수 있습니다.',
+            duration: 3.2,
+          });
+        }
+      }
+    }
+  }
+
+  function renderArsenalMasteryUI() {
+    const slots = document.querySelectorAll('[data-weapon-mastery]');
+    slots.forEach((slotEl) => {
+      const wid = slotEl.getAttribute('data-weapon-mastery');
+      const st = (metaState.weaponStats && metaState.weaponStats[wid]) || { kills: 0, headshots: 0 };
+      const eqSkinId = (metaState.equippedWeaponSkins && metaState.equippedWeaponSkins[wid]) || 'standard';
+
+      let nextSkin = null;
+      for (let i = 1; i < WEAPON_SKINS.length; i++) {
+        if (!isWeaponSkinUnlocked(wid, WEAPON_SKINS[i])) {
+          nextSkin = WEAPON_SKINS[i];
+          break;
+        }
+      }
+
+      const nextText = nextSkin
+        ? `다음 해금 [${nextSkin.name}]: ${nextSkin.reqKills}킬${nextSkin.reqHeadshots > 0 ? ` · HS ${nextSkin.reqHeadshots}` : ''}`
+        : '모든 스킨 해금 완료!';
+
+      let chipsHtml = '';
+      for (let i = 0; i < WEAPON_SKINS.length; i++) {
+        const sk = WEAPON_SKINS[i];
+        const unlocked = isWeaponSkinUnlocked(wid, sk);
+        const active = eqSkinId === sk.id;
+        const reqTip = unlocked
+          ? `${sk.name} 장착`
+          : `잠김 (${sk.reqKills}킬${sk.reqHeadshots > 0 ? ` / 헤드샷 ${sk.reqHeadshots}` : ''} 필요)`;
+        chipsHtml += `
+          <button
+            class="skin-chip-btn${active ? ' active' : ''}${!unlocked ? ' locked' : ''}"
+            type="button"
+            data-skin-equip="${sk.id}"
+            title="${reqTip}"
+          >
+            <span class="skin-dot" style="background:${sk.swatchCss}"></span>
+            <span>${sk.name}</span>
+          </button>`;
+      }
+
+      slotEl.innerHTML = `
+        <div class="mastery-head">
+          <span class="mastery-counts">누적 ${st.kills}킬 · 헤드샷 ${st.headshots}회</span>
+          <span class="mastery-next">${nextText}</span>
+        </div>
+        <div class="mastery-skin-row">${chipsHtml}</div>
+      `;
+
+      slotEl.querySelectorAll('[data-skin-equip]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const skId = btn.getAttribute('data-skin-equip');
+          const skCfg = WEAPON_SKINS.find((s) => s.id === skId);
+          if (!skCfg) return;
+          if (!isWeaponSkinUnlocked(wid, skCfg)) {
+            const nextLabel = slotEl.querySelector('.mastery-next');
+            if (nextLabel) {
+              nextLabel.textContent = `해금 조건: ${skCfg.reqKills}킬 · 헤드샷 ${skCfg.reqHeadshots}회`;
+            }
+            return;
+          }
+          metaState.equippedWeaponSkins[wid] = skCfg.id;
+          saveMetaState();
+          syncCosmeticsToWeaponSystem();
+          renderArsenalMasteryUI();
+          renderArsenalPreviews(wid, metaState.equippedWeaponSkins);
+        });
+      });
+    });
+  }
+
+  function updateLeaderboardIdentityUI() {
+    const authBtn = byId('btn-lb-auth');
+    const authStatus = byId('lb-auth-status');
+    const titleSettingAuthBtn = byId('btn-title-setting-auth');
+    const titleSettingAuthStatus = byId('title-setting-auth-status');
+    const pauseSettingAuthBtn = byId('btn-pause-setting-auth');
+    const pauseSettingAuthStatus = byId('pause-setting-auth-status');
+    const lbInput = byId('lb-callsign-input');
+    const resInput = byId('result-callsign-input');
+    const user = FirebaseService && typeof FirebaseService.getCurrentUser === 'function'
+      ? FirebaseService.getCurrentUser()
+      : null;
+
+    if (user) {
+      const dName = user.displayName || user.email || 'Google Pilot';
+      if (authBtn) authBtn.textContent = '로그아웃';
+      if (authStatus) {
+        authStatus.textContent = `인증 완료 (${dName}) · 글로벌 기록 업로드 가능`;
+      }
+      for (const btn of [titleSettingAuthBtn, pauseSettingAuthBtn]) {
+        if (!btn) continue;
+        btn.textContent = '로그아웃';
+        btn.classList.add('danger');
+        btn.classList.remove('primary');
+      }
+      for (const st of [titleSettingAuthStatus, pauseSettingAuthStatus]) {
+        if (!st) continue;
+        st.textContent = `연동됨 · ${dName}`;
+        st.classList.add('is-signed-in');
+      }
+      if ((!metaState.callsign || metaState.callsign === 'PILOT') && user.displayName) {
+        metaState.callsign = FirebaseService.sanitizeCallsign(user.displayName.split(' ')[0], 'PILOT');
+        saveMetaState();
+      }
+    } else {
+      if (authBtn) authBtn.textContent = 'Google 로그인';
+      if (authStatus) {
+        authStatus.textContent = '열람은 무료 공개입니다. 기록 등록 시 Google 인증이 필요합니다.';
+      }
+      for (const btn of [titleSettingAuthBtn, pauseSettingAuthBtn]) {
+        if (!btn) continue;
+        btn.textContent = 'Google 로그인';
+        btn.classList.remove('danger');
+        btn.classList.add('primary');
+      }
+      for (const st of [titleSettingAuthStatus, pauseSettingAuthStatus]) {
+        if (!st) continue;
+        st.textContent = '미연동 (랭킹 등록 시 필요)';
+        st.classList.remove('is-signed-in');
+      }
+    }
+
+    if (lbInput && document.activeElement !== lbInput) {
+      lbInput.value = metaState.callsign || 'PILOT';
+    }
+    if (resInput && document.activeElement !== resInput) {
+      resInput.value = metaState.callsign || 'PILOT';
+    }
+    renderTitleBadgeUI();
+  }
+
+  async function renderLeaderboardPanel(forceRefresh = false) {
+    updateLeaderboardIdentityUI();
+    document.querySelectorAll('[data-lb-mode]').forEach((tab) => {
+      tab.classList.toggle('active', tab.getAttribute('data-lb-mode') === activeLeaderboardMode);
+    });
+
+    const listEl = byId('leaderboard-list');
+    if (!listEl) return;
+    const setEmptyMessage = (msg) => {
+      listEl.textContent = '';
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'lb-empty';
+      emptyEl.textContent = msg;
+      listEl.appendChild(emptyEl);
+    };
+    setEmptyMessage('글로벌 작전 기록을 불러오는 중입니다...');
+
+    try {
+      const dateKey = activeLeaderboardMode === 'daily' ? getTodayDateKey() : null;
+      const entries = await FirebaseService.fetchLeaderboard(activeLeaderboardMode, dateKey, 25, forceRefresh);
+      if (!entries || entries.length === 0) {
+        setEmptyMessage('아직 등록된 기록이 없습니다. 작전을 완료하고 첫 번째 이름을 남겨보세요!');
+        return;
+      }
+
+      const curUser = FirebaseService.getCurrentUser();
+      const myUid = curUser ? curUser.uid : '';
+      const frag = document.createDocumentFragment();
+
+      const headerRow = document.createElement('div');
+      headerRow.className = 'lb-row lb-header';
+      const headerCols = [
+        { text: '순위', cls: '' },
+        { text: '칭호 · 호출부호', cls: '' },
+        { text: '점수', cls: '' },
+        { text: '도달 웨이브', cls: '' },
+        { text: '위협', cls: '' },
+        { text: '킬 / HS', cls: 'lb-col-hide-sm' },
+        { text: '기체 · 주무장', cls: 'lb-col-hide-sm' },
+      ];
+      for (let h = 0; h < headerCols.length; h++) {
+        const sp = document.createElement('span');
+        if (headerCols[h].cls) sp.className = headerCols[h].cls;
+        sp.textContent = headerCols[h].text;
+        headerRow.appendChild(sp);
+      }
+      frag.appendChild(headerRow);
+
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const isMine = Boolean(myUid && e.uid === myUid);
+        const frameObj = PILOT_FRAMES.find((f) => f.id === e.frameId);
+        const wepObj = WEAPONS.find((w) => w.id === e.primaryWeaponId);
+        const safeCallsign = FirebaseService.sanitizeCallsign(e.callsign, 'PILOT');
+        const safeTitleId = PLAYER_TITLES.some((t) => t.id === e.titleId) ? e.titleId : 'rookie_dropper';
+        const titleObj = getTitleObjById(safeTitleId);
+
+        const row = document.createElement('div');
+        row.className = `lb-row${isMine ? ' mine' : ''}${i < 3 ? ' top3' : ''}`;
+
+        const rankEl = document.createElement('span');
+        rankEl.className = 'lb-rank-num';
+        rankEl.textContent = `#${i + 1}`;
+
+        const pilotCell = document.createElement('div');
+        pilotCell.className = 'lb-pilot-cell';
+        pilotCell.appendChild(createTitlePlateEl(titleObj.id, titleObj.label, 'sm'));
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'lb-row-name';
+        nameEl.textContent = safeCallsign;
+        pilotCell.appendChild(nameEl);
+
+        const scoreEl = document.createElement('span');
+        scoreEl.className = 'lb-score-cell';
+        scoreEl.textContent = Number(e.score || 0).toLocaleString();
+
+        const waveEl = document.createElement('span');
+        waveEl.textContent = `${Number(e.wave || 1)} 웨이브`;
+
+        const heatEl = document.createElement('span');
+        heatEl.textContent = `HEAT ${Number(e.heat || 0)}`;
+
+        const killEl = document.createElement('span');
+        killEl.className = 'lb-col-hide-sm';
+        killEl.textContent = `${Number(e.kills || 0)} / ${Number(e.headshots || 0)}`;
+
+        const loadoutEl = document.createElement('span');
+        loadoutEl.className = 'lb-col-hide-sm';
+        loadoutEl.textContent = `${(frameObj && frameObj.name) || 'VANGUARD-09'} · ${(wepObj && wepObj.shortName) || 'M41-A'}`;
+
+        row.appendChild(rankEl);
+        row.appendChild(pilotCell);
+        row.appendChild(scoreEl);
+        row.appendChild(waveEl);
+        row.appendChild(heatEl);
+        row.appendChild(killEl);
+        row.appendChild(loadoutEl);
+        frag.appendChild(row);
+      }
+
+      listEl.textContent = '';
+      listEl.appendChild(frag);
+    } catch (err) {
+      setEmptyMessage(`랭킹 불러오기 실패: ${err && err.message ? err.message : '네트워크 오류'}`);
+    }
   }
 
   // Wire Mission Mode buttons & Armory Reset / Achievement Claim buttons once
@@ -1645,27 +2558,38 @@ function bootstrap() {
   }
   updateMissionConfigUI();
   renderMedalsStrip();
+  renderTitleBadgeUI();
+  renderDailyPanel();
+  updateDailyNavBadge();
+  maybeAutoOpenAttendancePopup();
 
-  // Wire Armory 2-tab switcher (completely separated full-panel views)
-  const tabStatsBtn = byId('tab-armory-stats');
-  const tabFramesBtn = byId('tab-armory-frames');
-  const viewStatsEl = byId('armory-view-stats');
-  const viewFramesEl = byId('armory-view-frames');
-  if (tabStatsBtn && tabFramesBtn && viewStatsEl && viewFramesEl) {
-    tabStatsBtn.addEventListener('click', () => {
-      tabStatsBtn.classList.add('active');
-      tabFramesBtn.classList.remove('active');
-      viewStatsEl.classList.remove('hidden');
-      viewFramesEl.classList.add('hidden');
-    });
-    tabFramesBtn.addEventListener('click', () => {
-      tabFramesBtn.classList.add('active');
-      tabStatsBtn.classList.remove('active');
-      viewFramesEl.classList.remove('hidden');
-      viewStatsEl.classList.add('hidden');
-      renderArmoryUI();
+  if (FirebaseService && typeof FirebaseService.onAuthChange === 'function') {
+    FirebaseService.onAuthChange(() => {
+      updateLeaderboardIdentityUI();
     });
   }
+
+  // Wire Armory 3-tab switcher (Stats / Frames / Titles & Frame Skins)
+  const tabStatsBtn = byId('tab-armory-stats');
+  const tabFramesBtn = byId('tab-armory-frames');
+  const tabCosmeticsBtn = byId('tab-armory-cosmetics');
+  const viewStatsEl = byId('armory-view-stats');
+  const viewFramesEl = byId('armory-view-frames');
+  const viewCosmeticsEl = byId('armory-view-cosmetics');
+  function setArmoryTab(tabName) {
+    if (tabStatsBtn) tabStatsBtn.classList.toggle('active', tabName === 'stats');
+    if (tabFramesBtn) tabFramesBtn.classList.toggle('active', tabName === 'frames');
+    if (tabCosmeticsBtn) tabCosmeticsBtn.classList.toggle('active', tabName === 'cosmetics');
+    if (viewStatsEl) viewStatsEl.classList.toggle('hidden', tabName !== 'stats');
+    if (viewFramesEl) viewFramesEl.classList.toggle('hidden', tabName !== 'frames');
+    if (viewCosmeticsEl) viewCosmeticsEl.classList.toggle('hidden', tabName !== 'cosmetics');
+    if (tabName === 'frames' || tabName === 'cosmetics') {
+      renderArmoryUI();
+    }
+  }
+  if (tabStatsBtn) tabStatsBtn.addEventListener('click', () => setArmoryTab('stats'));
+  if (tabFramesBtn) tabFramesBtn.addEventListener('click', () => setArmoryTab('frames'));
+  if (tabCosmeticsBtn) tabCosmeticsBtn.addEventListener('click', () => setArmoryTab('cosmetics'));
 
   function openUpgradeDraft(waveNum) {
     if (!upgradePanel || !upgradeCardsGrid || gameState !== 'playing') return;
@@ -1868,6 +2792,7 @@ function bootstrap() {
     meleeKills: 0,
     aegisEliteKills: 0,
     weaponKills: {},
+    runUnlockedRewards: [],
   };
 
   function getStyleTier(meter) {
@@ -1947,6 +2872,7 @@ function bootstrap() {
     telemetry.meleeKills = 0;
     telemetry.aegisEliteKills = 0;
     telemetry.weaponKills = {};
+    telemetry.runUnlockedRewards = [];
     updateStyleHudUI();
   }
 
@@ -2019,21 +2945,21 @@ function bootstrap() {
       soundEngine = new SoundEngine(eventBus, engine ? engine.camera : null);
       soundEngine.setMasterVolume(settings.volume / 100);
       soundEngine.setMusicEnabled(settings.music);
+      if (typeof soundEngine.setSceneMode === 'function') {
+        soundEngine.setSceneMode(gameState === 'playing' || gameState === 'paused' || gameState === 'result' ? gameState : 'title');
+      }
     }
     soundEngine.unlock();
   }
 
-  window.addEventListener('pointerdown', () => {
-    if (soundEngine && (!soundEngine.ctx || soundEngine.ctx.state !== 'running')) {
-      soundEngine.unlock();
+  const _handleFirstAudioGesture = () => {
+    if (!soundEngine || !soundEngine.ctx || soundEngine.ctx.state !== 'running') {
+      unlockAudioOnGesture();
     }
-  }, { passive: true });
-
-  window.addEventListener('keydown', () => {
-    if (soundEngine && (!soundEngine.ctx || soundEngine.ctx.state !== 'running')) {
-      soundEngine.unlock();
-    }
-  }, { passive: true });
+  };
+  window.addEventListener('pointerdown', _handleFirstAudioGesture, { passive: true });
+  window.addEventListener('keydown', _handleFirstAudioGesture, { passive: true });
+  window.addEventListener('touchstart', _handleFirstAudioGesture, { passive: true });
 
   function showWebGLFallback(reason) {
     stopLoop();
@@ -2142,13 +3068,21 @@ function bootstrap() {
     // EventBus combat & campaign wiring
     bindRuntimeEvents();
 
-    // PC canvas click re-locks pointer & unlocks Web Audio cleanly
-    canvas.addEventListener('pointerdown', () => {
+    // PC canvas / playing-scene click re-locks pointer & unlocks Web Audio cleanly
+    const handlePlayPointerDown = (e) => {
+      if (e && e.target && typeof e.target.closest === 'function' && e.target.closest('button')) {
+        return;
+      }
       unlockAudioOnGesture();
       if (gameState === 'playing' && !isTransitioning && !isTouchActive() && !input.isPointerLocked()) {
         input.requestPointerLock();
       }
-    });
+    };
+    if (scenePlaying) {
+      scenePlaying.addEventListener('pointerdown', handlePlayPointerDown);
+    } else {
+      canvas.addEventListener('pointerdown', handlePlayPointerDown);
+    }
 
     runtimeReady = true;
     return true;
@@ -2296,6 +3230,9 @@ function bootstrap() {
       if (p && p.guardBroken && hudManager && typeof hudManager.showAnnouncement === 'function') {
         hudManager.showAnnouncement('에너지 방패 파괴!', '2초 후 재충전 시작', 'danger');
       }
+      if (gameState === 'playing' && !tutorialState.active) {
+        incrementDailyStat('guardBlocks', 1);
+      }
     });
 
     eventBus.on(EVENTS.ENEMY_KILLED, (p) => {
@@ -2365,10 +3302,22 @@ function bootstrap() {
       if (isHs && tag !== '정밀 헤드샷!') pts += 8;
       addStylePoints(pts, tag);
 
-      // Track weapon kill count for debrief summary
+      // Track weapon kill count + cumulative weapon mastery & daily quests
       const activeW = weaponSystem && weaponSystem.getActiveWeapon ? weaponSystem.getActiveWeapon() : null;
       if (activeW && activeW.shortName) {
         telemetry.weaponKills[activeW.shortName] = (telemetry.weaponKills[activeW.shortName] || 0) + 1;
+      }
+      if (!tutorialState.active) {
+        if (activeW && activeW.id && metaState.weaponStats[activeW.id]) {
+          metaState.weaponStats[activeW.id].kills += 1;
+          if (isHs) metaState.weaponStats[activeW.id].headshots += 1;
+          checkWeaponMasteryUnlocks(activeW.id, activeW.name);
+        }
+        incrementDailyStat('kills', 1);
+        if (isHs) incrementDailyStat('headshots', 1);
+        if (isMelee) incrementDailyStat('meleeKills', 1);
+        if (isAir || isSlide) incrementDailyStat('mobilityKills', 1);
+        if (p && p.isBoss) incrementDailyStat('bossKills', 1);
       }
 
       // Elite Variant Death Effects & Golden Supply Drone Jackpot
@@ -2548,6 +3497,9 @@ function bootstrap() {
     });
 
     eventBus.on(EVENTS.WAVE_CLEARED, (p) => {
+      if (gameState === 'playing' && !tutorialState.active) {
+        incrementDailyStat('waves', 1);
+      }
       if (gameState === 'playing' && p && p.endlessLoopCleared) {
         tryUnlockNextHeat(selectedHeatLevel);
       }
@@ -2599,12 +3551,25 @@ function bootstrap() {
       updateMissionConfigUI();
     }
     if (panelName === 'armory') renderArmoryUI();
-    if (panelName === 'arsenal') renderArsenalPreviews();
+    if (panelName === 'arsenal') {
+      renderArsenalMasteryUI();
+      renderArsenalPreviews();
+    }
+    if (panelName === 'main') {
+      renderDailyPanel();
+      updateDailyNavBadge();
+    }
+    if (panelName !== 'main' && missionDiamondWidget) {
+      missionDiamondWidget.classList.remove('is-open');
+      if (btnMissionDiamondTrigger) btnMissionDiamondTrigger.setAttribute('aria-expanded', 'false');
+    }
+    if (panelName === 'leaderboard') renderLeaderboardPanel(false);
     if (panelName === 'achievements') renderMedalsStrip();
     if (titleMenuMain) titleMenuMain.classList.toggle('hidden', panelName !== 'main');
     if (panelDeploy) panelDeploy.classList.toggle('hidden', panelName !== 'deploy');
     if (panelArmory) panelArmory.classList.toggle('hidden', panelName !== 'armory');
     if (panelArsenal) panelArsenal.classList.toggle('hidden', panelName !== 'arsenal');
+    if (panelLeaderboard) panelLeaderboard.classList.toggle('hidden', panelName !== 'leaderboard');
     if (panelControls) panelControls.classList.toggle('hidden', panelName !== 'controls');
     if (panelSettings) panelSettings.classList.toggle('hidden', panelName !== 'settings');
     if (panelAchievements) panelAchievements.classList.toggle('hidden', panelName !== 'achievements');
@@ -2675,15 +3640,20 @@ function bootstrap() {
   }
 
   function applySensitivity(val) {
-    const s = Math.max(0.3, Math.min(2.5, Number(val) || 1.0));
+    const raw = Number(val);
+    const s = Math.max(0.01, Math.min(2.49, Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 1.0));
     settings.sensitivity = s;
     const strVal = s.toFixed(2);
     const label = `${strVal}x`;
 
     if (titleRngSensitivity && titleRngSensitivity.value !== strVal) titleRngSensitivity.value = strVal;
     if (pauseRngSensitivity && pauseRngSensitivity.value !== strVal) pauseRngSensitivity.value = strVal;
-    if (titleValSensitivity) titleValSensitivity.textContent = label;
-    if (pauseValSensitivity) pauseValSensitivity.textContent = label;
+    if (titleValSensitivity && document.activeElement !== titleValSensitivity) {
+      titleValSensitivity.value = label;
+    }
+    if (pauseValSensitivity && document.activeElement !== pauseValSensitivity) {
+      pauseValSensitivity.value = label;
+    }
 
     if (runtimeReady && input) {
       input.setSensitivity(s);
@@ -2715,6 +3685,9 @@ function bootstrap() {
     if (titleChkMusic && titleChkMusic.checked !== on) titleChkMusic.checked = on;
     if (pauseChkMusic && pauseChkMusic.checked !== on) pauseChkMusic.checked = on;
 
+    if (on && !soundEngine && !_initializingSettings) {
+      unlockAudioOnGesture();
+    }
     if (soundEngine) {
       soundEngine.setMusicEnabled(on);
     }
@@ -2775,6 +3748,9 @@ function bootstrap() {
   function startNewGame() {
     if (isTransitioning) return;
     unlockAudioOnGesture();
+    if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
+      soundEngine.stopBgmHard();
+    }
     engageGameplayShortcutLock(true);
 
     runFadeTransition(
@@ -2835,6 +3811,7 @@ function bootstrap() {
         playerController.applyModifiers(startMods, true);
         playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
         weaponSystem.reset(primaryIndex, secondaryIndex);
+        syncCosmeticsToWeaponSystem();
         lastWeaponState = weaponSystem.getCurrentWeaponState();
 
         engine.viewmodelScene.visible = true;
@@ -2849,6 +3826,12 @@ function bootstrap() {
         syncTouchOverlayVisibility();
 
         eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+        if (soundEngine && typeof soundEngine.setSceneMode === 'function') {
+          soundEngine.setSceneMode('playing');
+        }
+        if (soundEngine && typeof soundEngine.setBgmTrack === 'function') {
+          soundEngine.setBgmTrack('zone1_normal', true);
+        }
         const maxUnlocked = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, metaState.maxUnlockedHeat || 0));
         if (selectedHeatLevel > maxUnlocked) selectedHeatLevel = maxUnlocked;
         const heatCfg = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
@@ -2878,6 +3861,9 @@ function bootstrap() {
 
   function handleMapTransition(nextMapIndex) {
     if (!runtimeReady || gameState !== 'playing') return;
+    if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
+      soundEngine.stopBgmHard();
+    }
 
     runFadeTransition(() => {
       if (gameState !== 'playing') return;
@@ -2929,6 +3915,9 @@ function bootstrap() {
     touchOverlay.setVisible(false);
 
     if (pausePanel) pausePanel.classList.remove('hidden');
+    if (soundEngine && typeof soundEngine.setSceneMode === 'function') {
+      soundEngine.setSceneMode('paused');
+    }
     eventBus.emit(EVENTS.GAME_STATE, { state: 'paused' });
   }
 
@@ -2942,6 +3931,9 @@ function bootstrap() {
     input.resetAll();
     document.body.classList.add('playing-active');
     syncTouchOverlayVisibility();
+    if (soundEngine && typeof soundEngine.setSceneMode === 'function') {
+      soundEngine.setSceneMode('playing');
+    }
     eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
 
     if (!isTouchActive()) {
@@ -3005,6 +3997,12 @@ function bootstrap() {
     }
     if (soundEngine) {
       soundEngine.setCombatIntensity(0);
+      if (typeof soundEngine.stopBgmHard === 'function') {
+        soundEngine.stopBgmHard();
+      }
+      if (typeof soundEngine.setSceneMode === 'function') {
+        soundEngine.setSceneMode('result');
+      }
     }
     if (pausePanel) pausePanel.classList.add('hidden');
     if (scenePlaying) scenePlaying.classList.add('hidden');
@@ -3043,17 +4041,22 @@ function bootstrap() {
       saveMetaState();
     }
     if (selectedMissionMode === 'endless' && totalReachedWave >= 8) unlockAchievement('endless_8');
-    if (selectedMissionMode === 'endless' && totalReachedWave >= 12) unlockAchievement('endless_12');
+    if (selectedMissionMode === 'endless' && totalReachedWave >= 12) {
+      unlockAchievement('endless_12');
+      unlockTitle('endless_survivor', true);
+    }
     if (selectedMissionMode === 'endless' && totalReachedWave >= 15) unlockAchievement('endless_15');
     if (isVictory) {
       unlockAchievement('first_clear');
       unlockAchievement('citadel_clear');
       unlockAchievement('abyss_clear');
       tryUnlockNextHeat(selectedHeatLevel);
+      checkHeatMilestoneRewards(selectedHeatLevel);
     }
     saveMetaState();
     renderMedalsStrip();
     updateMissionConfigUI();
+    updateDailyNavBadge();
 
     const resFrame = getEquippedFrame();
     const resImg = byId('result-pilot-img');
@@ -3067,6 +4070,47 @@ function bootstrap() {
       resName.style.color = resFrame.color || '#f5f5f4';
     }
     if (resTier) resTier.textContent = resFrame.tier || '전술 기체';
+
+    const rewardsToast = byId('result-rewards-toast');
+    if (rewardsToast) {
+      if (telemetry.runUnlockedRewards && telemetry.runUnlockedRewards.length > 0) {
+        rewardsToast.textContent = `이번 작전 해금 보상: ${telemetry.runUnlockedRewards.join(' · ')}`;
+        rewardsToast.classList.remove('hidden');
+      } else {
+        rewardsToast.classList.add('hidden');
+      }
+    }
+
+    const loNow = weaponSystem && weaponSystem.getLoadoutInfo ? weaponSystem.getLoadoutInfo() : null;
+    const eqPrimaryW = loNow && loNow.primaryWeapon ? loNow.primaryWeapon.id : 'pulse_rifle';
+    lastRunRecordPayload = {
+      mode: selectedMissionMode,
+      dateKey: selectedMissionMode === 'daily' ? getTodayDateKey() : 'all',
+      score: Math.round(waveHud.score || 0),
+      wave: totalReachedWave,
+      heat: selectedHeatLevel,
+      kills: waveHud.kills || 0,
+      headshots: waveHud.headshots || 0,
+      elapsedSec: telemetry.elapsedSec || 0,
+      frameId: resFrame.id,
+      primaryWeaponId: eqPrimaryW,
+    };
+
+    renderTitleBadgeUI();
+    const resCallsignInput = byId('result-callsign-input');
+    if (resCallsignInput) resCallsignInput.value = metaState.callsign || 'PILOT';
+    const submitBtn = byId('btn-submit-leaderboard');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '글로벌 랭킹 등록';
+    }
+    const lbStatusEl = byId('result-leaderboard-status');
+    if (lbStatusEl) {
+      lbStatusEl.textContent = tutorialState.active
+        ? '전술 훈련장 기록은 글로벌 랭킹에 등록되지 않습니다.'
+        : '호출부호와 장착 칭호를 포함해 글로벌 랭킹에 기록을 등록합니다.';
+    }
+    if (submitBtn) submitBtn.disabled = Boolean(tutorialState.active);
 
     if (hudManager) {
       hudManager.showEndScreen(isVictory, {
@@ -3087,6 +4131,9 @@ function bootstrap() {
 
   function returnToTitle() {
     if (isTransitioning) return;
+    if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
+      soundEngine.stopBgmHard();
+    }
 
     runFadeTransition(() => {
       stopLoop();
@@ -3114,10 +4161,20 @@ function bootstrap() {
         if (soundEngine) soundEngine.setCombatIntensity(0);
         eventBus.emit(EVENTS.GAME_STATE, { state: 'title' });
       }
+      if (soundEngine) {
+        if (typeof soundEngine.setSceneMode === 'function') {
+          soundEngine.setSceneMode('title');
+        }
+        if (typeof soundEngine.setBgmTrack === 'function') {
+          soundEngine.setBgmTrack('main_theme', true);
+        }
+      }
 
       if (pausePanel) pausePanel.classList.add('hidden');
       if (upgradePanel) upgradePanel.classList.add('hidden');
       renderArmoryUI();
+      renderDailyPanel();
+      updateDailyNavBadge();
       if (scenePlaying) scenePlaying.classList.add('hidden');
       if (sceneResult) {
         sceneResult.classList.add('hidden');
@@ -3130,48 +4187,196 @@ function bootstrap() {
   }
 
   // ---------------------------------------------------------------------------
-  // 6.5. Lightweight Title / Hangar Mechanical UI Switch Audio (Zero WebGL)
+  // 6.5. Post-Apocalyptic Cold-Steel Metallic UI Switch Audio (Zero WebGL)
   // ---------------------------------------------------------------------------
   let uiAudioCtx = null;
+  let uiNoiseBuffer = null;
+  function _getUiAudioContext() {
+    if (soundEngine && soundEngine.ctx && soundEngine.ctx.state !== 'closed') {
+      if (soundEngine.ctx.state === 'suspended') {
+        try { soundEngine.ctx.resume(); } catch {}
+      }
+      return soundEngine.ctx;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!uiAudioCtx) uiAudioCtx = new AC();
+    if (uiAudioCtx.state === 'suspended') {
+      try { uiAudioCtx.resume(); } catch {}
+    }
+    return uiAudioCtx;
+  }
+
+  function _getUiNoiseBuffer(ctx) {
+    if (uiNoiseBuffer && uiNoiseBuffer.sampleRate === ctx.sampleRate) return uiNoiseBuffer;
+    const len = Math.max(512, Math.floor(ctx.sampleRate * 0.16));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      ch[i] = Math.random() * 2 - 1;
+    }
+    uiNoiseBuffer = buf;
+    return buf;
+  }
+
   function playUiSfx(kind = 'click') {
     try {
       const vol = Math.max(0, Math.min(1, (settings.volume || 78) / 100));
       if (vol <= 0.01) return;
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      if (!uiAudioCtx) uiAudioCtx = new AC();
-      if (uiAudioCtx.state === 'suspended') uiAudioCtx.resume();
-      const now = uiAudioCtx.currentTime;
-      const gain = uiAudioCtx.createGain();
-      gain.connect(uiAudioCtx.destination);
-      const osc = uiAudioCtx.createOscillator();
-      if (kind === 'buy') {
+      const ctx = _getUiAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(vol, now);
+      out.connect(ctx.destination);
+
+      const triggerNoise = (startT, dur, peak, hpFreq, bpFreq, qVal) => {
+        const src = ctx.createBufferSource();
+        src.buffer = _getUiNoiseBuffer(ctx);
+        const f = ctx.createBiquadFilter();
+        f.type = bpFreq ? 'bandpass' : 'highpass';
+        f.frequency.setValueAtTime(bpFreq || hpFreq || 3400, startT);
+        f.Q.setValueAtTime(qVal || 2.8, startT);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, startT);
+        g.gain.linearRampToValueAtTime(peak, startT + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+        src.connect(f);
+        f.connect(g);
+        g.connect(out);
+        src.start(startT);
+        src.stop(startT + dur + 0.01);
+      };
+
+      const triggerMetalRing = (startT, freqs, dur, peak, type = 'triangle') => {
+        for (let i = 0; i < freqs.length; i++) {
+          const osc = ctx.createOscillator();
+          osc.type = i === 0 ? type : 'sine';
+          osc.frequency.setValueAtTime(freqs[i], startT);
+          osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.985, startT + dur);
+          const g = ctx.createGain();
+          const pGain = peak / (1 + i * 0.55);
+          g.gain.setValueAtTime(0.0001, startT);
+          g.gain.linearRampToValueAtTime(pGain, startT + 0.0025);
+          g.gain.exponentialRampToValueAtTime(0.0001, startT + dur * (1 - i * 0.14));
+          osc.connect(g);
+          g.connect(out);
+          osc.start(startT);
+          osc.stop(startT + dur + 0.015);
+        }
+      };
+
+      const triggerBoltThud = (startT, startHz, endHz, dur, peak) => {
+        const osc = ctx.createOscillator();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(160, now);
-        osc.frequency.exponentialRampToValueAtTime(320, now + 0.09);
-        gain.gain.setValueAtTime(0.14 * vol, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-        osc.connect(gain);
-        osc.start(now);
-        osc.stop(now + 0.15);
+        osc.frequency.setValueAtTime(startHz, startT);
+        osc.frequency.exponentialRampToValueAtTime(endHz, startT + dur);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, startT);
+        g.gain.linearRampToValueAtTime(peak, startT + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+        osc.connect(g);
+        g.connect(out);
+        osc.start(startT);
+        osc.stop(startT + dur + 0.01);
+      };
+
+      if (kind === 'deploy') {
+        // Heavy armored steel hatch slam + cold steel resonance
+        triggerBoltThud(now, 155, 42, 0.13, 0.24);
+        triggerNoise(now, 0.065, 0.17, 0, 2200, 2.2);
+        triggerMetalRing(now, [420, 1085, 1960, 3140], 0.19, 0.095, 'sawtooth');
+        triggerMetalRing(now + 0.045, [760, 1680, 2740], 0.15, 0.075, 'triangle');
+      } else if (kind === 'buy') {
+        // Heavy gunmetal anvil lock-in + forged steel confirmation ring
+        triggerBoltThud(now, 210, 68, 0.065, 0.18);
+        triggerNoise(now, 0.032, 0.14, 0, 3400, 3.0);
+        triggerMetalRing(now, [620, 1480, 2410], 0.11, 0.085, 'triangle');
+        triggerNoise(now + 0.052, 0.04, 0.12, 0, 4200, 3.5);
+        triggerMetalRing(now + 0.052, [880, 1890, 3260, 4480], 0.21, 0.095, 'triangle');
+      } else if (kind === 'back') {
+        // Retracting cold steel bolt latch
+        triggerBoltThud(now, 175, 58, 0.052, 0.14);
+        triggerNoise(now, 0.028, 0.12, 0, 2600, 2.6);
+        triggerMetalRing(now, [960, 1690, 2620], 0.095, 0.072, 'triangle');
+      } else if (kind === 'tab') {
+        // Precision steel detent click
+        triggerNoise(now, 0.018, 0.11, 0, 4600, 3.6);
+        triggerMetalRing(now, [1540, 2630, 4080], 0.058, 0.068, 'triangle');
       } else {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(520, now);
-        osc.frequency.exponentialRampToValueAtTime(180, now + 0.032);
-        gain.gain.setValueAtTime(0.08 * vol, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.038);
-        osc.connect(gain);
-        osc.start(now);
-        osc.stop(now + 0.042);
+        // Crisp industrial gunmetal switch clack (default Main Title click)
+        triggerBoltThud(now, 215, 76, 0.038, 0.14);
+        triggerNoise(now, 0.024, 0.14, 0, 3600, 3.2);
+        triggerMetalRing(now, [1280, 2190, 3580], 0.085, 0.082, 'triangle');
       }
     } catch {}
   }
+
   document.addEventListener('click', (e) => {
-    const btn = e.target && e.target.closest ? e.target.closest('button') : null;
-    if (!btn || btn.disabled) return;
-    if (btn.classList.contains('armory-buy-btn')) playUiSfx('buy');
-    else if (gameState !== 'playing') playUiSfx('click');
+    if (gameState === 'playing') return;
+    const target = e.target;
+    if (!target || !target.closest) return;
+    const btn = target.closest('button, [role="tab"], [role="radio"]');
+    if (btn) {
+      if (btn.disabled) return;
+      const id = btn.id || '';
+      if (
+        btn.classList.contains('armory-buy-btn') ||
+        btn.classList.contains('ach-claim-btn') ||
+        btn.classList.contains('daily-claim-btn') ||
+        id === 'btn-daily-checkin'
+      ) {
+        playUiSfx('buy');
+      } else if (
+        btn.classList.contains('deploy-btn') ||
+        btn.classList.contains('deploy-launch-btn') ||
+        (btn.classList.contains('primary') && !btn.classList.contains('small'))
+      ) {
+        playUiSfx('deploy');
+      } else if (
+        id.endsWith('-back') ||
+        id === 'btn-attendance-close' ||
+        id === 'btn-attendance-later' ||
+        btn.classList.contains('danger')
+      ) {
+        playUiSfx('back');
+      } else if (
+        btn.classList.contains('armory-tab') ||
+        btn.classList.contains('deploy-mode-tab') ||
+        btn.classList.contains('deploy-heat-btn') ||
+        btn.classList.contains('lb-mode-tab') ||
+        btn.classList.contains('ach-filter-btn') ||
+        btn.classList.contains('cosmetic-card') ||
+        btn.classList.contains('skin-chip')
+      ) {
+        playUiSfx('tab');
+      } else {
+        playUiSfx('click');
+      }
+      return;
+    }
+    const chk = target.closest('input[type="checkbox"]');
+    if (chk && !chk.disabled) {
+      playUiSfx('tab');
+    }
   });
+
+  document.addEventListener('change', (e) => {
+    if (gameState === 'playing') return;
+    const target = e.target;
+    if (target && target.tagName === 'SELECT') {
+      playUiSfx('tab');
+    }
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (gameState === 'playing') return;
+    const target = e.target;
+    if (target && target.tagName === 'INPUT' && target.type === 'range') {
+      playUiSfx('tab');
+    }
+  }, { passive: true });
 
   // ---------------------------------------------------------------------------
   // 7. DOM Event Bindings (Title, Pause, Result & Live Settings Sync)
@@ -3182,14 +4387,170 @@ function bootstrap() {
   if (btnTitleArmory) btnTitleArmory.addEventListener('click', () => showTitleSubpanel('armory'));
   if (btnArmoryBack) btnArmoryBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnTitleArsenal) btnTitleArsenal.addEventListener('click', () => showTitleSubpanel('arsenal'));
+  if (btnTitleLeaderboard) btnTitleLeaderboard.addEventListener('click', () => showTitleSubpanel('leaderboard'));
   if (btnTitleControls) btnTitleControls.addEventListener('click', () => showTitleSubpanel('controls'));
   if (btnTitleSettings) btnTitleSettings.addEventListener('click', () => showTitleSubpanel('settings'));
   if (btnTitleAchievements) btnTitleAchievements.addEventListener('click', () => showTitleSubpanel('achievements'));
 
   if (btnArsenalBack) btnArsenalBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnLeaderboardBack) btnLeaderboardBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnControlsBack) btnControlsBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnSettingsBack) btnSettingsBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnAchievementsBack) btnAchievementsBack.addEventListener('click', () => showTitleSubpanel('main'));
+
+  if (btnMissionDiamondTrigger && missionDiamondWidget) {
+    btnMissionDiamondTrigger.addEventListener('click', () => {
+      const next = !missionDiamondWidget.classList.contains('is-open');
+      missionDiamondWidget.classList.toggle('is-open', next);
+      btnMissionDiamondTrigger.setAttribute('aria-expanded', next ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e) => {
+      if (!missionDiamondWidget.classList.contains('is-open')) return;
+      if (e.target && missionDiamondWidget.contains(e.target)) return;
+      missionDiamondWidget.classList.remove('is-open');
+      btnMissionDiamondTrigger.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  if (btnOpenAttendancePopup) {
+    btnOpenAttendancePopup.addEventListener('click', () => openAttendancePopup());
+  }
+  if (btnAttendanceClose) {
+    btnAttendanceClose.addEventListener('click', () => closeAttendancePopup());
+  }
+  if (btnAttendanceLater) {
+    btnAttendanceLater.addEventListener('click', () => closeAttendancePopup());
+  }
+  if (attendancePopupModal) {
+    attendancePopupModal.addEventListener('click', (e) => {
+      if (e.target === attendancePopupModal) closeAttendancePopup();
+    });
+  }
+
+  const btnDailyCheckin = byId('btn-daily-checkin');
+  if (btnDailyCheckin) {
+    btnDailyCheckin.addEventListener('click', () => claimAttendanceReward());
+  }
+
+  document.querySelectorAll('[data-lb-mode]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      activeLeaderboardMode = tab.getAttribute('data-lb-mode') || 'campaign';
+      renderLeaderboardPanel(false);
+    });
+  });
+
+  const btnLbRefresh = byId('btn-lb-refresh');
+  if (btnLbRefresh) {
+    btnLbRefresh.addEventListener('click', () => renderLeaderboardPanel(true));
+  }
+
+  async function handleGoogleAuthToggle(statusEl = null) {
+    try {
+      const cur = FirebaseService.getCurrentUser();
+      if (cur) {
+        await FirebaseService.signOutUser();
+        updateLeaderboardIdentityUI();
+        if (activeTitleSubpanel === 'leaderboard') renderLeaderboardPanel(false);
+        if (statusEl) statusEl.textContent = '로그아웃 완료';
+      } else {
+        await FirebaseService.signInWithGoogle();
+        updateLeaderboardIdentityUI();
+        if (activeTitleSubpanel === 'leaderboard') renderLeaderboardPanel(false);
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err && err.message ? err.message : '인증 오류';
+    }
+  }
+
+  const btnLbAuth = byId('btn-lb-auth');
+  if (btnLbAuth) {
+    btnLbAuth.addEventListener('click', () => handleGoogleAuthToggle(byId('lb-auth-status')));
+  }
+  const btnTitleSettingAuth = byId('btn-title-setting-auth');
+  if (btnTitleSettingAuth) {
+    btnTitleSettingAuth.addEventListener('click', () =>
+      handleGoogleAuthToggle(byId('title-setting-auth-status'))
+    );
+  }
+  const btnPauseSettingAuth = byId('btn-pause-setting-auth');
+  if (btnPauseSettingAuth) {
+    btnPauseSettingAuth.addEventListener('click', () =>
+      handleGoogleAuthToggle(byId('pause-setting-auth-status'))
+    );
+  }
+
+  const btnLbSaveCallsign = byId('btn-lb-save-callsign');
+  const lbCallsignInput = byId('lb-callsign-input');
+  if (btnLbSaveCallsign && lbCallsignInput) {
+    const commitCallsign = () => {
+      metaState.callsign = FirebaseService.sanitizeCallsign(lbCallsignInput.value, 'PILOT');
+      lbCallsignInput.value = metaState.callsign;
+      saveMetaState();
+      updateLeaderboardIdentityUI();
+    };
+    btnLbSaveCallsign.addEventListener('click', commitCallsign);
+    lbCallsignInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitCallsign();
+      }
+    });
+  }
+
+  const btnSubmitLeaderboard = byId('btn-submit-leaderboard');
+  const resultCallsignInput = byId('result-callsign-input');
+  if (btnSubmitLeaderboard) {
+    btnSubmitLeaderboard.addEventListener('click', async () => {
+      if (!lastRunRecordPayload || tutorialState.active) return;
+      const statusEl = byId('result-leaderboard-status');
+      const typed = resultCallsignInput ? resultCallsignInput.value : metaState.callsign;
+      metaState.callsign = FirebaseService.sanitizeCallsign(typed, 'PILOT');
+      saveMetaState();
+      renderTitleBadgeUI();
+      if (resultCallsignInput) resultCallsignInput.value = metaState.callsign;
+
+      const titleObj = getEquippedTitleObj();
+      btnSubmitLeaderboard.disabled = true;
+      btnSubmitLeaderboard.textContent = '등록 중...';
+      if (statusEl) statusEl.textContent = '글로벌 데이터베이스에 기록을 전송하는 중입니다...';
+
+      try {
+        const res = await FirebaseService.submitLeaderboardRecord({
+          ...lastRunRecordPayload,
+          callsign: metaState.callsign,
+          titleId: titleObj.id,
+          titleLabel: titleObj.label,
+        });
+        if (res && res.keptHigherPrev) {
+          if (statusEl) {
+            statusEl.textContent = `호출부호·칭호 갱신 완료 (기존 최고 점수 ${Number(res.entry.score || 0).toLocaleString()}점 유지)`;
+          }
+        } else {
+          if (statusEl) {
+            statusEl.textContent = `글로벌 랭킹 최고 기록 등록 완료! ([${titleObj.label}] ${metaState.callsign})`;
+          }
+        }
+        btnSubmitLeaderboard.textContent = '등록 완료';
+      } catch (err) {
+        btnSubmitLeaderboard.disabled = false;
+        btnSubmitLeaderboard.textContent = '글로벌 랭킹 등록';
+        if (statusEl) {
+          statusEl.textContent = err && err.message ? err.message : '등록 실패 — 다시 시도해 주세요.';
+        }
+      }
+    });
+  }
+
+  const btnResultOpenLb = byId('btn-result-open-lb');
+  if (btnResultOpenLb) {
+    btnResultOpenLb.addEventListener('click', () => {
+      activeLeaderboardMode = (lastRunRecordPayload && lastRunRecordPayload.mode) || 'campaign';
+      returnToTitle();
+      window.setTimeout(() => {
+        showTitleSubpanel('leaderboard');
+      }, FADE_DURATION_MS + 40);
+    });
+  }
 
   document.querySelectorAll('[data-ach-cat]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -3215,8 +4576,17 @@ function bootstrap() {
 
   // ESC closes open Title sub-panels; 1/2/3 selects Tactical Upgrade Card cleanly
   window.addEventListener('keydown', (e) => {
-    if (gameState === 'title' && e.code === 'Escape' && activeTitleSubpanel !== 'main') {
-      showTitleSubpanel('main');
+    const tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA';
+    if (isTyping && e.code !== 'Escape') return;
+    if (gameState === 'title' && e.code === 'Escape') {
+      if (attendancePopupModal && !attendancePopupModal.classList.contains('hidden')) {
+        playUiSfx('back');
+        closeAttendancePopup();
+      } else if (activeTitleSubpanel !== 'main') {
+        playUiSfx('back');
+        showTitleSubpanel('main');
+      }
     } else if (gameState === 'upgrading') {
       if (e.code === 'Digit1') selectUpgradeCard(0);
       else if (e.code === 'Digit2') selectUpgradeCard(1);
@@ -3254,6 +4624,42 @@ function bootstrap() {
     pauseRngSensitivity.addEventListener('input', () => applySensitivity(pauseRngSensitivity.value));
   }
 
+  function bindSensitivityNumberInput(inputEl) {
+    if (!inputEl) return;
+    inputEl.addEventListener('focus', () => {
+      inputEl.value = settings.sensitivity.toFixed(2);
+      if (typeof inputEl.select === 'function') {
+        window.setTimeout(() => inputEl.select(), 0);
+      }
+    });
+    inputEl.addEventListener('input', () => {
+      const cleaned = inputEl.value.replace(/[^0-9.]/g, '');
+      const num = parseFloat(cleaned);
+      if (Number.isFinite(num) && num >= 0.01 && num <= 2.49) {
+        applySensitivity(num);
+      }
+    });
+    const commitInput = () => {
+      const cleaned = inputEl.value.replace(/[^0-9.]/g, '');
+      const num = parseFloat(cleaned);
+      applySensitivity(Number.isFinite(num) ? num : settings.sensitivity);
+      inputEl.value = `${settings.sensitivity.toFixed(2)}x`;
+    };
+    inputEl.addEventListener('blur', commitInput);
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitInput();
+        inputEl.blur();
+      } else if (e.key === 'Escape') {
+        inputEl.value = `${settings.sensitivity.toFixed(2)}x`;
+        inputEl.blur();
+      }
+    });
+  }
+  bindSensitivityNumberInput(titleValSensitivity);
+  bindSensitivityNumberInput(pauseValSensitivity);
+
   if (titleRngVolume) {
     titleRngVolume.addEventListener('input', () => applyVolume(titleRngVolume.value));
   }
@@ -3266,6 +4672,169 @@ function bootstrap() {
   if (titleChkFps) titleChkFps.addEventListener('change', () => applyShowFps(titleChkFps.checked));
   if (pauseChkFps) pauseChkFps.addEventListener('change', () => applyShowFps(pauseChkFps.checked));
 
+  // ---------------------------------------------------------------------------
+  // 7.9. Strict Title Screen Test Unlock (9 x 10 discrete taps within 10s, no hold, no extra input)
+  // ---------------------------------------------------------------------------
+  let nineTapTimestamps = [];
+  let nineKeyHeld = false;
+  let nineCommitTimer = null;
+  let nineBlockedUntilIdle = false;
+  let nineIdleResetTimer = null;
+  let unlockToastTimer = null;
+
+  function showTitleUnlockToast(message) {
+    if (!titleUnlockToast) return;
+    titleUnlockToast.textContent = message;
+    titleUnlockToast.classList.remove('hidden');
+    if (unlockToastTimer !== null) {
+      window.clearTimeout(unlockToastTimer);
+    }
+    unlockToastTimer = window.setTimeout(() => {
+      unlockToastTimer = null;
+      titleUnlockToast.classList.add('hidden');
+    }, 4500);
+  }
+
+  function resetNineTestUnlock(blockUntilIdle = false) {
+    if (nineCommitTimer !== null) {
+      window.clearTimeout(nineCommitTimer);
+      nineCommitTimer = null;
+    }
+    nineTapTimestamps = [];
+    if (blockUntilIdle) {
+      nineBlockedUntilIdle = true;
+      if (nineIdleResetTimer !== null) {
+        window.clearTimeout(nineIdleResetTimer);
+      }
+      nineIdleResetTimer = window.setTimeout(() => {
+        nineIdleResetTimer = null;
+        if (!nineKeyHeld) nineBlockedUntilIdle = false;
+      }, 650);
+    }
+  }
+
+  function isNineDigitKey(e) {
+    return e.key === '9' || e.code === 'Digit9' || e.code === 'Numpad9';
+  }
+
+  function unlockAllTestItems() {
+    for (let i = 0; i < PILOT_FRAMES.length; i++) {
+      const fid = PILOT_FRAMES[i].id;
+      if (!metaState.ownedFrames.includes(fid)) metaState.ownedFrames.push(fid);
+    }
+    for (let i = 0; i < PLAYER_TITLES.length; i++) {
+      const tid = PLAYER_TITLES[i].id;
+      if (!metaState.unlockedTitles.includes(tid)) metaState.unlockedTitles.push(tid);
+    }
+    for (let i = 0; i < FRAME_SKINS.length; i++) {
+      const sid = FRAME_SKINS[i].id;
+      if (!metaState.unlockedFrameSkins.includes(sid)) metaState.unlockedFrameSkins.push(sid);
+    }
+    for (let i = 0; i < WEAPONS.length; i++) {
+      const wid = WEAPONS[i].id;
+      if (!metaState.weaponStats[wid]) metaState.weaponStats[wid] = { kills: 0, headshots: 0 };
+      metaState.weaponStats[wid].kills = Math.max(metaState.weaponStats[wid].kills || 0, 250);
+      metaState.weaponStats[wid].headshots = Math.max(metaState.weaponStats[wid].headshots || 0, 75);
+    }
+    metaState.maxUnlockedHeat = Math.max(metaState.maxUnlockedHeat || 0, HEAT_CONTRACTS.length - 1);
+    for (let i = 0; i < HEAT_MILESTONE_REWARDS.length; i++) {
+      metaState.claimedHeatMilestones[String(HEAT_MILESTONE_REWARDS[i].heat)] = true;
+    }
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
+      const a = ACHIEVEMENTS[i];
+      if (!metaState.achievements.includes(a.id)) metaState.achievements.push(a.id);
+      metaState.claimedAchievements[a.id] = a.reward || 0;
+    }
+    metaState.gold = Math.max(Number(metaState.gold) || 0, 99999);
+    saveMetaState();
+
+    renderArmoryUI();
+    renderCosmeticsTab();
+    renderArsenalMasteryUI();
+    renderArsenalPreviews();
+    updateMissionConfigUI();
+    renderMedalsStrip();
+    renderTitleBadgeUI();
+    renderDailyPanel();
+    updateDailyNavBadge();
+
+    playUiSfx('buy');
+    showTitleUnlockToast('테스트 모드 활성화: 모든 기체 · 칭호 · 무기 마스터리 스킨 · 위협 10단계 · 99,999 G 해금 완료');
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (gameState !== 'title') {
+      resetNineTestUnlock(false);
+      nineKeyHeld = false;
+      nineBlockedUntilIdle = false;
+      return;
+    }
+    const tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      resetNineTestUnlock(false);
+      return;
+    }
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+      return;
+    }
+
+    if (isNineDigitKey(e)) {
+      // Holding 9 (key repeat or still pressed before keyup) invalidates immediately
+      if (e.repeat || nineKeyHeld) {
+        resetNineTestUnlock(true);
+        return;
+      }
+      nineKeyHeld = true;
+      if (nineBlockedUntilIdle) return;
+
+      // Extra 11th+ press after reaching 10 immediately cancels unlock!
+      if (nineCommitTimer !== null) {
+        resetNineTestUnlock(true);
+        return;
+      }
+
+      const now = performance.now();
+      if (nineTapTimestamps.length > 0 && now - nineTapTimestamps[0] > 10000) {
+        nineTapTimestamps = [now];
+      } else {
+        nineTapTimestamps.push(now);
+      }
+
+      if (nineTapTimestamps.length === 10) {
+        const spanMs = now - nineTapTimestamps[0];
+        if (spanMs <= 10000) {
+          // Wait quietly to guarantee user stops typing after the 10th tap
+          nineCommitTimer = window.setTimeout(() => {
+            nineCommitTimer = null;
+            nineTapTimestamps = [];
+            if (gameState === 'title') {
+              unlockAllTestItems();
+            }
+          }, 1150);
+        } else {
+          resetNineTestUnlock(true);
+        }
+      }
+    } else {
+      // Any other key cancels pending 10-tap sequence and resets cleanly
+      resetNineTestUnlock(false);
+      nineBlockedUntilIdle = false;
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (isNineDigitKey(e)) {
+      nineKeyHeld = false;
+      if (nineBlockedUntilIdle) {
+        if (nineIdleResetTimer !== null) window.clearTimeout(nineIdleResetTimer);
+        nineIdleResetTimer = window.setTimeout(() => {
+          nineIdleResetTimer = null;
+          if (!nineKeyHeld) nineBlockedUntilIdle = false;
+        }, 650);
+      }
+    }
+  });
+
   // Initialize Title state & badges (ZERO WebGL, ZERO rAF!)
   applyQuality(settings.quality);
   applySensitivity(settings.sensitivity);
@@ -3276,6 +4845,10 @@ function bootstrap() {
   _initializingSettings = false;
   renderArmoryUI();
   showTitleSubpanel('main');
+  // Prepare Title/Game unified post-apocalyptic BGM immediately (starts instantly if autoplay permitted, or on first click/key)
+  if (settings.music) {
+    unlockAudioOnGesture();
+  }
 
   // ---------------------------------------------------------------------------
   // 8. Main 60FPS Combat Loop (Active ONLY in 'playing' | 'paused' | 'ending')
@@ -3394,13 +4967,16 @@ function bootstrap() {
       engine.setFov(playerController.currentFov);
       engine.camera.updateMatrixWorld();
 
-      // 1.4. Sync 1st-person Robot Hands & Frame Visor HUD Style
+      // 1.4. Sync 1st-person Robot Hands, Equipped Frame Skin & Guard Shield Style
       if (weaponSystem && playerController && playerController.mods) {
         const curFid = playerController.mods.frameId || 'vanguard';
-        if (telemetry._appliedFrameVisual !== curFid) {
-          telemetry._appliedFrameVisual = curFid;
+        const curSkinId = metaState.equippedFrameSkin || 'standard';
+        const visualKey = `${curFid}:${curSkinId}`;
+        if (telemetry._appliedFrameVisual !== visualKey) {
+          telemetry._appliedFrameVisual = visualKey;
+          const skinCfg = FRAME_SKINS.find((sk) => sk.id === curSkinId) || FRAME_SKINS[0];
           if (typeof weaponSystem.setPilotFrameStyle === 'function') {
-            weaponSystem.setPilotFrameStyle(curFid);
+            weaponSystem.setPilotFrameStyle(curFid, skinCfg);
           }
         }
       }

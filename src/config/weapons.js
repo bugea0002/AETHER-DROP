@@ -304,9 +304,109 @@ const WEAPONS = [
   },
 ];
 
+const WEAPON_SKINS = [
+  {
+    id: 'standard',
+    name: '표준 제식',
+    tier: 0,
+    reqKills: 0,
+    reqHeadshots: 0,
+    attachmentTier: 0,
+    pattern: 'standard',
+    primaryColor: null,
+    secondaryColor: null,
+    accentColor: null,
+    emissiveColor: null,
+    metalness: null,
+    roughness: null,
+    tracerColor: null,
+    swatchCss: '#52584c',
+  },
+  {
+    id: 'carbon_stealth',
+    name: '카본 스텔스',
+    tier: 1,
+    reqKills: 25,
+    reqHeadshots: 0,
+    attachmentTier: 1,
+    pattern: 'carbon',
+    primaryColor: 0x22262e,
+    secondaryColor: 0x16191f,
+    accentColor: 0x38bdf8,
+    emissiveColor: 0x38bdf8,
+    metalness: 0.72,
+    roughness: 0.34,
+    tracerColor: 0x38bdf8,
+    swatchCss: '#22262e',
+  },
+  {
+    id: 'arctic_cryo',
+    name: '아크틱 프로스트',
+    tier: 2,
+    reqKills: 60,
+    reqHeadshots: 12,
+    attachmentTier: 2,
+    pattern: 'digital',
+    primaryColor: 0xe2e8f0,
+    secondaryColor: 0x334155,
+    accentColor: 0x22d3ee,
+    emissiveColor: 0x22d3ee,
+    metalness: 0.42,
+    roughness: 0.32,
+    tracerColor: 0x67e8f9,
+    swatchCss: '#cbd5e1',
+  },
+  {
+    id: 'obsidian_magma',
+    name: '볼캐닉 마그마',
+    tier: 3,
+    reqKills: 120,
+    reqHeadshots: 30,
+    attachmentTier: 3,
+    pattern: 'magma',
+    primaryColor: 0x231715,
+    secondaryColor: 0x140d0c,
+    accentColor: 0xff5722,
+    emissiveColor: 0xff4500,
+    metalness: 0.80,
+    roughness: 0.28,
+    tracerColor: 0xff5a1f,
+    swatchCss: '#ea580c',
+  },
+  {
+    id: 'omega_gold',
+    name: '오메가 크라운 골드',
+    tier: 4,
+    reqKills: 220,
+    reqHeadshots: 60,
+    attachmentTier: 4,
+    pattern: 'hex_gold',
+    primaryColor: 0xfacc15,
+    secondaryColor: 0x1e1b24,
+    accentColor: 0xfef08a,
+    emissiveColor: 0xfbbf24,
+    metalness: 0.94,
+    roughness: 0.18,
+    tracerColor: 0xffe875,
+    swatchCss: '#facc15',
+  },
+];
+
+const WEAPON_MASTERY_TITLES = {
+  pulse_rifle: 'master_pulse',
+  scattergun: 'master_scatter',
+  railgun: 'master_rail',
+  plasma_smg: 'master_smg',
+  weld_pistol: 'master_weld',
+  arc_rivet: 'master_arc',
+  repulsor: 'master_repulsor',
+};
+
 const WEAPON_MAP = Object.fromEntries(
   WEAPONS.map((weapon) => [weapon.id, weapon])
 );
   __exports.WEAPONS = WEAPONS;
   __exports.WEAPON_MAP = WEAPON_MAP;
+  __exports.WEAPON_SKINS = WEAPON_SKINS;
+  __exports.WEAPON_MASTERY_TITLES = WEAPON_MASTERY_TITLES;
 });

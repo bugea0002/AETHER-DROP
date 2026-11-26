@@ -316,7 +316,7 @@ class PlayerController {
 
     // 1. Look input & ADS state
     this.isAds = allowAds && this.input.isDown('ads') && !this.isDashing;
-    const look = this.input.consumeLookDelta();
+    const look = this.input.consumeLookDelta(clampedDt);
     const adsLookScale = this.isAds ? 0.56 : 1.0;
 
     this.yaw -= look.x * adsLookScale;

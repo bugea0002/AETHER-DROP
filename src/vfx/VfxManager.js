@@ -10,7 +10,7 @@ const MAX_TRACERS = 40;
 const MAX_RAIL_BEAMS = 4;
 const MAX_RINGS = 28;
 const MAX_EXPLOSIONS = 6;
-const MAX_DYNAMIC_LIGHTS = 2;
+const MAX_DYNAMIC_LIGHTS = 4;
 
 /**
  * 100% Object-Pooled, Zero-GC, Zero-Stutter VFX Manager for AETHER DROP: RECLAIM EARTH.

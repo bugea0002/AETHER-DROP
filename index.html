@@ -14,7 +14,11 @@
     {
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+        "firebase/app": "/vendor/firebase/firebase-app.js",
+        "firebase/auth": "/vendor/firebase/firebase-auth.js",
+        "firebase/firestore": "/vendor/firebase/firebase-firestore.js",
+        "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js": "/vendor/firebase/firebase-app.js"
       }
     }
   </script>
@@ -44,9 +48,10 @@
           <div class="title-hero">
             <h1 class="title-logo">AETHER <span>DROP</span></h1>
             <div class="title-pilot-meta">
-              <span id="title-unit-badge">VANGUARD-09</span>
+              <span id="title-equipped-title-badge" class="title-plate-slot"></span>
+              <strong id="title-pilot-callsign" class="title-pilot-callsign">PILOT</strong>
               <span class="title-pilot-dot" aria-hidden="true"></span>
-              <strong id="title-gold-badge">0 G</strong>
+              <span id="title-unit-badge">VANGUARD-09</span>
             </div>
           </div>
 
@@ -62,16 +67,24 @@
               <button id="btn-title-armory" class="aaa-nav-btn" type="button">
                 <span class="aaa-nav-left">
                   <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"/><path d="M12 8v6"/><path d="M9 11h6"/></svg>
-                  <span>기체 강화</span>
+                  <span>기체 강화 · 치장</span>
                 </span>
               </button>
 
               <button id="btn-title-arsenal" class="aaa-nav-btn" type="button">
                 <span class="aaa-nav-left">
                   <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="2"/></svg>
-                  <span>무장 브리핑</span>
+                  <span>무장 · 마스터리 스킨</span>
                 </span>
                 <span class="aaa-nav-meta">7종</span>
+              </button>
+
+              <button id="btn-title-leaderboard" class="aaa-nav-btn" type="button">
+                <span class="aaa-nav-left">
+                  <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21V9h8v12"/><path d="M2 21v-8h6v8"/><path d="M16 21v-5h6v5"/><path d="M12 3v3"/></svg>
+                  <span>글로벌 랭킹</span>
+                </span>
+                <span class="aaa-nav-meta">TOP 25</span>
               </button>
 
               <button id="btn-title-controls" class="aaa-nav-btn" type="button">
@@ -100,6 +113,38 @@
             </div>
           </nav>
         </div>
+
+        <!-- Floating Right-Side Diamond Tactical Mission Widget (Main Title Only) -->
+        <aside id="title-mission-diamond" class="mission-diamond-widget" aria-label="오늘의 전술 임무">
+          <button
+            id="btn-mission-diamond-trigger"
+            class="mission-diamond-trigger"
+            type="button"
+            aria-expanded="false"
+            aria-controls="mission-diamond-flyout"
+          >
+            <span class="mission-diamond-frame" aria-hidden="true"></span>
+            <span class="mission-diamond-inner">
+              <svg class="mission-diamond-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              <span class="mission-diamond-label">전술 임무</span>
+              <span id="diamond-quest-count" class="mission-diamond-count">0/3</span>
+            </span>
+          </button>
+
+          <div id="mission-diamond-flyout" class="mission-diamond-flyout" role="region" aria-label="오늘의 전술 임무 목록">
+            <div class="mission-flyout-head">
+              <div>
+                <span class="mission-flyout-kicker">DAILY TACTICAL OPS</span>
+                <h3 class="mission-flyout-title">오늘의 전술 임무 (3종)</h3>
+              </div>
+              <button id="btn-open-attendance-popup" class="mission-attendance-link" type="button">연속 출석</button>
+            </div>
+            <div id="daily-quests-grid" class="daily-quests-grid diamond-quests-stack"></div>
+          </div>
+        </aside>
 
         <!-- Sub-Panel Deploy: Mission Mode & HEAT 0-10 Selector -->
         <section id="title-panel-deploy" class="title-subpanel hidden" aria-label="작전 개시 설정">
@@ -181,11 +226,11 @@
           </div>
         </section>
 
-        <!-- Sub-Panel 0: Meta Armory (Separated Permanent Stats & Pilot Frame Shop) -->
+        <!-- Sub-Panel 0: Meta Armory (Permanent Stats, Pilot Frame Shop & Titles/Frame Skins) -->
         <section id="title-panel-armory" class="title-subpanel hidden" aria-label="기체 강화">
           <div class="subpanel-header">
             <div>
-              <span class="subpanel-kicker">기체 정비 및 파일럿 격납고</span>
+              <span class="subpanel-kicker">기체 정비 · 칭호 · 기체 스킨 격납고</span>
               <h2 class="subpanel-title">기체 강화</h2>
             </div>
             <button id="btn-armory-back" class="mil-btn small" type="button">뒤로</button>
@@ -193,12 +238,38 @@
 
           <div class="armory-gold-bar">
             <div class="armory-tabs" role="tablist">
-              <button id="tab-armory-stats" class="armory-tab active" type="button">영구 스탯 개조 (8종 · 최대 10단계)</button>
+              <button id="tab-armory-stats" class="armory-tab active" type="button">영구 스탯 개조 (8종)</button>
               <button id="tab-armory-frames" class="armory-tab" type="button">파일럿 기체 상점 (4종)</button>
+              <button id="tab-armory-cosmetics" class="armory-tab" type="button">칭호 · 기체 스킨</button>
             </div>
             <div class="armory-gold-actions">
               <button id="btn-armory-reset" class="armory-reset-btn" type="button" disabled>스탯 초기화</button>
-              <span id="armory-gold-amount">0 G</span>
+              <div class="armory-gold-hero" aria-label="보유 골드">
+                <svg class="armory-coin-svg" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="armory-coin-rim" x1="6" y1="4" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stop-color="#fef08a"/>
+                      <stop offset="48%" stop-color="#f59e0b"/>
+                      <stop offset="100%" stop-color="#92400e"/>
+                    </linearGradient>
+                    <radialGradient id="armory-coin-face" cx="35%" cy="28%" r="72%">
+                      <stop offset="0%" stop-color="#fef9c3"/>
+                      <stop offset="42%" stop-color="#facc15"/>
+                      <stop offset="82%" stop-color="#d97706"/>
+                      <stop offset="100%" stop-color="#78350f"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="24" cy="24" r="21" fill="url(#armory-coin-rim)" stroke="#fef08a" stroke-width="1.4"/>
+                  <circle cx="24" cy="24" r="16.5" fill="url(#armory-coin-face)" stroke="#78350f" stroke-width="1.3"/>
+                  <circle cx="24" cy="24" r="13.2" fill="none" stroke="rgba(255,251,235,0.55)" stroke-width="1" stroke-dasharray="3 2.5"/>
+                  <path d="M24 12.5L31.5 24L24 35.5L16.5 24L24 12.5Z" fill="#78350f" fill-opacity="0.35" stroke="#fef9c3" stroke-width="1.4" stroke-linejoin="round"/>
+                  <path d="M24 17.5L27.5 24L24 30.5L20.5 24L24 17.5Z" fill="#fef08a"/>
+                </svg>
+                <div class="armory-gold-hero-text">
+                  <span class="armory-gold-hero-label">보유 골드</span>
+                  <strong id="armory-gold-amount">0 G</strong>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -209,6 +280,60 @@
           <div id="armory-view-frames" class="armory-view-container hidden">
             <div id="frames-shop-grid" class="frames-showcase-grid"></div>
           </div>
+
+          <div id="armory-view-cosmetics" class="armory-view-container hidden">
+            <div class="cosmetics-split">
+              <div class="cosmetics-section">
+                <div class="cosmetics-head">
+                  <h3 class="cosmetics-title">파일럿 칭호 장착</h3>
+                  <span class="cosmetics-sub">장착한 칭호는 글로벌 랭킹 및 작전 브리핑에 표시됩니다.</span>
+                </div>
+                <div id="titles-equip-grid" class="titles-equip-grid"></div>
+              </div>
+
+              <div class="cosmetics-section">
+                <div class="cosmetics-head">
+                  <h3 class="cosmetics-title">위협 정복 1인칭 기체·방패 스킨</h3>
+                  <span class="cosmetics-sub">위협 3·5·7·10 최초 정복 시 전용 로봇 팔 장갑과 E-방패 색상이 해금됩니다.</span>
+                </div>
+                <div id="frame-skins-grid" class="frame-skins-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sub-Panel Leaderboard: Shared Global Firestore Rankings + Google Auth + Callsign -->
+        <section id="title-panel-leaderboard" class="title-subpanel hidden" aria-label="글로벌 랭킹">
+          <div class="subpanel-header">
+            <div>
+              <span class="subpanel-kicker">전 세계 파일럿 통합 작전 기록실</span>
+              <h2 class="subpanel-title">글로벌 랭킹</h2>
+            </div>
+            <div class="lb-head-actions">
+              <button id="btn-lb-refresh" class="mil-btn small" type="button">새로고침</button>
+              <button id="btn-leaderboard-back" class="mil-btn small" type="button">뒤로</button>
+            </div>
+          </div>
+
+          <div class="lb-identity-bar">
+            <div class="lb-auth-group">
+              <button id="btn-lb-auth" class="mil-btn small primary" type="button">Google 로그인</button>
+              <span id="lb-auth-status" class="lb-auth-status">로그인 시 개인 최고 기록을 글로벌 DB에 등록할 수 있습니다.</span>
+            </div>
+            <div class="lb-callsign-group">
+              <span id="lb-equipped-title" class="title-plate-slot"></span>
+              <input id="lb-callsign-input" class="lb-callsign-input" type="text" maxlength="18" placeholder="호출부호 입력 (최대 18자)" aria-label="호출부호 입력" />
+              <button id="btn-lb-save-callsign" class="mil-btn small" type="button">이름 저장</button>
+            </div>
+          </div>
+
+          <div class="lb-mode-tabs" role="tablist" aria-label="랭킹 모드 필터">
+            <button class="lb-mode-tab active" data-lb-mode="campaign" type="button" role="tab">캠페인 TOP 25</button>
+            <button class="lb-mode-tab" data-lb-mode="endless" type="button" role="tab">무한 강하 TOP 25</button>
+            <button class="lb-mode-tab" data-lb-mode="daily" type="button" role="tab">오늘의 작전 TOP 25</button>
+          </div>
+
+          <div id="leaderboard-list" class="leaderboard-list"></div>
         </section>
 
         <!-- Sub-Panel 1: Arsenal Briefing -->
@@ -238,6 +363,7 @@
               <p class="arsenal-desc">
                 안정적인 반동과 반사 조준경을 갖춘 표준 텅스텐 돌격소총. 전 거리 교전의 중심축입니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="pulse_rifle"></div>
             </article>
 
             <article class="arsenal-card" style="--card-accent: #ea580c">
@@ -255,6 +381,7 @@
               <p class="arsenal-desc">
                 8발 텅스텐 산탄으로 강한 경직을 유발하는 근접 돌파용 샷건. 슬라이드 돌격에 특화되어 있습니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="scattergun"></div>
             </article>
 
             <article class="arsenal-card" style="--card-accent: #fbbf24">
@@ -272,6 +399,7 @@
               <p class="arsenal-desc">
                 적과 방패를 관통하는 초고속 레일 랜스. 중장갑 방패병과 보스 약점 파괴에 최적화되어 있습니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="railgun"></div>
             </article>
 
             <article class="arsenal-card" style="--card-accent: #d4a359">
@@ -289,6 +417,7 @@
               <p class="arsenal-desc">
                 0.24초 고속 전환과 낮은 이동 탄퍼짐을 갖춘 고속 연사 기관단총. 드론 군집 정리에 유리합니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="plasma_smg"></div>
             </article>
           </div>
 
@@ -308,6 +437,7 @@
               <p class="arsenal-desc">
                 재장전 없이 자동 냉각되는 열기 피스톨. 열기 78% 이상 구간에서 피해가 30% 증폭됩니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="weld_pistol"></div>
             </article>
 
             <article class="arsenal-card" style="--card-accent: #38bdf8">
@@ -324,6 +454,7 @@
               <p class="arsenal-desc">
                 방패를 관통하며 적에게 4초간 받는 피해 +25% 표식을 부여하는 전자기 리벳 발사기입니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="arc_rivet"></div>
             </article>
 
             <article class="arsenal-card" style="--card-accent: #22c55e">
@@ -340,6 +471,7 @@
               <p class="arsenal-desc">
                 적을 강하게 밀어내며, 바닥을 보고 발사하면 반동으로 높게 도약할 수 있습니다.
               </p>
+              <div class="arsenal-mastery-slot" data-weapon-mastery="repulsor"></div>
             </article>
           </div>
 
@@ -466,12 +598,19 @@
                   id="title-setting-sensitivity"
                   class="mil-range"
                   type="range"
-                  min="0.3"
-                  max="2.5"
-                  step="0.05"
-                  value="1.0"
+                  min="0.01"
+                  max="2.49"
+                  step="0.01"
+                  value="1.00"
                 />
-                <span id="title-setting-sensitivity-val" class="setting-val">1.00x</span>
+                <input
+                  id="title-setting-sensitivity-val"
+                  class="setting-val setting-val-input"
+                  type="text"
+                  inputmode="decimal"
+                  value="1.00x"
+                  aria-label="조준 감도 직접 입력"
+                />
               </div>
             </div>
 
@@ -492,7 +631,7 @@
             </div>
 
             <div class="setting-row">
-              <label class="setting-label" for="title-setting-music">전투 배경음 (BGM)</label>
+              <label class="setting-label" for="title-setting-music">메인 배경음 (BGM)</label>
               <div class="setting-control">
                 <input id="title-setting-music" class="mil-check" type="checkbox" checked />
               </div>
@@ -502,6 +641,14 @@
               <label class="setting-label" for="title-setting-fps">FPS 표시</label>
               <div class="setting-control">
                 <input id="title-setting-fps" class="mil-check" type="checkbox" />
+              </div>
+            </div>
+
+            <div class="setting-row setting-row-auth">
+              <span class="setting-label">구글 계정 연동</span>
+              <div class="setting-control setting-auth-control">
+                <span id="title-setting-auth-status" class="setting-auth-status">미연동</span>
+                <button id="btn-title-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
               </div>
             </div>
           </div>
@@ -540,6 +687,34 @@
         </section>
       </main>
     </div>
+
+    <!-- 7-Day Continuous Attendance Popup Modal (Auto-Shown on Entry if Unclaimed Today) -->
+    <div id="attendance-popup-modal" class="attendance-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
+      <div class="attendance-modal-card">
+        <div class="attendance-modal-head">
+          <div>
+            <span class="attendance-modal-kicker">ORBITAL CHECK-IN PROTOCOL</span>
+            <h2 id="attendance-modal-title" class="attendance-modal-title">7일 연속 출석 보급</h2>
+            <p id="daily-streak-summary" class="attendance-modal-sub">현재 연속 0일 출석</p>
+          </div>
+          <button id="btn-attendance-close" class="attendance-close-btn" type="button" aria-label="출석 창 닫기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div id="daily-streak-grid" class="daily-streak-grid attendance-streak-grid"></div>
+
+        <div class="attendance-modal-footer">
+          <span class="attendance-modal-hint">3일차·7일차 연속 출석 시 전용 칭호 플레이트가 해금됩니다.</span>
+          <div class="attendance-modal-actions">
+            <button id="btn-daily-checkin" class="mil-btn primary" type="button">오늘 출석 체크</button>
+            <button id="btn-attendance-later" class="mil-btn small" type="button">닫기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="title-unlock-toast" class="title-unlock-toast hidden" role="status" aria-live="polite"></div>
   </section>
 
   <!-- ======================================================================
@@ -945,12 +1120,19 @@
                 id="setting-sensitivity"
                 class="mil-range"
                 type="range"
-                min="0.3"
-                max="2.5"
-                step="0.05"
-                value="1.0"
+                min="0.01"
+                max="2.49"
+                step="0.01"
+                value="1.00"
               />
-              <span id="setting-sensitivity-val" class="setting-val">1.00x</span>
+              <input
+                id="setting-sensitivity-val"
+                class="setting-val setting-val-input"
+                type="text"
+                inputmode="decimal"
+                value="1.00x"
+                aria-label="조준 감도 직접 입력"
+              />
             </div>
           </div>
 
@@ -971,7 +1153,7 @@
           </div>
 
           <div class="setting-row">
-            <label class="setting-label" for="setting-music">전투 배경음 (BGM)</label>
+            <label class="setting-label" for="setting-music">메인 배경음 (BGM)</label>
             <div class="setting-control">
               <input id="setting-music" class="mil-check" type="checkbox" checked />
             </div>
@@ -981,6 +1163,14 @@
             <label class="setting-label" for="setting-fps">FPS 표시</label>
             <div class="setting-control">
               <input id="setting-fps" class="mil-check" type="checkbox" />
+            </div>
+          </div>
+
+          <div class="setting-row setting-row-auth">
+            <span class="setting-label">구글 계정 연동</span>
+            <div class="setting-control setting-auth-control">
+              <span id="pause-setting-auth-status" class="setting-auth-status">미연동</span>
+              <button id="btn-pause-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
             </div>
           </div>
         </div>
@@ -1060,6 +1250,18 @@
               </div>
             </div>
 
+            <div id="result-rewards-toast" class="result-rewards-toast hidden"></div>
+
+            <div id="result-rank-submit-box" class="result-rank-submit-box">
+              <div class="result-rank-row">
+                <span id="result-rank-title-badge" class="title-plate-slot"></span>
+                <input id="result-callsign-input" class="lb-callsign-input" type="text" maxlength="18" placeholder="호출부호 입력" aria-label="랭킹 등록 호출부호" />
+                <button id="btn-submit-leaderboard" class="mil-btn small primary" type="button">글로벌 랭킹 등록</button>
+                <button id="btn-result-open-lb" class="mil-btn small" type="button">랭킹 보기</button>
+              </div>
+              <div id="result-leaderboard-status" class="result-leaderboard-status">호출부호와 장착 칭호를 포함해 글로벌 랭킹에 기록을 등록합니다.</div>
+            </div>
+
             <div class="modal-actions">
               <button id="btn-redeploy" class="mil-btn primary" type="button">다시 출격</button>
               <button id="btn-end-title" class="mil-btn" type="button">타이틀로</button>
@@ -1083,6 +1285,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/runtime.js?v=20261126k"></script>
+  <script type="module" src="./src/runtime.js?v=20261126o"></script>
 </body>
 </html>

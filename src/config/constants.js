@@ -64,31 +64,31 @@ const DAILY_MODIFIERS = [
 ];
 
 const ACHIEVEMENTS = [
-  { id: 'first_blood', cat: 'combat', catLabel: '전투', reward: 50, name: '첫 교전', desc: '적 1기 이상 격파' },
-  { id: 'kills_50', cat: 'combat', catLabel: '전투', reward: 90, name: '전선 청소부', desc: '누적 적 50기 격파' },
-  { id: 'kills_200', cat: 'combat', catLabel: '전투', reward: 175, name: '강철 수확자', desc: '누적 적 200기 격파' },
-  { id: 'hs_15', cat: 'combat', catLabel: '전투', reward: 110, name: '정밀 사수', desc: '한 판 헤드샷 15회 달성' },
-  { id: 'combo_5', cat: 'combat', catLabel: '전투', reward: 80, name: '연쇄 화력', desc: '최대 콤보 x5 달성' },
-  { id: 'style_a', cat: 'combat', catLabel: '전투', reward: 75, name: '전술 리듬', desc: '스타일 랭크 A 이상 달성' },
-  { id: 'style_s', cat: 'combat', catLabel: '전투', reward: 130, name: '스타일 마스터', desc: '스타일 랭크 S 이상 달성' },
-  { id: 'style_sss', cat: 'combat', catLabel: '전투', reward: 225, name: '에이서 폭풍', desc: '스타일 랭크 SSS 달성' },
-  { id: 'air_ace', cat: 'mobility', catLabel: '기동', reward: 100, name: '하늘의 지배자', desc: '한 판 공중 처치 5회' },
-  { id: 'slide_ace', cat: 'mobility', catLabel: '기동', reward: 100, name: '지면 돌파자', desc: '한 판 슬라이드 처치 5회' },
-  { id: 'melee_ace', cat: 'mobility', catLabel: '기동', reward: 110, name: '열선 블레이드', desc: '한 판 근접 처치 5회' },
-  { id: 'swap_ace', cat: 'mobility', catLabel: '기동', reward: 100, name: '퀵드로우', desc: '한 판 무기 전환 처치 5회' },
-  { id: 'drone_hunter', cat: 'ops', catLabel: '작전', reward: 80, name: '보급 사냥꾼', desc: '황금 보급 드론 격추' },
-  { id: 'emp_tactician', cat: 'ops', catLabel: '작전', reward: 110, name: '전자전 전문가', desc: 'EMP 파일런 또는 쉴드 중계기 파괴' },
-  { id: 'elite_slayer', cat: 'combat', catLabel: '전투', reward: 140, name: '전선 분쇄자', desc: '한 판에 이지스 정예병 10기 격파' },
-  { id: 'first_clear', cat: 'ops', catLabel: '작전', reward: 160, name: '지구 수복', desc: '캠페인 웨이브 5 보스 COLOSSUS-IV 격파' },
-  { id: 'citadel_clear', cat: 'ops', catLabel: '작전', reward: 275, name: '이지스 성채 탈환', desc: '캠페인 웨이브 10 보스 AEGIS-IX 격파' },
-  { id: 'abyss_gatebreaker', cat: 'ops', catLabel: '작전', reward: 160, name: '차원 게이트 파괴자', desc: '심연 차원 게이트 3회 파괴' },
-  { id: 'abyss_clear', cat: 'ops', catLabel: '작전', reward: 450, name: '심연의 정복자', desc: '캠페인 웨이브 15 최종 보스 TRANSCENDENT-OMEGA 격파' },
-  { id: 'heat_clear', cat: 'ops', catLabel: '작전', reward: 225, name: '열기 돌파', desc: '위협 단계 2 이상에서 작전 클리어' },
-  { id: 'heat_5', cat: 'ops', catLabel: '작전', reward: 400, name: '극한 제압자', desc: '위협 단계 5 이상에서 작전 클리어' },
-  { id: 'heat_10', cat: 'ops', catLabel: '작전', reward: 900, name: '초월의 지배자', desc: '위협 단계 10 초월 난이도 작전 클리어' },
-  { id: 'endless_8', cat: 'ops', catLabel: '작전', reward: 150, name: '무한의 생존자', desc: '무한 강하 8웨이브 도달' },
-  { id: 'endless_12', cat: 'ops', catLabel: '작전', reward: 250, name: '궤도의 전설', desc: '무한 강하 12웨이브 도달' },
-  { id: 'endless_15', cat: 'ops', catLabel: '작전', reward: 375, name: '심연의 생존자', desc: '무한 강하 15웨이브 도달' },
+  { id: 'first_blood', cat: 'combat', catLabel: '전투', reward: 100, name: '첫 교전', desc: '적 1기 이상 격파' },
+  { id: 'kills_50', cat: 'combat', catLabel: '전투', reward: 180, name: '전선 청소부', desc: '누적 적 50기 격파' },
+  { id: 'kills_200', cat: 'combat', catLabel: '전투', reward: 350, name: '강철 수확자', desc: '누적 적 200기 격파' },
+  { id: 'hs_15', cat: 'combat', catLabel: '전투', reward: 220, name: '정밀 사수', desc: '한 판 헤드샷 15회 달성' },
+  { id: 'combo_5', cat: 'combat', catLabel: '전투', reward: 160, name: '연쇄 화력', desc: '최대 콤보 x5 달성' },
+  { id: 'style_a', cat: 'combat', catLabel: '전투', reward: 150, name: '전술 리듬', desc: '스타일 랭크 A 이상 달성' },
+  { id: 'style_s', cat: 'combat', catLabel: '전투', reward: 260, name: '스타일 마스터', desc: '스타일 랭크 S 이상 달성' },
+  { id: 'style_sss', cat: 'combat', catLabel: '전투', reward: 450, name: '에이서 폭풍', desc: '스타일 랭크 SSS 달성' },
+  { id: 'air_ace', cat: 'mobility', catLabel: '기동', reward: 200, name: '하늘의 지배자', desc: '한 판 공중 처치 5회' },
+  { id: 'slide_ace', cat: 'mobility', catLabel: '기동', reward: 200, name: '지면 돌파자', desc: '한 판 슬라이드 처치 5회' },
+  { id: 'melee_ace', cat: 'mobility', catLabel: '기동', reward: 220, name: '열선 블레이드', desc: '한 판 근접 처치 5회' },
+  { id: 'swap_ace', cat: 'mobility', catLabel: '기동', reward: 200, name: '퀵드로우', desc: '한 판 무기 전환 처치 5회' },
+  { id: 'drone_hunter', cat: 'ops', catLabel: '작전', reward: 160, name: '보급 사냥꾼', desc: '황금 보급 드론 격추' },
+  { id: 'emp_tactician', cat: 'ops', catLabel: '작전', reward: 220, name: '전자전 전문가', desc: 'EMP 파일런 또는 쉴드 중계기 파괴' },
+  { id: 'elite_slayer', cat: 'combat', catLabel: '전투', reward: 280, name: '전선 분쇄자', desc: '한 판에 이지스 정예병 10기 격파' },
+  { id: 'first_clear', cat: 'ops', catLabel: '작전', reward: 320, name: '지구 수복', desc: '캠페인 웨이브 5 보스 COLOSSUS-IV 격파' },
+  { id: 'citadel_clear', cat: 'ops', catLabel: '작전', reward: 550, name: '이지스 성채 탈환', desc: '캠페인 웨이브 10 보스 AEGIS-IX 격파' },
+  { id: 'abyss_gatebreaker', cat: 'ops', catLabel: '작전', reward: 320, name: '차원 게이트 파괴자', desc: '심연 차원 게이트 3회 파괴' },
+  { id: 'abyss_clear', cat: 'ops', catLabel: '작전', reward: 900, name: '심연의 정복자', desc: '캠페인 웨이브 15 최종 보스 TRANSCENDENT-OMEGA 격파' },
+  { id: 'heat_clear', cat: 'ops', catLabel: '작전', reward: 450, name: '열기 돌파', desc: '위협 단계 2 이상에서 작전 클리어' },
+  { id: 'heat_5', cat: 'ops', catLabel: '작전', reward: 800, name: '극한 제압자', desc: '위협 단계 5 이상에서 작전 클리어' },
+  { id: 'heat_10', cat: 'ops', catLabel: '작전', reward: 1800, name: '초월의 지배자', desc: '위협 단계 10 초월 난이도 작전 클리어' },
+  { id: 'endless_8', cat: 'ops', catLabel: '작전', reward: 300, name: '무한의 생존자', desc: '무한 강하 8웨이브 도달' },
+  { id: 'endless_12', cat: 'ops', catLabel: '작전', reward: 500, name: '궤도의 전설', desc: '무한 강하 12웨이브 도달' },
+  { id: 'endless_15', cat: 'ops', catLabel: '작전', reward: 750, name: '심연의 생존자', desc: '무한 강하 15웨이브 도달' },
 ];
 
 function getTodayDailyModifier() {
@@ -583,45 +583,60 @@ const PLAYER_CONFIG = {
 const QUALITY_PRESETS = {
   low: {
     label: '낮음',
-    dprMax: 0.85,
+    renderScale: 0.65,
+    dprMax: 0.72,
     bloomEnabled: false,
     bloomStrength: 0.0,
     bloomRadius: 0.0,
     bloomThreshold: 1.0,
     shadowsEnabled: false,
     shadowMapSize: 512,
-    maxParticles: 80,
-    maxDecals: 24,
-    dynamicLights: 1,
-    fogDensity: 0.014,
+    shadowType: 'pcf',
+    maxParticles: 60,
+    maxDecals: 12,
+    dynamicLights: 0,
+    fogDensity: 0.0155,
+    envIntensity: 0.35,
+    vmEnvIntensity: 0.55,
+    exposure: 1.02,
   },
   medium: {
     label: '보통',
+    renderScale: 1.0,
     dprMax: 1.0,
     bloomEnabled: true,
-    bloomStrength: 0.28,
-    bloomRadius: 0.30,
-    bloomThreshold: 0.85,
+    bloomStrength: 0.24,
+    bloomRadius: 0.24,
+    bloomThreshold: 0.88,
     shadowsEnabled: true,
     shadowMapSize: 1024,
+    shadowType: 'pcf',
     maxParticles: 180,
     maxDecals: 56,
     dynamicLights: 2,
     fogDensity: 0.0125,
+    envIntensity: 0.85,
+    vmEnvIntensity: 1.10,
+    exposure: 1.12,
   },
   high: {
     label: '높음',
-    dprMax: 1.35,
+    renderScale: 1.35,
+    dprMax: 2.0,
     bloomEnabled: true,
-    bloomStrength: 0.36,
-    bloomRadius: 0.38,
-    bloomThreshold: 0.82,
+    bloomStrength: 0.56,
+    bloomRadius: 0.48,
+    bloomThreshold: 0.72,
     shadowsEnabled: true,
-    shadowMapSize: 1024,
-    maxParticles: 320,
-    maxDecals: 96,
-    dynamicLights: 2,
-    fogDensity: 0.011,
+    shadowMapSize: 2048,
+    shadowType: 'pcfSoft',
+    maxParticles: 420,
+    maxDecals: 120,
+    dynamicLights: 4,
+    fogDensity: 0.0088,
+    envIntensity: 1.38,
+    vmEnvIntensity: 1.48,
+    exposure: 1.24,
   },
 };
 
@@ -712,6 +727,163 @@ const MAPS = [
   },
 ];
 
+const PLAYER_TITLES = [
+  { id: 'rookie_dropper', label: '신병 강하병', color: '#cbd5e1', tier: 'standard', icon: 'chevron', desc: '기본 파일럿 지급 칭호' },
+  { id: 'master_pulse', label: '펄스 마스터', color: '#f59e0b', tier: 'mastery', icon: 'pulse', desc: 'M41-A 펄스 라이플 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_scatter', label: '근접 분쇄자', color: '#ea580c', tier: 'mastery', icon: 'scatter', desc: 'BR-12 브리처 샷건 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_rail', label: '궤도 저격수', color: '#fbbf24', tier: 'mastery', icon: 'rail', desc: 'HV-7 레일 랜스 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_smg', label: '고속 사신', color: '#d4a359', tier: 'mastery', icon: 'smg', desc: 'K-9 스크래퍼 PDW 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_weld', label: '고열 공병', color: '#f97316', tier: 'mastery', icon: 'weld', desc: 'W-01 용접 피스톨 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_arc', label: '아크 헌터', color: '#38bdf8', tier: 'mastery', icon: 'arc', desc: 'T-4 아크 리벳건 60킬 & 헤드샷 12회 달성' },
+  { id: 'master_repulsor', label: '충격의 파도', color: '#22c55e', tier: 'mastery', icon: 'repulsor', desc: 'K-0 충격 리펄서 60킬 & 헤드샷 12회 달성' },
+  { id: 'heat_3_conq', label: '철혈 정복자', color: '#fb923c', tier: 'heat', icon: 'heat3', desc: '위협 단계 3 최초 정복 보상' },
+  { id: 'heat_5_conq', label: '극한 돌파자', color: '#38bdf8', tier: 'heat', icon: 'heat5', desc: '위협 단계 5 최초 정복 보상' },
+  { id: 'heat_7_conq', label: '심연 감시자', color: '#f43f5e', tier: 'heat', icon: 'heat7', desc: '위협 단계 7 최초 정복 보상' },
+  { id: 'heat_10_conq', label: '초월의 군주', color: '#fde047', tier: 'legend', icon: 'heat10', desc: '위협 단계 10 초월 최초 정복 보상' },
+  { id: 'streak_3', label: '꾸준한 파일럿', color: '#4ade80', tier: 'streak', icon: 'streak3', desc: '연속 출석 3일 달성' },
+  { id: 'streak_7', label: '궤도 개근 영웅', color: '#c084fc', tier: 'streak', icon: 'streak7', desc: '연속 출석 7일 달성' },
+  { id: 'endless_survivor', label: '무한의 전설', color: '#facc15', tier: 'legend', icon: 'endless', desc: '무한 강하 12웨이브 도달' },
+];
+
+const FRAME_SKINS = [
+  {
+    id: 'standard',
+    name: '표준 제식 코팅',
+    tier: '기본',
+    desc: '기체 고유 기본 장갑 도색 및 방패 파형',
+    armorHex: null,
+    accentHex: null,
+    glowHex: null,
+    shieldHex: null,
+    previewBg: 'linear-gradient(135deg, #334155, #1e293b)',
+    unlockDesc: '기본 지급',
+  },
+  {
+    id: 'ember_forge',
+    name: '화염 단조 장갑',
+    tier: 'HEAT 3 정복',
+    desc: '검은 흑철 장갑과 작열하는 호박색 에너지 방패 코팅',
+    armorHex: 0x26211d,
+    accentHex: 0xc2410c,
+    glowHex: 0xf97316,
+    shieldHex: 0xf97316,
+    previewBg: 'linear-gradient(135deg, #431407, #ea580c)',
+    unlockDesc: '위협 단계 3 최초 클리어',
+  },
+  {
+    id: 'cryo_titanium',
+    name: '크라이오 티타늄',
+    tier: 'HEAT 5 정복',
+    desc: '극저온 백은 티타늄 장갑과 빙하 시안 방패 코팅',
+    armorHex: 0xdbeafe,
+    accentHex: 0x0284c7,
+    glowHex: 0x22d3ee,
+    shieldHex: 0x22d3ee,
+    previewBg: 'linear-gradient(135deg, #082f49, #22d3ee)',
+    unlockDesc: '위협 단계 5 최초 클리어',
+  },
+  {
+    id: 'void_crimson',
+    name: '심연 크림슨',
+    tier: 'HEAT 7 정복',
+    desc: '심연 흑요석 장갑과 진홍빛 특이점 방패 코팅',
+    armorHex: 0x1a1025,
+    accentHex: 0xbe123c,
+    glowHex: 0xf43f5e,
+    shieldHex: 0xf43f5e,
+    previewBg: 'linear-gradient(135deg, #3b0764, #e11d48)',
+    unlockDesc: '위협 단계 7 최초 클리어',
+  },
+  {
+    id: 'omega_gold',
+    name: '오메가 골드 에디션',
+    tier: 'HEAT 10 정복',
+    desc: '황금빛 크라운 티타늄과 눈부신 태양 방패 코팅',
+    armorHex: 0xfef3c7,
+    accentHex: 0xd97706,
+    glowHex: 0xfacc15,
+    shieldHex: 0xfde047,
+    previewBg: 'linear-gradient(135deg, #451a03, #facc15)',
+    unlockDesc: '위협 단계 10 초월 클리어',
+  },
+];
+
+const HEAT_MILESTONE_REWARDS = [
+  {
+    heat: 3,
+    gold: 600,
+    titleId: 'heat_3_conq',
+    frameSkinId: 'ember_forge',
+    label: '위협 3 최초 정복',
+    summary: '600 G + 칭호 [철혈 정복자] + 기체 스킨 [화염 단조 장갑]',
+  },
+  {
+    heat: 5,
+    gold: 1200,
+    titleId: 'heat_5_conq',
+    frameSkinId: 'cryo_titanium',
+    label: '위협 5 최초 정복',
+    summary: '1,200 G + 칭호 [극한 돌파자] + 기체 스킨 [크라이오 티타늄]',
+  },
+  {
+    heat: 7,
+    gold: 2200,
+    titleId: 'heat_7_conq',
+    frameSkinId: 'void_crimson',
+    label: '위협 7 최초 정복',
+    summary: '2,200 G + 칭호 [심연 감시자] + 기체 스킨 [심연 크림슨]',
+  },
+  {
+    heat: 10,
+    gold: 4500,
+    titleId: 'heat_10_conq',
+    frameSkinId: 'omega_gold',
+    label: '위협 10 초월 정복',
+    summary: '4,500 G + 칭호 [초월의 군주] + 기체 스킨 [오메가 골드 에디션]',
+  },
+];
+
+const DAILY_QUEST_TEMPLATES = [
+  { id: 'dq_kills', stat: 'kills', target: 45, reward: 160, name: '적 병력 소탕', desc: '적 45기 격파하기' },
+  { id: 'dq_headshots', stat: 'headshots', target: 12, reward: 180, name: '정밀 약점 사격', desc: '헤드샷 12회 달성하기' },
+  { id: 'dq_waves', stat: 'waves', target: 5, reward: 170, name: '전선 돌파', desc: '웨이브 5회 클리어하기' },
+  { id: 'dq_melee', stat: 'meleeKills', target: 6, reward: 150, name: '열선 블레이드 일격', desc: '[V] 근접 공격으로 적 6기 처치하기' },
+  { id: 'dq_mobility', stat: 'mobilityKills', target: 8, reward: 175, name: '기동 사격전', desc: '공중 또는 슬라이드 중 적 8기 처치하기' },
+  { id: 'dq_guard', stat: 'guardBlocks', target: 10, reward: 165, name: '철벽 방어', desc: '[E] 전방 방패로 공격 10회 막기' },
+  { id: 'dq_boss', stat: 'bossKills', target: 1, reward: 240, name: '거대 병기 토벌', desc: '구역 보스 1기 이상 격파하기' },
+];
+
+const STREAK_REWARDS = [
+  { day: 1, gold: 100, label: '1일차' },
+  { day: 2, gold: 130, label: '2일차' },
+  { day: 3, gold: 170, titleId: 'streak_3', label: '3일차 (+칭호)' },
+  { day: 4, gold: 200, label: '4일차' },
+  { day: 5, gold: 240, label: '5일차' },
+  { day: 6, gold: 280, label: '6일차' },
+  { day: 7, gold: 400, titleId: 'streak_7', label: '7일차 (+칭호)' },
+];
+
+function getTodayDateKey(dateObj = new Date()) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getDailyQuestsForDate(dateKey = getTodayDateKey()) {
+  let hash = 0;
+  for (let i = 0; i < dateKey.length; i++) {
+    hash = (hash * 31 + dateKey.charCodeAt(i)) >>> 0;
+  }
+  const pool = DAILY_QUEST_TEMPLATES.slice();
+  const chosen = [];
+  for (let k = 0; k < 3 && pool.length > 0; k++) {
+    const idx = (hash + k * 5) % pool.length;
+    chosen.push(pool.splice(idx, 1)[0]);
+  }
+  return chosen;
+}
+
 const SCORE_CONFIG = {
   comboTimeout: 4.8,
   maxComboMultiplier: 5,
@@ -734,5 +906,12 @@ const SCORE_CONFIG = {
   __exports.HEAT_CONTRACTS = HEAT_CONTRACTS;
   __exports.DAILY_MODIFIERS = DAILY_MODIFIERS;
   __exports.ACHIEVEMENTS = ACHIEVEMENTS;
+  __exports.PLAYER_TITLES = PLAYER_TITLES;
+  __exports.FRAME_SKINS = FRAME_SKINS;
+  __exports.HEAT_MILESTONE_REWARDS = HEAT_MILESTONE_REWARDS;
+  __exports.DAILY_QUEST_TEMPLATES = DAILY_QUEST_TEMPLATES;
+  __exports.STREAK_REWARDS = STREAK_REWARDS;
   __exports.getTodayDailyModifier = getTodayDailyModifier;
+  __exports.getTodayDateKey = getTodayDateKey;
+  __exports.getDailyQuestsForDate = getDailyQuestsForDate;
 });

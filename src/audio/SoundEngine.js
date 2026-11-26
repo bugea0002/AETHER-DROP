@@ -2,30 +2,325 @@
 __define("src/audio/SoundEngine.js", (__exports, __require) => {
 const { EVENTS } = __require("src/config/constants.js");
 
-// D minor cyberpunk synth bass & tension arp frequencies (Hz)
-const BASS_PATTERN_HZ = [
-  73.42, 73.42, 73.42, 87.31,
-  73.42, 73.42, 65.41, 73.42,
-  58.27, 58.27, 58.27, 65.41,
-  55.00, 55.00, 65.41, 82.41,
-];
+// Monumental & Destructive Post-Apocalyptic Main Theme (D Phrygian / D Harmonic Minor, 108 BPM, 64-step 4-bar cycle)
+const APOC_MAIN_THEME = Object.freeze({
+  id: 'main_theme',
+  baseStepSec: 60 / 108 / 4, // 108 BPM 16th-note = 0.13889s
+  bossStepSec: 60 / 118 / 4, // 118 BPM Boss Overdrive
+  // Colossal brass braam root hits (steps 0, 16, 32, 48 + destructive turnaround hit at 58)
+  braam: {
+    0: { freq: 36.71, dur: 2.15, gain: 0.44 },  // D1
+    16: { freq: 29.14, dur: 2.15, gain: 0.42 }, // Bb0 (heavy sub octave + 2x overtone)
+    32: { freq: 49.00, dur: 1.95, gain: 0.42 }, // G1
+    44: { freq: 38.89, dur: 0.95, gain: 0.36 }, // Eb1 (Phrygian doom drop)
+    48: { freq: 55.00, dur: 1.45, gain: 0.44 }, // A1 (dominant tension)
+    58: { freq: 38.89, dur: 0.72, gain: 0.40 }, // Eb1 violent smash before loop
+  },
+  // Haunting desolate cathedral choir / dark brass-string chords on each bar
+  chords: {
+    0:  [146.83, 220.00, 293.66, 349.23], // Dm (D3 A3 D4 F4)
+    16: [116.54, 174.61, 233.08, 293.66], // Bb maj (Bb2 F3 Bb3 D4)
+    32: [146.83, 196.00, 233.08, 311.13], // Gm / Eb6 (D3 G3 Bb3 Eb4)
+    48: [138.59, 164.81, 220.00, 349.23], // A7b9 dark tension (C#3 E3 A3 F4)
+  },
+  // 64-step destructive drop-D industrial bass riff (0 = rest)
+  bass: [
+    // Bar 1: Dm crushing chug (D2 = 73.42, Eb2 = 77.78, F2 = 87.31)
+    73.42, 0, 73.42, 73.42, 0, 0, 77.78, 0, 73.42, 0, 73.42, 0, 87.31, 0, 77.78, 73.42,
+    // Bar 2: Bb falling ruins (Bb1 = 58.27, C2 = 65.41, D2 = 73.42)
+    58.27, 0, 58.27, 58.27, 0, 0, 65.41, 0, 58.27, 0, 58.27, 0, 73.42, 0, 65.41, 58.27,
+    // Bar 3: Gm -> Eb Phrygian devastation (G1 = 49.00, G2 = 98.00, Eb2 = 77.78, F2 = 87.31)
+    49.00, 0, 98.00, 49.00, 0, 0, 87.31, 0, 77.78, 0, 77.78, 77.78, 87.31, 0, 77.78, 0,
+    // Bar 4: A Phrygian dominant fury (A1 = 55.00, Bb1 = 58.27, C#2 = 69.30, Eb2 = 77.78)
+    55.00, 0, 55.00, 55.00, 0, 0, 58.27, 0, 69.30, 0, 77.78, 0, 69.30, 58.27, 55.00, 77.78,
+  ],
+  // 64-step iconic tragic-heroic theme melody (freq + duration in steps)
+  lead: {
+    0:  { f: 293.66, d: 6 },  // D4
+    6:  { f: 349.23, d: 4 },  // F4
+    10: { f: 311.13, d: 3 },  // Eb4 (Phrygian lament)
+    13: { f: 293.66, d: 3 },  // D4
+    16: { f: 233.08, d: 6 },  // Bb3
+    22: { f: 293.66, d: 4 },  // D4
+    26: { f: 349.23, d: 3 },  // F4
+    29: { f: 329.63, d: 3 },  // E4
+    32: { f: 392.00, d: 6 },  // G4 (soaring peak)
+    38: { f: 349.23, d: 3 },  // F4
+    41: { f: 311.13, d: 3 },  // Eb4
+    44: { f: 293.66, d: 4 },  // D4
+    48: { f: 329.63, d: 4 },  // E4
+    52: { f: 440.00, d: 4 },  // A4 (climax)
+    56: { f: 349.23, d: 3 },  // F4
+    59: { f: 277.18, d: 5 },  // C#4 (harmonic minor tension resolving to D4)
+  },
+  // Half-time monumental war-drum hits (active even on Title!)
+  warDrum: [
+    2,0,0,0, 0,0,1,0, 0,0,0,0, 1,0,2,0,
+    2,0,0,0, 0,0,1,0, 0,0,0,0, 1,0,1,0,
+    2,0,0,0, 0,0,1,0, 2,0,0,0, 1,0,2,0,
+    2,0,0,1, 0,0,2,0, 0,0,2,0, 2,1,2,1,
+  ],
+  // Crushing industrial combat double-kick (ignites during combat & boss)
+  combatKick: [
+    2,0,1,0, 0,0,2,0, 2,0,0,1, 0,0,2,0,
+    2,0,1,0, 0,0,2,0, 2,0,0,1, 0,1,2,0,
+    2,0,1,0, 0,0,2,0, 2,0,1,0, 0,0,2,1,
+    2,0,1,1, 0,0,2,0, 2,1,2,0, 2,1,2,1,
+  ],
+  // Metallic anvil / scrap-iron slam on heavy backbeats (1=heavy snare, 2=anvil clang + slam)
+  anvil: [
+    0,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,0,0,
+    0,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,0,1,
+    0,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,0,0,
+    0,0,0,0, 1,0,0,1, 2,0,2,0, 1,0,2,0,
+  ],
+  // Gritty industrial percussion hat/shaker (active in combat)
+  hat: [
+    1,0,1,1, 2,0,1,0, 1,0,1,1, 2,0,1,1,
+    1,0,1,1, 2,0,1,0, 1,0,1,1, 2,1,2,0,
+    1,0,1,1, 2,0,1,0, 1,0,1,1, 2,0,1,1,
+    1,1,2,1, 2,0,1,1, 2,1,2,1, 2,2,2,1,
+  ],
+});
 
-const ARP_PATTERN_HZ = [
-  293.66, 440.00, 349.23, 523.25,
-  293.66, 440.00, 587.33, 440.00,
-  233.08, 349.23, 440.00, 349.23,
-  220.00, 329.63, 440.00, 523.25,
-];
+// 6 Distinct Zone BGM Tracks (kept for backward compatibility)
+const BGM_TRACKS = {
+  main_theme: APOC_MAIN_THEME,
+  // 1구역 일반 (Waves 1-4): 폐허 지구 정유소/메트로폴리스 — D minor, 120 BPM 인더스트리얼 록 그루브
+  zone1_normal: {
+    id: 'zone1_normal',
+    isBoss: false,
+    stepSec: 60 / 120 / 4,
+    bassWave: 'sawtooth',
+    bassFilterBase: 190,
+    bassFilterSpan: 420,
+    bassGain: 0.28,
+    leadWave: 'triangle',
+    leadFilter: 1750,
+    leadGain: 0.14,
+    padWave: 'triangle',
+    padFilter: 680,
+    padGain: 0.065,
+    bass: [
+      73.42, 0, 73.42, 73.42, 87.31, 0, 73.42, 0,
+      65.41, 0, 73.42, 0, 87.31, 0, 82.41, 0,
+      58.27, 0, 58.27, 58.27, 65.41, 0, 73.42, 0,
+      55.00, 0, 65.41, 0, 73.42, 0, 82.41, 0,
+    ],
+    lead: [
+      293.66, 0, 349.23, 0, 440.00, 0, 392.00, 349.23,
+      293.66, 0, 0, 261.63, 293.66, 0, 329.63, 0,
+      233.08, 0, 293.66, 0, 349.23, 0, 329.63, 293.66,
+      220.00, 0, 261.63, 0, 329.63, 0, 293.66, 0,
+    ],
+    chords: [
+      [146.83, 220.00],
+      [130.81, 196.00],
+      [116.54, 174.61],
+      [110.00, 164.81],
+    ],
+    kick:  [2,0,0,0, 0,0,1,0, 2,0,0,0, 0,0,1,0, 2,0,0,0, 0,0,1,0, 2,0,0,0, 0,1,0,0],
+    snare: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1, 0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,1,0],
+    hat:   [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,2,0, 0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,2,0],
+  },
 
-const STEP_DURATION_SEC = 60 / 124 / 4; // 124 BPM 16th notes (~0.121s)
+  // 1구역 보스 (Wave 5 COLOSSUS-IV): 잿빛 거신 — C# Phrygian, 138 BPM 중장갑 공성 행진
+  zone1_boss: {
+    id: 'zone1_boss',
+    isBoss: true,
+    stepSec: 60 / 138 / 4,
+    bassWave: 'sawtooth',
+    bassFilterBase: 230,
+    bassFilterSpan: 560,
+    bassGain: 0.31,
+    leadWave: 'sawtooth',
+    leadFilter: 1550,
+    leadGain: 0.13,
+    padWave: 'sawtooth',
+    padFilter: 520,
+    padGain: 0.06,
+    bass: [
+      69.30, 69.30, 0, 73.42, 69.30, 0, 82.41, 73.42,
+      69.30, 69.30, 0, 73.42, 103.83, 0, 82.41, 73.42,
+      69.30, 69.30, 0, 73.42, 69.30, 0, 110.00, 103.83,
+      61.74, 61.74, 65.41, 69.30, 73.42, 0, 82.41, 73.42,
+    ],
+    lead: [
+      277.18, 0, 293.66, 0, 329.63, 0, 293.66, 277.18,
+      277.18, 0, 415.30, 0, 392.00, 329.63, 293.66, 0,
+      277.18, 293.66, 329.63, 0, 440.00, 0, 415.30, 329.63,
+      246.94, 0, 293.66, 277.18, 220.00, 0, 246.94, 0,
+    ],
+    chords: [
+      [138.59, 207.65],
+      [146.83, 220.00],
+      [138.59, 207.65],
+      [123.47, 185.00],
+    ],
+    kick:  [2,0,1,0, 0,0,2,0, 2,0,1,0, 0,0,1,0, 2,0,1,0, 0,0,2,0, 2,0,1,0, 2,0,1,0],
+    snare: [0,0,0,0, 2,0,0,1, 0,0,0,0, 2,0,0,0, 0,0,0,0, 2,0,0,1, 0,0,0,0, 2,0,2,0],
+    hat:   [1,0,1,1, 0,0,1,0, 1,0,1,1, 0,0,2,0, 1,0,1,1, 0,0,1,0, 1,0,1,1, 0,1,2,1],
+  },
+
+  // 2구역 일반 (Waves 6-9): 이지스 궤도 격납고/원자로 — F minor, 128 BPM 냉철한 사이버 펄스
+  zone2_normal: {
+    id: 'zone2_normal',
+    isBoss: false,
+    stepSec: 60 / 128 / 4,
+    bassWave: 'sawtooth',
+    bassFilterBase: 210,
+    bassFilterSpan: 480,
+    bassGain: 0.25,
+    leadWave: 'triangle',
+    leadFilter: 2200,
+    leadGain: 0.15,
+    padWave: 'sine',
+    padFilter: 900,
+    padGain: 0.08,
+    bass: [
+      87.31, 0, 174.61, 0, 87.31, 0, 130.81, 0,
+      77.78, 0, 155.56, 0, 77.78, 0, 116.54, 0,
+      69.30, 0, 138.59, 0, 69.30, 0, 103.83, 0,
+      65.41, 0, 130.81, 0, 77.78, 0, 98.00, 0,
+    ],
+    lead: [
+      349.23, 523.25, 415.30, 0, 392.00, 0, 311.13, 0,
+      349.23, 0, 466.16, 415.30, 392.00, 349.23, 311.13, 0,
+      277.18, 415.30, 349.23, 0, 311.13, 0, 261.63, 0,
+      261.63, 311.13, 392.00, 0, 466.16, 392.00, 349.23, 0,
+    ],
+    chords: [
+      [174.61, 261.63],
+      [155.56, 233.08],
+      [138.59, 207.65],
+      [130.81, 196.00],
+    ],
+    kick:  [2,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,0,0, 2,0,0,0, 1,0,1,0],
+    snare: [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1],
+    hat:   [0,1,2,1, 0,1,2,1, 0,1,2,1, 0,1,2,1, 0,1,2,1, 0,1,2,1, 0,1,2,1, 0,1,2,1],
+  },
+
+  // 2구역 보스 (Wave 10 AEGIS-IX): 궤도 군주 — E minor, 144 BPM 고속 사이버 보스 러시
+  zone2_boss: {
+    id: 'zone2_boss',
+    isBoss: true,
+    stepSec: 60 / 144 / 4,
+    bassWave: 'sawtooth',
+    bassFilterBase: 250,
+    bassFilterSpan: 640,
+    bassGain: 0.29,
+    leadWave: 'sawtooth',
+    leadFilter: 1950,
+    leadGain: 0.14,
+    padWave: 'triangle',
+    padFilter: 820,
+    padGain: 0.065,
+    bass: [
+      82.41, 164.81, 82.41, 82.41, 164.81, 82.41, 98.00, 110.00,
+      82.41, 164.81, 82.41, 82.41, 123.47, 82.41, 110.00, 98.00,
+      65.41, 130.81, 65.41, 65.41, 130.81, 65.41, 73.42, 82.41,
+      73.42, 146.83, 73.42, 98.00, 123.47, 110.00, 98.00, 82.41,
+    ],
+    lead: [
+      329.63, 0, 493.88, 392.00, 440.00, 0, 392.00, 329.63,
+      493.88, 0, 587.33, 493.88, 440.00, 392.00, 329.63, 293.66,
+      261.63, 0, 392.00, 329.63, 392.00, 440.00, 493.88, 0,
+      587.33, 493.88, 440.00, 392.00, 493.88, 0, 659.25, 0,
+    ],
+    chords: [
+      [164.81, 246.94],
+      [164.81, 246.94],
+      [130.81, 196.00],
+      [146.83, 220.00],
+    ],
+    kick:  [2,0,0,1, 2,0,0,0, 2,0,0,1, 2,0,1,0, 2,0,0,1, 2,0,0,0, 2,0,0,1, 2,0,1,0],
+    snare: [0,0,0,0, 2,0,0,1, 0,0,0,0, 2,0,0,0, 0,0,0,0, 2,0,0,1, 0,0,0,0, 2,1,2,1],
+    hat:   [1,1,2,1, 1,1,2,1, 1,1,2,1, 1,1,2,1, 1,1,2,1, 1,1,2,1, 1,1,2,1, 2,1,2,2],
+  },
+
+  // 3구역 일반 (Waves 11-14): 심연 도관 링/저중력 성소 — A Phrygian, 132 BPM 몽환적 심연 공명
+  zone3_normal: {
+    id: 'zone3_normal',
+    isBoss: false,
+    stepSec: 60 / 132 / 4,
+    bassWave: 'triangle',
+    bassFilterBase: 170,
+    bassFilterSpan: 360,
+    bassGain: 0.30,
+    leadWave: 'sine',
+    leadFilter: 2400,
+    leadGain: 0.16,
+    padWave: 'triangle',
+    padFilter: 1100,
+    padGain: 0.085,
+    bass: [
+      55.00, 0, 0, 55.00, 110.00, 0, 58.27, 0,
+      55.00, 0, 0, 65.41, 73.42, 0, 58.27, 0,
+      55.00, 0, 0, 55.00, 98.00, 0, 87.31, 0,
+      58.27, 0, 73.42, 0, 65.41, 0, 55.00, 0,
+    ],
+    lead: [
+      440.00, 0, 523.25, 0, 466.16, 0, 440.00, 0,
+      349.23, 0, 440.00, 0, 392.00, 0, 329.63, 0,
+      440.00, 0, 659.25, 0, 587.33, 0, 466.16, 0,
+      440.00, 349.23, 329.63, 0, 293.66, 0, 220.00, 0,
+    ],
+    chords: [
+      [220.00, 329.63],
+      [233.08, 349.23],
+      [196.00, 293.66],
+      [174.61, 261.63],
+    ],
+    kick:  [2,0,0,0, 0,0,1,0, 0,0,2,0, 0,0,0,0, 2,0,0,0, 0,0,1,0, 0,0,2,0, 0,1,0,0],
+    snare: [0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,1,1],
+    hat:   [1,0,1,0, 2,0,1,0, 1,0,1,1, 2,0,1,0, 1,0,1,0, 2,0,1,0, 1,0,1,1, 2,1,2,0],
+  },
+
+  // 3구역 보스 (Wave 15 TRANSCENDENT-OMEGA): 최종 결전 — G Harmonic minor, 152 BPM 초월 클라이맥스
+  zone3_boss: {
+    id: 'zone3_boss',
+    isBoss: true,
+    stepSec: 60 / 152 / 4,
+    bassWave: 'sawtooth',
+    bassFilterBase: 260,
+    bassFilterSpan: 680,
+    bassGain: 0.30,
+    leadWave: 'sawtooth',
+    leadFilter: 2250,
+    leadGain: 0.15,
+    padWave: 'sawtooth',
+    padFilter: 880,
+    padGain: 0.068,
+    bass: [
+      49.00, 98.00, 49.00, 49.00, 98.00, 49.00, 58.27, 65.41,
+      77.78, 155.56, 77.78, 77.78, 155.56, 77.78, 65.41, 58.27,
+      65.41, 130.81, 65.41, 65.41, 130.81, 65.41, 73.42, 77.78,
+      73.42, 146.83, 73.42, 92.50, 146.83, 92.50, 73.42, 65.41,
+    ],
+    lead: [
+      392.00, 0, 466.16, 587.33, 392.00, 0, 587.33, 622.25,
+      622.25, 0, 587.33, 466.16, 392.00, 0, 466.16, 587.33,
+      523.25, 0, 587.33, 622.25, 523.25, 0, 466.16, 392.00,
+      369.99, 440.00, 587.33, 0, 739.99, 587.33, 523.25, 440.00,
+    ],
+    chords: [
+      [196.00, 293.66],
+      [155.56, 233.08],
+      [130.81, 196.00],
+      [146.83, 220.00],
+    ],
+    kick:  [2,0,1,0, 0,0,2,0, 0,0,2,0, 1,0,0,1, 2,0,1,0, 0,0,2,0, 0,1,2,0, 1,0,2,0],
+    snare: [0,0,0,0, 2,0,0,1, 0,0,0,0, 2,0,1,0, 0,0,0,0, 2,0,0,1, 0,0,0,0, 2,1,2,1],
+    hat:   [1,1,2,1, 1,0,2,1, 1,1,2,1, 1,1,2,1, 1,1,2,1, 1,0,2,1, 1,1,2,1, 2,2,2,1],
+  },
+};
+
 const PANNER_POOL_SIZE = 12;
 
 /**
- * NEON PROTOCOL — Studio-Grade Procedural Web Audio API Synthesizer & 3D Spatial Sound Engine
+ * AETHER DROP — Procedural Web Audio API Synthesizer & 3D Spatial Sound Engine
  * Zero external audio assets. Features layered weapon synthesis per firearm, tactile mechanical
- * foley, golden crystalline headshot chimes, combo-scaled kill confirms, 3D HRTF/equalpower
- * PannerNode spatialization for explosions & enemy fire, and a sample-accurate adaptive
- * cyberpunk synth combat pulse.
+ * foley, 3D PannerNode spatialization, and 6 adaptive zone/boss BGM tracks.
  */
 class SoundEngine {
   /**
@@ -41,6 +336,12 @@ class SoundEngine {
     this._masterGain = null;
     this._sfxGain = null;
     this._musicGain = null;
+    this._musicSceneFilter = null;
+    this._trackGain = null;
+    this._musicReverbSend = null;
+    this._musicReverbDelay = null;
+    this._musicReverbFilter = null;
+    this._musicReverbFeedback = null;
     this._subFilter = null;
     this._compressor = null;
     this._whiteNoiseBuffer = null;
@@ -51,14 +352,20 @@ class SoundEngine {
     this._masterVolume = 0.78;
     this._muted = false;
     this._musicEnabled = true;
-    this._inGameplay = true;
+    this._sceneMode = 'title'; // 'title' | 'playing' | 'paused' | 'result'
+    this._bossOverdrive = false;
+    this._inGameplay = false;
+    this._bgmStopped = false;
     this._disposed = false;
 
-    // Adaptive cyberpunk synth pulse state
+    // Scene-separated BGM sequencer state (Title Main Theme / Stage Normal / Grand Boss)
+    this._currentTrackId = 'main_theme';
     this._targetIntensity = 0.0;
-    this._currentIntensity = 0.0;
+    this._currentIntensity = 0.35;
     this._nextStepTime = 0;
     this._stepIndex = 0;
+    this._bgmIntervalId = null;
+    this._lastBgmTickMs = 0;
 
     // Anti-stacking rate-limit timestamps (seconds)
     this._lastHitmarkerTime = -1;
@@ -141,18 +448,33 @@ class SoundEngine {
         this._buildAudioGraph();
         this._generateNoiseBuffers();
         this._initPannerPool();
-        this._nextStepTime = this.ctx.currentTime + 0.08;
+        this._nextStepTime = this.ctx.currentTime + 0.06;
+        this._startBgmLoop();
       }
 
       if (this.ctx && this.ctx.state === 'suspended') {
         const p = this.ctx.resume();
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => {});
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            this._syncMusicMix();
+            this._tickBgm();
+          }).catch(() => {});
         }
       }
+      this._syncMusicMix();
+      this._tickBgm();
     } catch {
       // Gracefully ignore restricted environments
     }
+  }
+
+  /** @private */
+  _startBgmLoop() {
+    if (this._bgmIntervalId !== null || typeof window === 'undefined') return;
+    this._lastBgmTickMs = performance.now();
+    this._bgmIntervalId = window.setInterval(() => {
+      this._tickBgm();
+    }, 45);
   }
 
   /** @private */
@@ -160,15 +482,15 @@ class SoundEngine {
     const ctx = this.ctx;
     this._subFilter = ctx.createBiquadFilter();
     this._subFilter.type = 'highpass';
-    this._subFilter.frequency.setValueAtTime(32, ctx.currentTime);
+    this._subFilter.frequency.setValueAtTime(28, ctx.currentTime);
     this._subFilter.Q.setValueAtTime(0.7, ctx.currentTime);
 
     this._compressor = ctx.createDynamicsCompressor();
-    this._compressor.threshold.setValueAtTime(-8, ctx.currentTime);
-    this._compressor.knee.setValueAtTime(10, ctx.currentTime);
-    this._compressor.ratio.setValueAtTime(3.0, ctx.currentTime);
+    this._compressor.threshold.setValueAtTime(-9, ctx.currentTime);
+    this._compressor.knee.setValueAtTime(12, ctx.currentTime);
+    this._compressor.ratio.setValueAtTime(3.4, ctx.currentTime);
     this._compressor.attack.setValueAtTime(0.004, ctx.currentTime);
-    this._compressor.release.setValueAtTime(0.085, ctx.currentTime);
+    this._compressor.release.setValueAtTime(0.09, ctx.currentTime);
 
     this._masterGain = ctx.createGain();
     this._masterGain.gain.setValueAtTime(
@@ -179,14 +501,115 @@ class SoundEngine {
     this._sfxGain = ctx.createGain();
     this._sfxGain.gain.setValueAtTime(0.66, ctx.currentTime);
 
+    // Music bus with scene-adaptive lowpass filter & dark canyon delay-reverb send
     this._musicGain = ctx.createGain();
-    this._musicGain.gain.setValueAtTime(this._musicEnabled ? 0.18 : 0.0, ctx.currentTime);
+    this._musicGain.gain.setValueAtTime(this._musicEnabled ? 0.28 : 0.0, ctx.currentTime);
+
+    this._musicSceneFilter = ctx.createBiquadFilter();
+    this._musicSceneFilter.type = 'lowpass';
+    this._musicSceneFilter.frequency.setValueAtTime(18000, ctx.currentTime);
+    this._musicSceneFilter.Q.setValueAtTime(0.65, ctx.currentTime);
+
+    this._musicGain.connect(this._musicSceneFilter);
+    this._musicSceneFilter.connect(this._masterGain);
 
     this._sfxGain.connect(this._masterGain);
-    this._musicGain.connect(this._masterGain);
     this._masterGain.connect(this._subFilter);
     this._subFilter.connect(this._compressor);
     this._compressor.connect(ctx.destination);
+
+    // Allocate disposable per-track bus so track/stage transitions have ZERO audio bleed
+    this._ensureMusicTrackBus();
+  }
+
+  /**
+   * Allocate a fresh disposable track output + canyon reverb bus feeding _musicGain.
+   * Severing this bus on stopBgmHard() instantly eliminates lingering braams, pads, and reverb tails.
+   * @private
+   */
+  _ensureMusicTrackBus() {
+    if (!this.ctx || !this._musicGain || this._trackGain) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const trackGain = ctx.createGain();
+    trackGain.gain.setValueAtTime(1.0, now);
+
+    const revSend = ctx.createGain();
+    revSend.gain.setValueAtTime(0.32, now);
+
+    const revDelay = ctx.createDelay(1.0);
+    revDelay.delayTime.setValueAtTime(0.30, now);
+
+    const revFilter = ctx.createBiquadFilter();
+    revFilter.type = 'lowpass';
+    revFilter.frequency.setValueAtTime(1450, now);
+
+    const revFb = ctx.createGain();
+    revFb.gain.setValueAtTime(0.35, now);
+
+    trackGain.connect(this._musicGain);
+    revSend.connect(revDelay);
+    revDelay.connect(revFilter);
+    revFilter.connect(revFb);
+    revFb.connect(revDelay);
+    revFilter.connect(trackGain);
+
+    this._trackGain = trackGain;
+    this._musicReverbSend = revSend;
+    this._musicReverbDelay = revDelay;
+    this._musicReverbFilter = revFilter;
+    this._musicReverbFeedback = revFb;
+  }
+
+  /**
+   * Hard-stop active BGM immediately with zero reverb tail or note bleed across scene/stage boundaries.
+   */
+  stopBgmHard() {
+    this._bgmStopped = true;
+    this._stepIndex = 0;
+
+    const oldTrackGain = this._trackGain;
+    const oldRevSend = this._musicReverbSend;
+    const oldRevDelay = this._musicReverbDelay;
+    const oldRevFilter = this._musicReverbFilter;
+    const oldRevFb = this._musicReverbFeedback;
+
+    this._trackGain = null;
+    this._musicReverbSend = null;
+    this._musicReverbDelay = null;
+    this._musicReverbFilter = null;
+    this._musicReverbFeedback = null;
+
+    if (this.ctx && oldTrackGain) {
+      const now = this.ctx.currentTime;
+      try {
+        oldTrackGain.gain.cancelScheduledValues(now);
+        oldTrackGain.gain.setValueAtTime(Math.max(0.0001, oldTrackGain.gain.value), now);
+        oldTrackGain.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+      } catch {}
+      if (oldRevFb) {
+        try {
+          oldRevFb.gain.cancelScheduledValues(now);
+          oldRevFb.gain.setValueAtTime(0.0, now);
+        } catch {}
+      }
+      if (oldRevSend) {
+        try {
+          oldRevSend.gain.cancelScheduledValues(now);
+          oldRevSend.gain.setValueAtTime(0.0, now);
+        } catch {}
+      }
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          try { oldTrackGain.disconnect(); } catch {}
+          try { if (oldRevSend) oldRevSend.disconnect(); } catch {}
+          try { if (oldRevDelay) oldRevDelay.disconnect(); } catch {}
+          try { if (oldRevFilter) oldRevFilter.disconnect(); } catch {}
+          try { if (oldRevFb) oldRevFb.disconnect(); } catch {}
+        }, 45);
+      }
+    }
   }
 
   /**
@@ -286,32 +709,128 @@ class SoundEngine {
   }
 
   /**
-   * Enable or disable the adaptive cyberpunk synth combat pulse.
+   * Resolve stage or boss BGM track for a given wave number.
+   * Normal waves use classic per-zone stage BGM; Boss waves switch to Grand Boss BGM.
+   * @param {number} wave
+   * @param {boolean} [isBossWave=false]
+   * @returns {string}
+   */
+  resolveTrackForWave(wave, isBossWave = false) {
+    const w = ((Math.max(1, Math.floor(Number(wave) || 1)) - 1) % 15) + 1;
+    const boss = Boolean(isBossWave) || w === 5 || w === 10 || w === 15;
+    if (w <= 5) return boss ? 'zone1_boss' : 'zone1_normal';
+    if (w <= 10) return boss ? 'zone2_boss' : 'zone2_normal';
+    return boss ? 'zone3_boss' : 'zone3_normal';
+  }
+
+  /**
+   * Switch active BGM track cleanly. Whenever the track changes, forceReset is true,
+   * or playback was hard-stopped for a transition, severs the previous bus cleanly
+   * and starts the new track fresh from step 0 with zero audio bleed.
+   * @param {string} trackId
+   * @param {boolean} [forceReset=false]
+   */
+  setBgmTrack(trackId, forceReset = false) {
+    const nextId = BGM_TRACKS[trackId] ? trackId : 'main_theme';
+    const needsFreshStart = forceReset || nextId !== this._currentTrackId || this._bgmStopped;
+
+    if (needsFreshStart) {
+      this.stopBgmHard();
+      this._currentTrackId = nextId;
+      this._bossOverdrive = nextId.includes('boss');
+      this._bgmStopped = false;
+      this._stepIndex = 0;
+      if (this.ctx) {
+        this._ensureMusicTrackBus();
+        this._nextStepTime = this.ctx.currentTime + 0.045;
+      }
+    } else {
+      this._bossOverdrive = nextId.includes('boss');
+    }
+    this._syncMusicMix();
+  }
+
+  /**
+   * Set current game scene mode ('title' | 'playing' | 'paused' | 'result').
+   * @param {'title'|'playing'|'paused'|'result'} mode
+   */
+  setSceneMode(mode) {
+    const safe =
+      mode === 'playing' || mode === 'paused' || mode === 'result' ? mode : 'title';
+    this._sceneMode = safe;
+    this._inGameplay = safe === 'playing';
+    if (safe !== 'playing') {
+      this._bossOverdrive = false;
+    }
+    this._syncMusicMix();
+  }
+
+  /** @private */
+  _syncMusicMix() {
+    if (!this.ctx || !this._musicGain) return;
+    const now = this.ctx.currentTime;
+    let targetGain = 0.0;
+    let targetCutoff = 18000;
+
+    if (this._musicEnabled && !this._bgmStopped) {
+      if (this._sceneMode === 'playing') {
+        targetGain = this._bossOverdrive ? 0.30 : 0.25;
+        targetCutoff = 18000;
+      } else if (this._sceneMode === 'paused') {
+        targetGain = 0.13;
+        targetCutoff = 1100;
+      } else if (this._sceneMode === 'result') {
+        targetGain = 0.0;
+        targetCutoff = 4000;
+      } else {
+        // Title screen: monumental apocalyptic main theme
+        targetGain = 0.28;
+        targetCutoff = 15500;
+      }
+    }
+
+    try {
+      this._musicGain.gain.setTargetAtTime(targetGain, now, 0.06);
+      if (this._musicSceneFilter) {
+        this._musicSceneFilter.frequency.setTargetAtTime(targetCutoff, now, 0.09);
+      }
+    } catch {
+      this._musicGain.gain.value = targetGain;
+      if (this._musicSceneFilter) {
+        this._musicSceneFilter.frequency.value = targetCutoff;
+      }
+    }
+  }
+
+  /**
+   * Enable or disable procedural BGM synthesis.
    * @param {boolean} enabled
    */
   setMusicEnabled(enabled) {
     this._musicEnabled = Boolean(enabled);
-    if (this.ctx && this._musicGain) {
-      const target = this._musicEnabled && this._inGameplay ? 0.18 : 0.0;
-      try {
-        this._musicGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.08);
-      } catch {
-        this._musicGain.gain.value = target;
+    if (!this._musicEnabled) {
+      // Silence smoothly while preserving track state
+      this._syncMusicMix();
+    } else {
+      if (!this._bgmStopped && this.ctx) {
+        this._ensureMusicTrackBus();
+        this._nextStepTime = this.ctx.currentTime + 0.05;
       }
+      this._syncMusicMix();
     }
   }
 
   /** @private */
   _onGameState(payload) {
     const state = typeof payload === 'string' ? payload : payload && payload.state;
-    this._inGameplay = state === 'playing';
-    if (this.ctx && this._musicGain) {
-      const target = this._musicEnabled && this._inGameplay ? 0.18 : 0.0;
-      try {
-        this._musicGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.12);
-      } catch {
-        this._musicGain.gain.value = target;
-      }
+    if (state === 'playing') {
+      this.setSceneMode('playing');
+    } else if (state === 'paused') {
+      this.setSceneMode('paused');
+    } else if (state === 'victory' || state === 'gameover' || state === 'result') {
+      this.setSceneMode('result');
+    } else {
+      this.setSceneMode('title');
     }
   }
 
@@ -494,6 +1013,22 @@ class SoundEngine {
       curve[i] = Math.tanh(x * 2.5);
     }
     this._driveCurve = curve;
+    return curve;
+  }
+
+  /**
+   * Heavy asymmetric post-apocalyptic industrial overdrive curve for brass braams & distorted bass.
+   * @private
+   */
+  _getMetalDriveCurve() {
+    if (this._metalDriveCurve) return this._metalDriveCurve;
+    const n = 512;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      curve[i] = Math.tanh(x * 5.2 + 0.18 * x * x);
+    }
+    this._metalDriveCurve = curve;
     return curve;
   }
 
@@ -1357,6 +1892,12 @@ class SoundEngine {
 
   /** @private */
   _playWaveStarted(payload) {
+    if (payload && payload.wave != null) {
+      const trackId = this.resolveTrackForWave(payload.wave, payload.isBossWave);
+      const shouldForceReset =
+        this._bgmStopped || trackId !== this._currentTrackId || Boolean(payload.isBossWave);
+      this.setBgmTrack(trackId, shouldForceReset);
+    }
     if (!this._isReady()) return;
     try {
       const now = this.ctx.currentTime;
@@ -1409,38 +1950,75 @@ class SoundEngine {
   }
 
   /**
-   * Sync Web Audio 3D AudioListener to camera transform and schedule adaptive
-   * cyberpunk synth combat pulse notes via lookahead. Zero allocations.
+   * Sync Web Audio 3D AudioListener to camera transform during gameplay.
+   * BGM scheduling is driven reliably across all scenes by _tickBgm().
    *
-   * @param {number} dt
+   * @param {number} _dt
    */
-  update(dt) {
+  update(_dt) {
     if (!this._isReady()) return;
-    const clampedDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0.016;
-
-    // 1. Update 3D AudioListener position & orientation from Three.js camera matrixWorld
     this._syncAudioListener();
+  }
 
-    // 2. Smoothly blend combat intensity & schedule cyberpunk synth pulse steps
-    const desiredIntensity = this._musicEnabled && this._inGameplay ? this._targetIntensity : 0;
-    this._currentIntensity +=
-      (desiredIntensity - this._currentIntensity) * (1 - Math.exp(-2.4 * clampedDt));
-
-    if (this._currentIntensity < 0.05 || !this._musicEnabled || !this._inGameplay) {
-      this._nextStepTime = this.ctx.currentTime + 0.06;
+  /**
+   * Background lookahead scheduler dispatching:
+   * - Title Screen ('main_theme'): 64-step Post-Apocalyptic Main Theme
+   * - Normal Stages ('zone1_normal' | 'zone2_normal' | 'zone3_normal'): Original 32-step Stage BGM
+   * - Boss Rooms ('zone1_boss' | 'zone2_boss' | 'zone3_boss'): Grand Orchestral-Industrial Boss BGM
+   * @private
+   */
+  _tickBgm() {
+    if (!this._isReady() || !this._musicEnabled || this._bgmStopped) {
+      if (this.ctx) {
+        this._nextStepTime = this.ctx.currentTime + 0.05;
+      }
       return;
     }
+
+    this._ensureMusicTrackBus();
+    if (!this._trackGain) return;
+
+    const nowMs = performance.now();
+    const dt = Math.min(0.12, Math.max(0.01, (nowMs - (this._lastBgmTickMs || nowMs)) * 0.001));
+    this._lastBgmTickMs = nowMs;
+
+    let desiredIntensity = 0.28;
+    if (this._sceneMode === 'playing') {
+      const floor = this._bossOverdrive ? 0.85 : 0.45;
+      desiredIntensity = Math.max(floor, this._targetIntensity);
+    } else if (this._sceneMode === 'paused') {
+      desiredIntensity = 0.18;
+    } else if (this._sceneMode === 'result') {
+      return;
+    }
+
+    this._currentIntensity +=
+      (desiredIntensity - this._currentIntensity) * (1 - Math.exp(-2.8 * dt));
 
     const now = this.ctx.currentTime;
     if (this._nextStepTime < now - 0.25) {
       this._nextStepTime = now + 0.04;
     }
 
-    // Lookahead scheduling window (120ms) for rock-solid rhythm
-    while (this._nextStepTime < now + 0.12) {
-      this._schedulePulseStep(this._nextStepTime, this._stepIndex, this._currentIntensity);
-      this._nextStepTime += STEP_DURATION_SEC;
-      this._stepIndex = (this._stepIndex + 1) & 15;
+    if (this._currentTrackId === 'main_theme') {
+      const stepSec = APOC_MAIN_THEME.baseStepSec;
+      while (this._nextStepTime < now + 0.14) {
+        this._scheduleApocMainStep(this._nextStepTime, this._stepIndex, this._currentIntensity, stepSec);
+        this._nextStepTime += stepSec;
+        this._stepIndex = (this._stepIndex + 1) & 63;
+      }
+    } else {
+      const track = BGM_TRACKS[this._currentTrackId] || BGM_TRACKS.zone1_normal;
+      const stepSec = track.stepSec || 0.125;
+      while (this._nextStepTime < now + 0.13) {
+        if (track.isBoss) {
+          this._scheduleGrandBossStep(this._nextStepTime, this._stepIndex, this._currentIntensity, track);
+        } else {
+          this._scheduleZoneNormalStep(this._nextStepTime, this._stepIndex, this._currentIntensity, track);
+        }
+        this._nextStepTime += stepSec;
+        this._stepIndex = (this._stepIndex + 1) & 31;
+      }
     }
   }
 
@@ -1504,40 +2082,488 @@ class SoundEngine {
   }
 
   /**
-   * Schedule one 16th-note step of the adaptive cyberpunk dark-synth combat pulse.
+   * Colossal Post-Apocalyptic Brass Braam (3 detuned saws + sub square through industrial overdrive).
    * @private
    */
-  _schedulePulseStep(time, step, intensity) {
-    try {
-      const dest = this._musicGain;
-      const bassHz = BASS_PATTERN_HZ[step] * 0.75; // Deeper post-apocalyptic industrial drone register
-      const isDownbeat = step % 4 === 0;
-      const isBackbeat = step === 4 || step === 12;
-      const isOffbeat = step % 4 === 2;
+  _playApocBraam(time, baseFreq, duration, gainPeak) {
+    const ctx = this.ctx;
+    const dest = this._trackGain || this._musicGain;
+    const rev = this._musicReverbSend;
+    const freq = Math.max(32, baseFreq < 45 ? baseFreq * 2 : baseFreq);
 
-      // Layer 1: Gritty low-pass industrial drone sub-bass (zero bright neon synth)
-      if (isDownbeat || step % 2 === 0) {
-        const cutoff = 140 + intensity * 420 + (isDownbeat ? 120 : 0);
-        const bassGain = (0.28 + intensity * 0.22) * (isDownbeat ? 1.18 : 0.75);
-        this._playTone(dest, 'sawtooth', time, STEP_DURATION_SEC * 1.45, bassHz, bassHz * 0.98, bassGain, 0.008, cutoff);
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = this._getMetalDriveCurve();
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.setValueAtTime(3.2, time);
+    filter.frequency.setValueAtTime(160, time);
+    filter.frequency.exponentialRampToValueAtTime(1250, time + Math.min(0.24, duration * 0.25));
+    filter.frequency.exponentialRampToValueAtTime(240, time + duration);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, time);
+    env.gain.linearRampToValueAtTime(gainPeak, time + 0.055);
+    env.gain.setValueAtTime(gainPeak * 0.88, time + duration * 0.55);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    const detunes = [-12, 0, 12];
+    const oscs = [];
+    for (let i = 0; i < detunes.length; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, time);
+      osc.detune.setValueAtTime(detunes[i], time);
+      osc.connect(shaper);
+      oscs.push(osc);
+    }
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(Math.max(28, baseFreq), time);
+    subOsc.connect(shaper);
+    oscs.push(subOsc);
+
+    shaper.connect(filter);
+    filter.connect(env);
+    env.connect(dest);
+    if (rev) env.connect(rev);
+
+    oscs[0].onended = () => {
+      try {
+        for (let i = 0; i < oscs.length; i++) oscs[i].disconnect();
+        shaper.disconnect();
+        filter.disconnect();
+        env.disconnect();
+      } catch {}
+    };
+
+    for (let i = 0; i < oscs.length; i++) {
+      oscs[i].start(time);
+      oscs[i].stop(time + duration + 0.04);
+    }
+  }
+
+  /**
+   * Desolate Cathedral Choir / Dark Brass-Strings Pad swelling across each bar.
+   * @private
+   */
+  _playApocChoirPad(time, freqs, duration, gainPeak) {
+    const ctx = this.ctx;
+    const dest = this._trackGain || this._musicGain;
+    const rev = this._musicReverbSend;
+
+    const f1 = ctx.createBiquadFilter();
+    f1.type = 'lowpass';
+    f1.frequency.setValueAtTime(980, time);
+    f1.Q.setValueAtTime(1.1, time);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, time);
+    env.gain.linearRampToValueAtTime(gainPeak, time + Math.min(0.42, duration * 0.3));
+    env.gain.setValueAtTime(gainPeak * 0.82, time + duration * 0.72);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    const oscs = [];
+    for (let i = 0; i < freqs.length; i++) {
+      const oA = ctx.createOscillator();
+      oA.type = i === 0 ? 'sawtooth' : 'triangle';
+      oA.frequency.setValueAtTime(freqs[i], time);
+      oA.detune.setValueAtTime(i % 2 === 0 ? -7 : 7, time);
+      oA.connect(f1);
+      oscs.push(oA);
+    }
+
+    f1.connect(env);
+    env.connect(dest);
+    if (rev) env.connect(rev);
+
+    oscs[0].onended = () => {
+      try {
+        for (let i = 0; i < oscs.length; i++) oscs[i].disconnect();
+        f1.disconnect();
+        env.disconnect();
+      } catch {}
+    };
+
+    for (let i = 0; i < oscs.length; i++) {
+      oscs[i].start(time);
+      oscs[i].stop(time + duration + 0.05);
+    }
+  }
+
+  /**
+   * Destructive Industrial Drop-D Distorted Bass Chug.
+   * @private
+   */
+  _playApocDistBass(time, freq, duration, gainPeak, aggression) {
+    const ctx = this.ctx;
+    const dest = this._trackGain || this._musicGain;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, time);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.992, time + duration);
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = aggression > 0.45 ? this._getMetalDriveCurve() : this._getDriveCurve();
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    const peakCut = 240 + aggression * 980;
+    lp.frequency.setValueAtTime(peakCut, time);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(120, peakCut * 0.38), time + duration);
+    lp.Q.setValueAtTime(2.2, time);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(gainPeak, time + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    osc.connect(shaper);
+    shaper.connect(lp);
+    lp.connect(g);
+    g.connect(dest);
+
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        shaper.disconnect();
+        lp.disconnect();
+        g.disconnect();
+      } catch {}
+    };
+
+    osc.start(time);
+    osc.stop(time + duration + 0.025);
+  }
+
+  /**
+   * Iconic Soaring Post-Apocalyptic Theme Lead (tragic orchestral brass on Title -> roaring lead in Combat).
+   * @private
+   */
+  _playApocLead(time, freq, duration, gainPeak, aggression) {
+    const ctx = this.ctx;
+    const dest = this._trackGain || this._musicGain;
+    const rev = this._musicReverbSend;
+
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = 'sawtooth';
+    o2.type = aggression > 0.5 ? 'sawtooth' : 'triangle';
+    o1.frequency.setValueAtTime(freq, time);
+    o2.frequency.setValueAtTime(freq, time);
+    o1.detune.setValueAtTime(-6, time);
+    o2.detune.setValueAtTime(6, time);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1250 + aggression * 1550, time);
+    lp.Q.setValueAtTime(1.6, time);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(gainPeak, time + 0.028);
+    g.gain.setValueAtTime(gainPeak * 0.78, time + duration * 0.65);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    if (aggression > 0.55) {
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = this._getDriveCurve();
+      o1.connect(shaper);
+      o2.connect(shaper);
+      shaper.connect(lp);
+      o1.onended = () => {
+        try {
+          o1.disconnect();
+          o2.disconnect();
+          shaper.disconnect();
+          lp.disconnect();
+          g.disconnect();
+        } catch {}
+      };
+    } else {
+      o1.connect(lp);
+      o2.connect(lp);
+      o1.onended = () => {
+        try {
+          o1.disconnect();
+          o2.disconnect();
+          lp.disconnect();
+          g.disconnect();
+        } catch {}
+      };
+    }
+
+    lp.connect(g);
+    g.connect(dest);
+    if (rev) g.connect(rev);
+
+    o1.start(time);
+    o2.start(time);
+    o1.stop(time + duration + 0.04);
+    o2.stop(time + duration + 0.04);
+  }
+
+  /**
+   * Thunderous Apocalyptic War-Drum / Demolition Taiko Boom.
+   * @private
+   */
+  _playWarDrum(time, strength, aggression) {
+    const dest = this._trackGain || this._musicGain;
+    const rev = this._musicReverbSend;
+    const amp = (strength >= 2 ? 0.54 : 0.36) * (0.76 + aggression * 0.36);
+    const dur = strength >= 2 ? 0.34 : 0.20;
+    this._playHeavyPunch(dest, time, dur, strength >= 2 ? 122 : 98, 28, amp);
+    if (strength >= 2) {
+      this._playNoiseBurst(dest, time, 0.14, 0.22 * (0.7 + aggression * 0.4), 'lowpass', 520, 110, 0.9, true);
+      if (rev) {
+        this._playNoiseBurst(rev, time, 0.12, 0.14, 'lowpass', 360, 95, 0.8, true);
+      }
+    }
+  }
+
+  /**
+   * Crushing Scrap-Iron Anvil / Industrial Steel Slam.
+   * @private
+   */
+  _playAnvilClang(time, strength, aggression) {
+    const dest = this._trackGain || this._musicGain;
+    const rev = this._musicReverbSend;
+    const scale = 0.65 + aggression * 0.5;
+    if (strength >= 2) {
+      // Heavy metallic anvil crash + punchy industrial snare body
+      this._playHeavyPunch(dest, time, 0.16, 155, 44, 0.34 * scale);
+      this._playNoiseBurst(dest, time, 0.18, 0.24 * scale, 'bandpass', 1680, 480, 2.8, false);
+      this._playTone(dest, 'triangle', time, 0.22, 418, 396, 0.11 * scale, 0.001, 2400);
+      this._playTone(dest, 'sine', time, 0.19, 1140, 1085, 0.08 * scale, 0.001);
+      if (rev) {
+        this._playNoiseBurst(rev, time, 0.16, 0.14 * scale, 'bandpass', 1400, 520, 2.4, false);
+      }
+    } else {
+      // Tight industrial rim/snare crack
+      this._playTone(dest, 'triangle', time, 0.08, 185, 78, 0.16 * scale, 0.002);
+      this._playNoiseBurst(dest, time, 0.095, 0.17 * scale, 'bandpass', 2100, 760, 1.8, false);
+    }
+  }
+
+  /**
+   * Schedule one 16th-note step of the 64-step Post-Apocalyptic Main Theme (Title Screen).
+   * @private
+   */
+  _scheduleApocMainStep(time, step, intensity, stepSec) {
+    try {
+      const idx = step & 63;
+      const aggression = 0.26;
+
+      // 1. Colossal Brass Braam on major structural hits
+      const braam = APOC_MAIN_THEME.braam[idx];
+      if (braam) {
+        this._playApocBraam(time, braam.freq, braam.dur, braam.gain * 0.94);
       }
 
-      // Layer 2: Heavy industrial war-drum kick & muffled steel shaker
-      if (intensity > 0.28) {
-        const drumScale = Math.min(1, (intensity - 0.28) / 0.45);
-        if (isDownbeat) {
-          this._playTone(dest, 'sine', time, 0.14, 112, 32, 0.56 * drumScale, 0.002);
-          this._playNoiseBurst(dest, time, 0.04, 0.16 * drumScale, 'lowpass', 420, 140, 1.0, true);
-        } else if (isOffbeat) {
-          this._playNoiseBurst(dest, time, 0.032, 0.12 * drumScale, 'bandpass', 2400, 1100, 2.2, true);
+      // 2. Desolate Cathedral Choir / Dark Strings Pad on each 16-step bar
+      const chord = APOC_MAIN_THEME.chords[idx];
+      if (chord) {
+        this._playApocChoirPad(time, chord, stepSec * 15.5, 0.12);
+      }
+
+      // 3. Destructive Industrial Drop-D Bass Riff (heavy brooding pulse on Title)
+      const bassHz = APOC_MAIN_THEME.bass[idx];
+      if (bassHz > 0) {
+        const isTitleHeavyBeat = (idx & 3) === 0 || (idx & 7) === 6;
+        if (isTitleHeavyBeat) {
+          this._playApocDistBass(time, bassHz, stepSec * 2.1, 0.18, aggression);
         }
       }
 
-      // Layer 3: Heavy industrial war-drum & metallic anvil slam (zero neon square synth)
-      if (intensity > 0.52 && (isBackbeat || (intensity > 0.78 && step === 14))) {
-        const clangScale = Math.min(1, (intensity - 0.52) / 0.42);
-        this._playTone(dest, 'sine', time, 0.18, 92, 28, 0.48 * clangScale, 0.002);
-        this._playNoiseBurst(dest, time, 0.13, 0.26 * clangScale, 'bandpass', 1180, 360, 2.8, true);
+      // 4. Iconic Soaring Theme Melody
+      const leadNote = APOC_MAIN_THEME.lead[idx];
+      if (leadNote) {
+        this._playApocLead(time, leadNote.f, stepSec * leadNote.d * 0.96, 0.15, aggression);
+      }
+
+      // 5. Monumental Half-Time War-Drums
+      const kickLv = APOC_MAIN_THEME.warDrum[idx];
+      if (kickLv > 0) {
+        this._playWarDrum(time, kickLv, aggression);
+      }
+
+      // 6. Crushing Metallic Anvil Slams on Heavy Backbeats
+      const anvilLv = APOC_MAIN_THEME.anvil[idx];
+      if (anvilLv >= 2) {
+        this._playAnvilClang(time, anvilLv, aggression);
+      }
+    } catch {}
+  }
+
+  /**
+   * Original 32-step Zone Stage BGM Scheduler (zone1_normal, zone2_normal, zone3_normal).
+   * @private
+   */
+  _scheduleZoneNormalStep(time, step, intensity, track) {
+    try {
+      const dest = this._trackGain || this._musicGain;
+      const idx = step & 31;
+      const stepSec = track.stepSec || 0.125;
+
+      // 1. Driving Zone Bassline
+      const bassHz = track.bass[idx];
+      if (bassHz > 0) {
+        const cut = (track.bassFilterBase || 190) + intensity * (track.bassFilterSpan || 420);
+        this._playTone(
+          dest,
+          track.bassWave || 'sawtooth',
+          time,
+          stepSec * 1.35,
+          bassHz,
+          bassHz * 0.995,
+          (track.bassGain || 0.26) * (0.72 + intensity * 0.35),
+          0.004,
+          cut
+        );
+      }
+
+      // 2. Atmospheric Pad Chords every 8 steps
+      if ((idx & 7) === 0 && track.chords && track.chords.length > 0) {
+        const chord = track.chords[(idx >> 3) % track.chords.length];
+        for (let i = 0; i < chord.length; i++) {
+          this._playTone(
+            dest,
+            track.padWave || 'triangle',
+            time,
+            stepSec * 7.6,
+            chord[i],
+            chord[i],
+            track.padGain || 0.07,
+            0.09,
+            track.padFilter || 760
+          );
+        }
+      }
+
+      // 3. Signature Zone Lead Arpeggio
+      const leadHz = track.lead[idx];
+      if (leadHz > 0) {
+        this._playTone(
+          dest,
+          track.leadWave || 'triangle',
+          time,
+          stepSec * 1.45,
+          leadHz,
+          leadHz,
+          (track.leadGain || 0.14) * (0.68 + intensity * 0.42),
+          0.006,
+          track.leadFilter || 1900
+        );
+      }
+
+      // 4. Kick Drum
+      const kickLv = track.kick[idx];
+      if (kickLv > 0) {
+        this._playHeavyPunch(
+          dest,
+          time,
+          kickLv === 2 ? 0.17 : 0.11,
+          kickLv === 2 ? 128 : 96,
+          36,
+          (kickLv === 2 ? 0.44 : 0.28) * (0.78 + intensity * 0.28)
+        );
+      }
+
+      // 5. Snare
+      const snareLv = track.snare[idx];
+      if (snareLv > 0) {
+        this._playTone(dest, 'triangle', time, 0.065, 195, 86, 0.14, 0.002);
+        this._playNoiseBurst(dest, time, 0.09, 0.16, 'bandpass', 2200, 880, 1.5, false);
+      }
+
+      // 6. Hi-Hat (scales with combat intensity)
+      const hatLv = track.hat[idx];
+      if (hatLv > 0 && intensity > 0.22) {
+        this._playNoiseBurst(
+          dest,
+          time,
+          hatLv === 2 ? 0.048 : 0.02,
+          (hatLv === 2 ? 0.095 : 0.055) * Math.min(1, intensity + 0.2),
+          'highpass',
+          6200,
+          3600,
+          1.4,
+          false
+        );
+      }
+    } catch {}
+  }
+
+  /**
+   * Grand Monumental Boss Room BGM Scheduler (zone1_boss, zone2_boss, zone3_boss).
+   * Combines each boss's signature fast motif with colossal brass braams, cathedral choir chords,
+   * distorted drop bass, thunderous taiko war-drums, and heavy metallic anvil slams.
+   * @private
+   */
+  _scheduleGrandBossStep(time, step, intensity, track) {
+    try {
+      const dest = this._trackGain || this._musicGain;
+      const idx = step & 31;
+      const stepSec = track.stepSec || 0.108;
+      const aggression = Math.min(1.0, 0.72 + intensity * 0.28);
+
+      // 1. Colossal Brass Braam + Cathedral Choir Swell on every bar downbeat (steps 0, 8, 16, 24)
+      if ((idx & 7) === 0 && track.chords && track.chords.length > 0) {
+        const barIdx = (idx >> 3) % track.chords.length;
+        const baseChord = track.chords[barIdx];
+        const rootHz = baseChord[0] || 138.59;
+        const braamHz = rootHz * 0.5;
+        this._playApocBraam(time, braamHz, stepSec * 7.6, idx === 0 || idx === 16 ? 0.42 : 0.34);
+
+        // Expand 2-note chord into a lush 4-voice ominous choir chord (root, fifth, octave, minor 10th)
+        const choirFreqs = [
+          rootHz,
+          baseChord[1] || rootHz * 1.498,
+          rootHz * 2.0,
+          (baseChord[1] || rootHz * 1.498) * 1.587,
+        ];
+        this._playApocChoirPad(time, choirFreqs, stepSec * 7.8, 0.11);
+      }
+
+      // 2. Crushing Overdriven Boss Bassline
+      const bassHz = track.bass[idx];
+      if (bassHz > 0) {
+        this._playApocDistBass(time, bassHz, stepSec * 1.32, 0.27 + intensity * 0.08, aggression);
+      }
+
+      // 3. Soaring Heroic-Menacing Boss Lead (detuned dual-saw brass/synth lead)
+      const leadHz = track.lead[idx];
+      if (leadHz > 0) {
+        this._playApocLead(time, leadHz, stepSec * 1.55, 0.145 + intensity * 0.045, aggression);
+      }
+
+      // 4. Thunderous Double-Kick War-Drums
+      const kickLv = track.kick[idx];
+      if (kickLv > 0) {
+        this._playWarDrum(time, kickLv, aggression);
+      }
+
+      // 5. Heavy Scrap-Iron Anvil & Industrial Snare Slams
+      const snareLv = track.snare[idx];
+      if (snareLv > 0) {
+        this._playAnvilClang(time, snareLv, aggression);
+      }
+
+      // 6. Relentless Metallic Boss Hi-Hat
+      const hatLv = track.hat[idx];
+      if (hatLv > 0) {
+        this._playNoiseBurst(
+          dest,
+          time,
+          hatLv === 2 ? 0.05 : 0.022,
+          hatLv === 2 ? 0.105 : 0.062,
+          'highpass',
+          5800,
+          3400,
+          1.5,
+          false
+        );
       }
     } catch {}
   }
@@ -1548,6 +2574,14 @@ class SoundEngine {
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
+    this.stopBgmHard();
+
+    if (this._bgmIntervalId !== null) {
+      try {
+        window.clearInterval(this._bgmIntervalId);
+      } catch {}
+      this._bgmIntervalId = null;
+    }
 
     for (let i = 0; i < this._unsubs.length; i++) {
       this._unsubs[i]();

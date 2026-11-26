@@ -10,6 +10,9 @@
     "lint": "node --check server.js && node --check src/runtime.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
+    "eslint": "^10.15.0",
+    "express": "^4.21.2",
+    "firebase": "^13.4.0"
   }
 }

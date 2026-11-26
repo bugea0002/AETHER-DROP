@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public competitive run record for AETHER DROP global leaderboards (no PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated Firebase user UID"
+        },
+        "callsign": {
+          "type": "string",
+          "description": "Player chosen display callsign (1-18 chars)"
+        },
+        "titleId": {
+          "type": "string",
+          "description": "Equipped title identifier"
+        },
+        "titleLabel": {
+          "type": "string",
+          "description": "Equipped title display label (1-28 chars)"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["campaign", "endless", "daily"],
+          "description": "Game mode board identifier"
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "YYYY-MM-DD for daily mode or 'all' for campaign/endless"
+        },
+        "score": {
+          "type": "integer",
+          "description": "Final run score"
+        },
+        "wave": {
+          "type": "integer",
+          "description": "Highest wave reached"
+        },
+        "heat": {
+          "type": "integer",
+          "description": "Heat contract level (0-10)"
+        },
+        "kills": {
+          "type": "integer",
+          "description": "Enemies eliminated"
+        },
+        "headshots": {
+          "type": "integer",
+          "description": "Headshots achieved"
+        },
+        "elapsedSec": {
+          "type": "number",
+          "description": "Run duration in seconds"
+        },
+        "frameId": {
+          "type": "string",
+          "description": "Pilot frame ID used during the run"
+        },
+        "primaryWeaponId": {
+          "type": "string",
+          "description": "Most-used weapon ID during the run"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when record was submitted"
+        }
+      },
+      "required": [
+        "uid",
+        "callsign",
+        "titleId",
+        "titleLabel",
+        "mode",
+        "dateKey",
+        "score",
+        "wave",
+        "heat",
+        "kills",
+        "headshots",
+        "elapsedSec",
+        "frameId",
+        "primaryWeaponId",
+        "updatedAt"
+      ]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Public non-sensitive healthcheck document for verifying Firestore connectivity.",
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["google.com"]
+  },
+  "firestore": [
+    {
+      "path": "/leaderboards/{boardKey}/entries/{uid}",
+      "schema": {
+        "$ref": "#/backend/entities/LeaderboardEntry"
+      },
+      "description": "Global leaderboard personal-best entries grouped by boardKey (campaign, endless, daily_YYYY-MM-DD)."
+    },
+    {
+      "path": "/test/{docId}",
+      "schema": {
+        "$ref": "#/backend/entities/ConnectionTest"
+      },
+      "description": "Startup Firestore connection check document (/test/connection)."
+    }
+  ]
+}

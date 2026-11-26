@@ -1,0 +1,180 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny across the entire database
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(uid) {
+      return isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    function isValidMode(mode) {
+      return mode == 'campaign' || mode == 'endless' || mode == 'daily';
+    }
+
+    function isValidBoardKey(boardKey) {
+      return boardKey == 'campaign'
+        || boardKey == 'endless'
+        || boardKey.matches('^daily_[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isValidFrameId(frameId) {
+      return frameId in ['vanguard', 'strider', 'bastion', 'apex'];
+    }
+
+    function isValidWeaponId(weaponId) {
+      return weaponId in [
+        'pulse_rifle',
+        'scattergun',
+        'railgun',
+        'plasma_smg',
+        'weld_pistol',
+        'arc_rivet',
+        'repulsor'
+      ];
+    }
+
+    function isValidTitleId(titleId) {
+      return titleId in [
+        'rookie_dropper',
+        'master_pulse',
+        'master_scatter',
+        'master_rail',
+        'master_smg',
+        'master_weld',
+        'master_arc',
+        'master_repulsor',
+        'heat_3_conq',
+        'heat_5_conq',
+        'heat_7_conq',
+        'heat_10_conq',
+        'streak_3',
+        'streak_7',
+        'endless_survivor'
+      ];
+    }
+
+    function matchesBoardKey(boardKey, mode, dateKey) {
+      return (mode == 'campaign' && boardKey == 'campaign' && dateKey == 'all')
+        || (mode == 'endless' && boardKey == 'endless' && dateKey == 'all')
+        || (mode == 'daily'
+            && dateKey is string
+            && dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && boardKey == ('daily_' + dateKey));
+    }
+
+    function hasValidLeaderboardFields(data, uid) {
+      return data.uid is string
+        && data.uid == uid
+        && data.uid == request.auth.uid
+        && data.callsign is string
+        && data.callsign.size() >= 1
+        && data.callsign.size() <= 18
+        && data.titleId is string
+        && isValidTitleId(data.titleId)
+        && data.titleLabel is string
+        && data.titleLabel.size() >= 1
+        && data.titleLabel.size() <= 28
+        && isValidMode(data.mode)
+        && data.score is int
+        && data.score >= 0
+        && data.score <= 2000000000
+        && data.wave is int
+        && data.wave >= 1
+        && data.wave <= 9999
+        && data.heat is int
+        && data.heat >= 0
+        && data.heat <= 10
+        && data.kills is int
+        && data.kills >= 0
+        && data.kills <= 1000000
+        && data.headshots is int
+        && data.headshots >= 0
+        && data.headshots <= data.kills
+        && data.elapsedSec is number
+        && data.elapsedSec >= 0
+        && data.elapsedSec <= 86400
+        && data.frameId is string
+        && isValidFrameId(data.frameId)
+        && data.primaryWeaponId is string
+        && isValidWeaponId(data.primaryWeaponId)
+        && data.updatedAt == request.time;
+    }
+
+    function isValidLeaderboardCreate(boardKey, uid) {
+      return incoming().keys().hasAll([
+          'uid', 'callsign', 'titleId', 'titleLabel', 'mode', 'dateKey',
+          'score', 'wave', 'heat', 'kills', 'headshots', 'elapsedSec',
+          'frameId', 'primaryWeaponId', 'updatedAt'
+        ])
+        && incoming().keys().hasOnly([
+          'uid', 'callsign', 'titleId', 'titleLabel', 'mode', 'dateKey',
+          'score', 'wave', 'heat', 'kills', 'headshots', 'elapsedSec',
+          'frameId', 'primaryWeaponId', 'updatedAt'
+        ])
+        && matchesBoardKey(boardKey, incoming().mode, incoming().dateKey)
+        && hasValidLeaderboardFields(incoming(), uid);
+    }
+
+    function isValidLeaderboardUpdate(boardKey, uid) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'callsign', 'titleId', 'titleLabel', 'score', 'wave', 'heat',
+          'kills', 'headshots', 'elapsedSec', 'frameId', 'primaryWeaponId', 'updatedAt'
+        ])
+        && incoming().uid == existing().uid
+        && incoming().mode == existing().mode
+        && incoming().dateKey == existing().dateKey
+        && incoming().score >= existing().score
+        && matchesBoardKey(boardKey, incoming().mode, incoming().dateKey)
+        && hasValidLeaderboardFields(incoming(), uid);
+    }
+
+    // Startup connectivity check document (/test/connection)
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    // Global shared competitive leaderboard (public read, zero PII, verified owner write)
+    match /leaderboards/{boardKey}/entries/{uid} {
+      allow get: if isValidBoardKey(boardKey) && isValidId(uid);
+      allow list: if isValidBoardKey(boardKey)
+        && request.query.limit != null
+        && request.query.limit <= 50
+        && resource.data.score >= 0;
+      allow create: if isVerifiedUser()
+        && isValidBoardKey(boardKey)
+        && isValidId(uid)
+        && uid == request.auth.uid
+        && isValidLeaderboardCreate(boardKey, uid);
+      allow update: if isOwner(uid)
+        && isValidBoardKey(boardKey)
+        && isValidId(uid)
+        && isValidLeaderboardUpdate(boardKey, uid);
+      allow delete: if isOwner(uid) && isValidBoardKey(boardKey) && isValidId(uid);
+    }
+  }
+}

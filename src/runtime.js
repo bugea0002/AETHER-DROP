@@ -66,7 +66,10 @@ const MODULE_FILES = [
 ];
 
 async function bootModularGame() {
-  await Promise.all(MODULE_FILES.map((relPath) => import(relPath + "?v=20261126k")));
+  await Promise.all([
+    import("./firebase/FirebaseService.js?v=20261126l"),
+    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261126l")),
+  ]);
   globalThis.__require("src/main.js");
 }
 
