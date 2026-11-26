@@ -43,6 +43,10 @@ function bootstrap() {
   const titleQualityBadge = byId('title-quality-badge');
   const titleMenuMain = byId('title-menu-main');
   const btnDeploy = byId('btn-deploy');
+  const panelDeploy = byId('title-panel-deploy');
+  const btnDeployBack = byId('btn-deploy-back');
+  const btnDeployLaunch = byId('btn-deploy-launch');
+  const deployHeatGrid = byId('deploy-heat-grid');
   const btnTutorial = byId('btn-tutorial');
   const btnTutExit = byId('btn-tut-exit');
   if (btnTutorial) btnTutorial.addEventListener('click', () => startTutorialRun());
@@ -51,6 +55,7 @@ function bootstrap() {
   const btnTitleArmory = byId('btn-title-armory');
   const panelArmory = byId('title-panel-armory');
   const btnArmoryBack = byId('btn-armory-back');
+  const btnArmoryReset = byId('btn-armory-reset');
   const armoryGoldAmount = byId('armory-gold-amount');
   const armoryGrid = byId('armory-grid');
   const upgradePanel = byId('upgrade-panel');
@@ -70,6 +75,7 @@ function bootstrap() {
   const btnSettingsBack = byId('btn-settings-back');
   const panelAchievements = byId('title-panel-achievements');
   const btnAchievementsBack = byId('btn-achievements-back');
+  const btnAchClaimAll = byId('btn-ach-claim-all');
   const achievementsGrid = byId('achievements-grid');
   const achProgressText = byId('ach-progress-text');
   const achProgressFill = byId('ach-progress-fill');
@@ -151,6 +157,8 @@ function bootstrap() {
     ownedFrames: ['vanguard'],
     equippedFrame: 'vanguard',
     achievements: [],
+    claimedAchievements: {},
+    maxUnlockedHeat: 0,
     bestEndlessWave: 0,
     totalKillsAllTime: 0,
     voidGatesDestroyed: 0,
@@ -222,6 +230,15 @@ function bootstrap() {
       if (Array.isArray(parsed.achievements)) {
         metaState.achievements = Array.from(new Set(parsed.achievements));
       }
+      if (parsed.claimedAchievements && typeof parsed.claimedAchievements === 'object') {
+        metaState.claimedAchievements = Object.assign({}, parsed.claimedAchievements);
+      }
+      if (Number.isFinite(parsed.maxUnlockedHeat)) {
+        metaState.maxUnlockedHeat = Math.max(
+          0,
+          Math.min(HEAT_CONTRACTS.length - 1, Math.floor(parsed.maxUnlockedHeat))
+        );
+      }
       if (Number.isFinite(parsed.bestEndlessWave)) {
         metaState.bestEndlessWave = Math.max(0, Math.floor(parsed.bestEndlessWave));
       }
@@ -234,14 +251,59 @@ function bootstrap() {
     }
   } catch {}
 
+  // Legacy migration: if player already cleared HEAT 2+ before HEAT 0..10 existed, ensure at least HEAT 3 unlocked
+  if (metaState.achievements.includes('heat_clear') && metaState.maxUnlockedHeat < 3) {
+    metaState.maxUnlockedHeat = 3;
+  } else if (metaState.achievements.includes('abyss_clear') && metaState.maxUnlockedHeat < 1) {
+    metaState.maxUnlockedHeat = 1;
+  }
+
   function getEquippedFrame() {
     return PILOT_FRAMES.find((f) => f.id === metaState.equippedFrame) || PILOT_FRAMES[0];
   }
 
   let selectedMissionMode = 'campaign'; // 'campaign' | 'endless' | 'daily'
-  let selectedHeatLevel = 0; // 0..3
+  let selectedHeatLevel = 0; // 0..maxUnlockedHeat
+  let armoryResetConfirmPending = false;
+  let armoryResetConfirmTimer = null;
 
   let activeAchCategory = 'all';
+
+  function getUnclaimedAchievementGold() {
+    let total = 0;
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
+      const a = ACHIEVEMENTS[i];
+      if (!metaState.achievements.includes(a.id)) continue;
+      const claimed = Number(metaState.claimedAchievements[a.id]) || 0;
+      if ((a.reward || 0) > claimed) {
+        total += (a.reward || 0) - claimed;
+      }
+    }
+    return total;
+  }
+
+  function claimAllAchievementRewards() {
+    let gained = 0;
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
+      const a = ACHIEVEMENTS[i];
+      if (!metaState.achievements.includes(a.id)) continue;
+      const claimed = Number(metaState.claimedAchievements[a.id]) || 0;
+      const diff = (a.reward || 0) - claimed;
+      if (diff > 0) {
+        gained += diff;
+        metaState.claimedAchievements[a.id] = a.reward || 0;
+      }
+    }
+    if (gained > 0) {
+      metaState.gold += gained;
+      saveMetaState();
+      if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+      if (armoryGoldAmount) armoryGoldAmount.textContent = `${metaState.gold} G`;
+      renderMedalsStrip();
+      renderArmoryUI();
+      playUiSfx('buy');
+    }
+  }
 
   function unlockAchievement(id) {
     if (metaState.achievements.includes(id)) return;
@@ -250,7 +312,9 @@ function bootstrap() {
     metaState.achievements.push(id);
     if (ach.reward > 0) {
       metaState.gold += ach.reward;
+      metaState.claimedAchievements[ach.id] = ach.reward;
       if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+      if (armoryGoldAmount) armoryGoldAmount.textContent = `${metaState.gold} G`;
     }
     saveMetaState();
     renderMedalsStrip();
@@ -264,11 +328,41 @@ function bootstrap() {
     }
   }
 
+  function tryUnlockNextHeat(clearedHeatLevel) {
+    const safeHeat = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, Math.floor(clearedHeatLevel || 0)));
+    if (safeHeat >= 2) unlockAchievement('heat_clear');
+    if (safeHeat >= 5) unlockAchievement('heat_5');
+    if (safeHeat >= 10) unlockAchievement('heat_10');
+    if (safeHeat >= metaState.maxUnlockedHeat && metaState.maxUnlockedHeat < HEAT_CONTRACTS.length - 1) {
+      metaState.maxUnlockedHeat = Math.min(HEAT_CONTRACTS.length - 1, safeHeat + 1);
+      saveMetaState();
+      const nextCfg = HEAT_CONTRACTS[metaState.maxUnlockedHeat];
+      if (eventBus && nextCfg) {
+        eventBus.emit(EVENTS.ANNOUNCEMENT, {
+          kicker: '위협도 단계 해금',
+          title: `${nextCfg.label} 개방!`,
+          subtitle: nextCfg.desc,
+          duration: 3.6,
+        });
+      }
+      updateMissionConfigUI();
+    }
+  }
+
   function renderMedalsStrip() {
     const unlockedCount = metaState.achievements.length;
     const totalCount = ACHIEVEMENTS.length;
+    const unclaimedGold = getUnclaimedAchievementGold();
     if (titleAchBadge) {
-      titleAchBadge.textContent = `${unlockedCount}/${totalCount}`;
+      titleAchBadge.textContent = unclaimedGold > 0 ? `+${unclaimedGold}G` : `${unlockedCount}/${totalCount}`;
+    }
+    if (btnAchClaimAll) {
+      if (unclaimedGold > 0) {
+        btnAchClaimAll.textContent = `미수령 보상 수령 (+${unclaimedGold} G)`;
+        btnAchClaimAll.classList.remove('hidden');
+      } else {
+        btnAchClaimAll.classList.add('hidden');
+      }
     }
     if (achProgressText) {
       achProgressText.textContent = `달성 ${unlockedCount} / ${totalCount}`;
@@ -277,7 +371,7 @@ function bootstrap() {
       achProgressFill.style.width = `${Math.round((unlockedCount / Math.max(1, totalCount)) * 100)}%`;
     }
     if (achStatsInline) {
-      achStatsInline.textContent = `누적 처치 ${metaState.totalKillsAllTime || 0} · 무한 최고 W${metaState.bestEndlessWave || 0}`;
+      achStatsInline.textContent = `누적 처치 ${metaState.totalKillsAllTime || 0} · 최고 해금 위협 ${metaState.maxUnlockedHeat || 0} · 무한 ${metaState.bestEndlessWave || 0}웨이브`;
     }
     if (!achievementsGrid) return;
 
@@ -286,11 +380,18 @@ function bootstrap() {
       const a = ACHIEVEMENTS[i];
       if (activeAchCategory !== 'all' && a.cat !== activeAchCategory) continue;
       const unlocked = metaState.achievements.includes(a.id);
+      const claimed = Number(metaState.claimedAchievements[a.id]) || 0;
+      const pendingDiff = unlocked ? Math.max(0, (a.reward || 0) - claimed) : 0;
+      const rewardLabel = !unlocked
+        ? `+${a.reward || 0} G`
+        : pendingDiff > 0
+        ? `달성 · +${pendingDiff} G 수령 가능`
+        : `+${a.reward || 0} G 지급 완료`;
       html += `
         <article class="ach-card ${unlocked ? 'unlocked' : ''}">
           <div class="ach-card-top">
             <span class="ach-cat-tag">${a.catLabel || '기록'}</span>
-            <span class="ach-reward">${unlocked ? '달성 완료' : `+${a.reward || 0} G`}</span>
+            <span class="ach-reward">${rewardLabel}</span>
           </div>
           <h3 class="ach-name">${a.name}</h3>
           <p class="ach-desc">${a.desc}</p>
@@ -374,7 +475,7 @@ function bootstrap() {
       });
     } catch (err) {
       boxes.forEach((boxEl) => {
-        boxEl.innerHTML = '<span class="weapon-preview-loading">3D PREVIEW UNAVAILABLE</span>';
+        boxEl.innerHTML = '<span class="weapon-preview-loading">3D 미리보기 불가</span>';
       });
     } finally {
       for (let i = 0; i < builtRigs.length; i++) {
@@ -385,27 +486,111 @@ function bootstrap() {
     }
   }
 
+  let lockedHeatFeedbackText = '';
   function updateMissionConfigUI() {
+    const maxUnlocked = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, metaState.maxUnlockedHeat || 0));
+    if (selectedHeatLevel > maxUnlocked) selectedHeatLevel = maxUnlocked;
     const heat = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
     const daily = getTodayDailyModifier();
-    const heatBtn = byId('btn-heat-cycle');
     const descEl = byId('mission-mode-desc');
+    const modeLabel =
+      selectedMissionMode === 'endless'
+        ? '무한 강하'
+        : selectedMissionMode === 'daily'
+        ? '오늘의 작전'
+        : '캠페인';
+
     for (const m of ['campaign', 'endless', 'daily']) {
       const b = byId(`mode-${m}`);
       if (b) b.classList.toggle('active', selectedMissionMode === m);
     }
-    if (heatBtn) {
-      heatBtn.textContent = heat.label;
-      heatBtn.classList.toggle('hot', selectedHeatLevel > 0);
-    }
+
     if (descEl) {
+      descEl.textContent = `${modeLabel} · ${heat.label}`;
+    }
+
+    const modeBadgeEl = byId('deploy-mode-badge');
+    const modeDetailEl = byId('deploy-mode-detail');
+    if (modeBadgeEl) {
+      modeBadgeEl.textContent =
+        selectedMissionMode === 'endless'
+          ? `무한 강하 · 최고 ${metaState.bestEndlessWave || 0}웨이브`
+          : selectedMissionMode === 'daily'
+          ? `오늘의 작전 · ${daily.name}`
+          : '표준 · 15웨이브';
+    }
+    if (modeDetailEl) {
       if (selectedMissionMode === 'endless') {
-        descEl.textContent = `무한 강하: 15웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
+        modeDetailEl.textContent = `무한 강하: 15웨이브마다 순환하며 적 체력(+30%)과 공격력(+18%)이 누적 증폭됩니다. (현재 최고 기록: ${metaState.bestEndlessWave || 0}웨이브 · 15웨이브 완주 시 다음 위협 단계 해금)`;
       } else if (selectedMissionMode === 'daily') {
-        descEl.textContent = `오늘의 작전 [${daily.name}]: ${daily.desc} · ${heat.desc}`;
+        modeDetailEl.textContent = `오늘의 작전 [${daily.name}]: ${daily.desc} — 일일 특수 전장 규칙으로 15웨이브를 돌파합니다.`;
       } else {
-        descEl.textContent = `표준 15웨이브 궤도 수복 작전 · ${heat.desc}`;
+        modeDetailEl.textContent = '표준 15웨이브 궤도 수복 작전입니다. 최종 보스 TRANSCENDENT-OMEGA를 격파하면 다음 위협 단계가 해금됩니다.';
       }
+    }
+
+    const unlockStatusEl = byId('deploy-heat-unlock-status');
+    if (unlockStatusEl) {
+      unlockStatusEl.textContent = `해금 단계: ${maxUnlocked} / ${HEAT_CONTRACTS.length - 1}`;
+    }
+
+    if (deployHeatGrid) {
+      deployHeatGrid.innerHTML = '';
+      for (let i = 0; i < HEAT_CONTRACTS.length; i++) {
+        const h = HEAT_CONTRACTS[i];
+        const isLocked = i > maxUnlocked;
+        const isCleared = i < maxUnlocked;
+        const isSelected = i === selectedHeatLevel;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `heat-step-btn${isSelected ? ' active' : ''}${i >= 5 ? ' hot' : ''}${isCleared ? ' cleared' : ''}${isLocked ? ' locked' : ''}`;
+        btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        btn.title = isLocked ? `위협 ${i - 1} 클리어 시 해금` : h.desc;
+        btn.innerHTML = `
+          ${isLocked ? '<span class="heat-step-badge">잠김</span>' : isCleared ? '<span class="heat-step-badge">완료</span>' : ''}
+          <span class="heat-step-num">${h.level}</span>
+          <span class="heat-step-name">${h.tier || ''}</span>
+        `;
+        btn.addEventListener('click', () => {
+          if (isLocked) {
+            lockedHeatFeedbackText = `위협 ${h.level} 단계는 위협 ${h.level - 1} 작전을 클리어해야 해금됩니다.`;
+            updateMissionConfigUI();
+            return;
+          }
+          lockedHeatFeedbackText = '';
+          selectedHeatLevel = h.level;
+          updateMissionConfigUI();
+        });
+        deployHeatGrid.appendChild(btn);
+      }
+    }
+
+    const statTier = byId('deploy-stat-tier');
+    const statHp = byId('deploy-stat-hp');
+    const statDmg = byId('deploy-stat-dmg');
+    const statGold = byId('deploy-stat-gold');
+    const hintEl = byId('deploy-heat-hint');
+    if (statTier) statTier.textContent = heat.label;
+    if (statHp) statHp.textContent = `${Math.round(heat.enemyHpMult * 100)}%`;
+    if (statDmg) statDmg.textContent = `${Math.round((heat.enemyDmgMult || 1.0) * 100)}%`;
+    if (statGold) statGold.textContent = `${Math.round(heat.goldMult * 100)}%`;
+    if (hintEl) {
+      if (lockedHeatFeedbackText) {
+        hintEl.textContent = lockedHeatFeedbackText;
+        hintEl.classList.add('warn');
+      } else if (maxUnlocked >= HEAT_CONTRACTS.length - 1) {
+        hintEl.textContent = '모든 위협 단계(0~10)가 해금되었습니다. 원하는 난이도로 출격하세요.';
+        hintEl.classList.remove('warn');
+      } else {
+        hintEl.textContent = `위협 ${maxUnlocked} 단계를 클리어하면 위협 ${maxUnlocked + 1} 단계가 해금됩니다.`;
+        hintEl.classList.remove('warn');
+      }
+    }
+
+    const loadoutEl = byId('deploy-loadout-text');
+    if (loadoutEl) {
+      const f = getEquippedFrame();
+      loadoutEl.textContent = `${f.name} · ${f.defaultLoadoutLabel || 'M41-A 펄스 라이플 + W-01 용접 피스톨'}`;
     }
   }
 
@@ -553,7 +738,7 @@ function bootstrap() {
     const desc = document.getElementById('tut-step-desc');
     const goal = document.getElementById('tut-step-goal');
     const s = tutorialState.step;
-    if (badge) badge.textContent = `STEP ${s} / 6`;
+    if (badge) badge.textContent = `단계 ${s} / 6`;
 
     if (s === 1) {
       if (title) title.textContent = '1. 기동 & 맵 오브젝트 (점프 패드 · 폭발 드럼통)';
@@ -935,13 +1120,13 @@ function bootstrap() {
     for (const key of ['assault', 'mobility', 'vanguard', 'tactical']) {
       const s = SYNERGIES[key];
       const cnt = tagCounts[key] || 0;
-      const tier = cnt >= 4 ? '4/4 MAX' : cnt >= 2 ? '2/4 활성' : `${cnt}/2`;
+      const tier = cnt >= 4 ? '4/4 최대' : cnt >= 2 ? '2/4 활성' : `${cnt}/2`;
       synHtml += `<span class="build-syn-pill ${cnt >= 2 ? 'active' : ''}" style="border-left:3px solid ${s.color}">${s.tagLabel} ${tier}</span>`;
     }
     for (let i = 0; i < CROSS_SYNERGIES.length; i++) {
       const csyn = CROSS_SYNERGIES[i];
       const ok = csyn.requires.every((r) => (tagCounts[r] || 0) >= 2);
-      if (ok) synHtml += `<span class="build-syn-pill active">★ ${csyn.name}</span>`;
+      if (ok) synHtml += `<span class="build-syn-pill active">${csyn.name}</span>`;
     }
     synHtml += '</div>';
 
@@ -1040,7 +1225,7 @@ function bootstrap() {
       _ultRingEl.style.strokeDashoffset = String((circ * (1 - visualPct / 100)).toFixed(1));
       _ultRingEl.style.stroke =
         pSnap.ultActiveTimer > 0 ? '#4ade80' : uPct >= 100 ? '#f43f5e' : fCol;
-      _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? 'ON' : uPct >= 100 ? 'MAX' : uPct + '%';
+      _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? '가동' : uPct >= 100 ? '완충' : uPct + '%';
       if (_ultDialEl) {
         _ultDialEl.classList.toggle('ult-ready', uPct >= 100 && pSnap.ultActiveTimer <= 0);
       }
@@ -1252,9 +1437,44 @@ function bootstrap() {
     return list;
   }
 
+  function computeSpentArmoryGold() {
+    let spent = 0;
+    for (let i = 0; i < META_UPGRADES.length; i++) {
+      const upg = META_UPGRADES[i];
+      const lv = Math.max(0, Math.min(upg.maxLevel, metaState.levels[upg.id] || 0));
+      for (let k = 0; k < lv; k++) {
+        spent += upg.baseCost + k * upg.costStep;
+      }
+    }
+    return spent;
+  }
+
+  function clearArmoryResetConfirm() {
+    armoryResetConfirmPending = false;
+    if (armoryResetConfirmTimer) {
+      window.clearTimeout(armoryResetConfirmTimer);
+      armoryResetConfirmTimer = null;
+    }
+  }
+
+  function updateArmoryResetBtnUI() {
+    if (!btnArmoryReset) return;
+    const spent = computeSpentArmoryGold();
+    btnArmoryReset.disabled = spent <= 0;
+    btnArmoryReset.classList.toggle('confirming', armoryResetConfirmPending && spent > 0);
+    if (spent <= 0) {
+      btnArmoryReset.textContent = '스탯 초기화 (0 G)';
+    } else if (armoryResetConfirmPending) {
+      btnArmoryReset.textContent = `다시 클릭: +${spent} G 전액 환급`;
+    } else {
+      btnArmoryReset.textContent = `스탯 초기화 (+${spent} G 환급)`;
+    }
+  }
+
   function renderArmoryUI() {
     if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
     if (armoryGoldAmount) armoryGoldAmount.textContent = `${metaState.gold} G`;
+    updateArmoryResetBtnUI();
     const eqFrame = getEquippedFrame();
     const unitBadge = byId('title-unit-badge');
     if (unitBadge) unitBadge.textContent = eqFrame.name;
@@ -1284,7 +1504,7 @@ function bootstrap() {
         for (let p = 0; p < upg.maxLevel; p++) {
           pipsHtml += `<span class="armory-pip ${p < lv ? 'filled' : ''}"></span>`;
         }
-        const curBonusText = typeof upg.formatBonus === 'function' ? upg.formatBonus(lv) : `LV ${lv}`;
+        const curBonusText = typeof upg.formatBonus === 'function' ? upg.formatBonus(lv) : `${lv}단계`;
 
         const card = document.createElement('div');
         card.className = 'armory-item';
@@ -1294,7 +1514,7 @@ function bootstrap() {
               <span class="armory-ico-badge" aria-hidden="true">${ico}</span>
               <span class="armory-item-name">${upg.name}</span>
             </div>
-            <span class="armory-item-lv">LV ${lv} / ${upg.maxLevel}</span>
+            <span class="armory-item-lv">${lv} / ${upg.maxLevel}단계</span>
           </div>
           <div class="armory-pips" aria-hidden="true">${pipsHtml}</div>
           <div class="armory-cur-bonus">현재 적용: ${curBonusText}</div>
@@ -1343,15 +1563,15 @@ function bootstrap() {
           <div class="frame-card-body">
             <h3 class="frame-card-name" style="color:${f.color}">${f.name}</h3>
             <div class="frame-stat-chips">
-              <div class="frame-stat-chip"><span>HP</span>${hpVal}</div>
-              <div class="frame-stat-chip"><span>SHIELD</span>${shVal}</div>
-              <div class="frame-stat-chip"><span>DASH</span>${f.dashMax}회</div>
-              <div class="frame-stat-chip"><span>SPEED</span>${spdPct}%</div>
+              <div class="frame-stat-chip"><span>체력</span>${hpVal}</div>
+              <div class="frame-stat-chip"><span>쉴드</span>${shVal}</div>
+              <div class="frame-stat-chip"><span>대시</span>${f.dashMax}회</div>
+              <div class="frame-stat-chip"><span>속도</span>${spdPct}%</div>
             </div>
             <div class="frame-special-box">
               <strong>기본 무장 · ${f.defaultLoadoutLabel || 'M41-A + W-01'}</strong>
               <strong style="margin-top:4px;display:block;">특수능력 · ${f.specialName}</strong>
-              ${f.specialDesc}<br><span style="color:#fde68a;font-size:0.86em;">★ 궁극기: ${f.ultName || ''} — ${f.ultDesc || ''}</span>
+              ${f.specialDesc}<br><span style="color:#fde68a;font-size:0.86em;">궁극기: ${f.ultName || ''} — ${f.ultDesc || ''}</span>
             </div>
             <button class="mil-btn armory-buy-btn" type="button" ${!owned && !canBuy ? 'disabled' : ''}>
               ${equipped ? '현재 장착 중' : owned ? '기체 장착' : `구매 (${f.cost} G)`}
@@ -1379,21 +1599,48 @@ function bootstrap() {
     }
   }
 
-  // Wire Mission Mode & Heat Contract buttons once
+  // Wire Mission Mode buttons & Armory Reset / Achievement Claim buttons once
   for (const m of ['campaign', 'endless', 'daily']) {
     const btn = byId(`mode-${m}`);
     if (btn) {
       btn.addEventListener('click', () => {
         selectedMissionMode = m;
+        lockedHeatFeedbackText = '';
         updateMissionConfigUI();
       });
     }
   }
-  const btnHeatCycle = byId('btn-heat-cycle');
-  if (btnHeatCycle) {
-    btnHeatCycle.addEventListener('click', () => {
-      selectedHeatLevel = (selectedHeatLevel + 1) % HEAT_CONTRACTS.length;
-      updateMissionConfigUI();
+  if (btnArmoryReset) {
+    btnArmoryReset.addEventListener('click', () => {
+      const spent = computeSpentArmoryGold();
+      if (spent <= 0) return;
+      if (!armoryResetConfirmPending) {
+        armoryResetConfirmPending = true;
+        updateArmoryResetBtnUI();
+        if (armoryResetConfirmTimer) window.clearTimeout(armoryResetConfirmTimer);
+        armoryResetConfirmTimer = window.setTimeout(() => {
+          clearArmoryResetConfirm();
+          updateArmoryResetBtnUI();
+        }, 3500);
+        return;
+      }
+      clearArmoryResetConfirm();
+      for (const k of Object.keys(metaState.levels)) {
+        metaState.levels[k] = 0;
+      }
+      metaState.gold += spent;
+      saveMetaState();
+      if (runtimeReady && playerController) {
+        const { mods } = computePlayerMods();
+        playerController.applyModifiers(mods, false);
+      }
+      playUiSfx('buy');
+      renderArmoryUI();
+    });
+  }
+  if (btnAchClaimAll) {
+    btnAchClaimAll.addEventListener('click', () => {
+      claimAllAchievementRewards();
     });
   }
   updateMissionConfigUI();
@@ -1446,7 +1693,7 @@ function bootstrap() {
     draftChoices = pool.slice(0, 3);
 
     const { tagCounts } = computePlayerMods();
-    if (upgradeKicker) upgradeKicker.textContent = `WAVE ${String(waveNum).padStart(2, '0')} 클리어 // 전술 강화 선택`;
+    if (upgradeKicker) upgradeKicker.textContent = `웨이브 ${String(waveNum).padStart(2, '0')} 완료 · 전술 강화 선택`;
     upgradeCardsGrid.innerHTML = '';
 
     for (let i = 0; i < draftChoices.length; i++) {
@@ -1503,10 +1750,10 @@ function bootstrap() {
           <span class="tactical-key">[${i + 1}]</span>
         </div>
         <div class="tactical-card-art" aria-hidden="true">${cardArt}</div>
-        <div class="tactical-card-title">${card.rare ? '<span class="rare-pill">RARE</span> ' : ''}${card.name}</div>
+        <div class="tactical-card-title">${card.rare ? '<span class="rare-pill">희귀</span> ' : ''}${card.name}</div>
         <div class="tactical-card-desc">${card.desc}</div>
         <div class="tactical-synergy-hint ${willTrigger || nextCount === 4 ? 'ready' : ''}">
-          ${nextCount === 4 ? `<span class="syn-badge">MAX 4/4</span>[${syn.name}] 최종 강화 해금!` : willTrigger ? `<span class="syn-badge">SYNERGY 2/4</span>[${syn.name}] 활성!` : alreadyActive ? `시너지 활성 (${nextCount}/4) · 4장 달성 시 최종 강화` : `2장/4장 시너지 [${syn.name}]: ${syn.desc}`}
+          ${nextCount === 4 ? `<span class="syn-badge">최대 4/4</span>[${syn.name}] 최종 강화 해금!` : willTrigger ? `<span class="syn-badge">시너지 2/4</span>[${syn.name}] 활성!` : alreadyActive ? `시너지 활성 (${nextCount}/4) · 4장 달성 시 최종 강화` : `2장/4장 시너지 [${syn.name}]: ${syn.desc}`}
         </div>
       `;
       const pickIdx = i;
@@ -1610,7 +1857,7 @@ function bootstrap() {
     styleMeter: 0,
     styleTierIdx: 0,
     maxStyleTierIdx: 0,
-    lastStyleCallout: 'STYLE',
+    lastStyleCallout: '스타일',
     lastSwapTime: -99,
     _lastReactiveBlast: -99,
     wasGroundedPrev: true,
@@ -1689,7 +1936,7 @@ function bootstrap() {
     telemetry.styleMeter = 0;
     telemetry.styleTierIdx = 0;
     telemetry.maxStyleTierIdx = 0;
-    telemetry.lastStyleCallout = 'STYLE';
+    telemetry.lastStyleCallout = '스타일';
     telemetry.lastSwapTime = -99;
     telemetry._lastReactiveBlast = -99;
     telemetry.wasGroundedPrev = true;
@@ -1797,7 +2044,7 @@ function bootstrap() {
     if (sceneResult) sceneResult.classList.add('hidden');
     if (fallbackEl) fallbackEl.classList.remove('hidden');
     if (fallbackMsg && reason) {
-      fallbackMsg.textContent = `Unable to initialize WebGL 3D Renderer (${reason}). Please enable hardware acceleration and reload.`;
+      fallbackMsg.textContent = `WebGL 3D 렌더러를 초기화할 수 없습니다 (${reason}). 브라우저 하드웨어 가속을 활성화한 뒤 새로고침하세요.`;
     }
   }
 
@@ -1808,14 +2055,14 @@ function bootstrap() {
   function ensureRuntimeInitialized() {
     if (runtimeReady) return true;
     if (!canvas) {
-      showWebGLFallback('canvas element unavailable');
+      showWebGLFallback('캔버스 요소 없음');
       return false;
     }
 
     try {
       engine = new Engine(canvas, settings.quality);
     } catch (err) {
-      showWebGLFallback(err && err.message ? err.message : 'context creation failed');
+      showWebGLFallback(err && err.message ? err.message : '그래픽 컨텍스트 생성 실패');
       return false;
     }
 
@@ -2112,8 +2359,8 @@ function bootstrap() {
 
       if (isMelee) { pts += 18; tag = '근접 처치!'; telemetry.meleeKills++; if (telemetry.meleeKills >= 5) unlockAchievement('melee_ace'); }
       else if (isAir) { pts += 18; tag = '공중 처치!'; telemetry.airKills++; if (telemetry.airKills >= 5) unlockAchievement('air_ace'); }
-      else if (isSlide) { pts += 16; tag = '슬라이드 킬!'; telemetry.slideKills++; if (telemetry.slideKills >= 5) unlockAchievement('slide_ace'); }
-      else if (isQuickSwap) { pts += 14; tag = '무기 전환 킬!'; telemetry.swapKills++; if (telemetry.swapKills >= 5) unlockAchievement('swap_ace'); }
+      else if (isSlide) { pts += 16; tag = '슬라이드 처치!'; telemetry.slideKills++; if (telemetry.slideKills >= 5) unlockAchievement('slide_ace'); }
+      else if (isQuickSwap) { pts += 14; tag = '무기 전환 처치!'; telemetry.swapKills++; if (telemetry.swapKills >= 5) unlockAchievement('swap_ace'); }
       else if (isHs) { pts += 12; tag = '정밀 헤드샷!'; }
       if (isHs && tag !== '정밀 헤드샷!') pts += 8;
       addStylePoints(pts, tag);
@@ -2147,7 +2394,8 @@ function bootstrap() {
             }
           }
           if (playerController && playerController.position.distanceTo(killedUnit.position) <= 5.5) {
-            playerController.applyDamage(18, killedUnit.position);
+            const dmgMult = waveDirector && typeof waveDirector.getEffectiveEnemyDmgMult === 'function' ? waveDirector.getEffectiveEnemyDmgMult() : 1.0;
+            playerController.applyDamage(Math.max(1, Math.round(18 * dmgMult)), killedUnit.position);
           }
         } else if (killedUnit.eliteAffix === 'splitter' && interactables) {
           interactables.spawnGoldDrop(killedUnit.position, 15);
@@ -2300,6 +2548,9 @@ function bootstrap() {
     });
 
     eventBus.on(EVENTS.WAVE_CLEARED, (p) => {
+      if (gameState === 'playing' && p && p.endlessLoopCleared) {
+        tryUnlockNextHeat(selectedHeatLevel);
+      }
       if (gameState === 'playing' && p && !p.isFinalWave) {
         window.setTimeout(() => {
           if (gameState === 'playing') openUpgradeDraft(p.wave || 1);
@@ -2341,11 +2592,17 @@ function bootstrap() {
   // ---------------------------------------------------------------------------
   function showTitleSubpanel(panelName) {
     activeTitleSubpanel = panelName;
+    if (panelName !== 'armory') clearArmoryResetConfirm();
     if (sceneTitle) sceneTitle.classList.toggle('subpanel-open', panelName !== 'main');
+    if (panelName === 'deploy') {
+      lockedHeatFeedbackText = '';
+      updateMissionConfigUI();
+    }
     if (panelName === 'armory') renderArmoryUI();
     if (panelName === 'arsenal') renderArsenalPreviews();
     if (panelName === 'achievements') renderMedalsStrip();
     if (titleMenuMain) titleMenuMain.classList.toggle('hidden', panelName !== 'main');
+    if (panelDeploy) panelDeploy.classList.toggle('hidden', panelName !== 'deploy');
     if (panelArmory) panelArmory.classList.toggle('hidden', panelName !== 'armory');
     if (panelArsenal) panelArsenal.classList.toggle('hidden', panelName !== 'arsenal');
     if (panelControls) panelControls.classList.toggle('hidden', panelName !== 'controls');
@@ -2357,13 +2614,13 @@ function bootstrap() {
     const coarse = isCoarsePointer();
     if (titleDeviceBadge) {
       if (settings.controlMode === 'pc') {
-        titleDeviceBadge.textContent = 'INPUT: PC // MOUSE+KB';
+        titleDeviceBadge.textContent = '입력: PC (마우스+키보드)';
       } else if (settings.controlMode === 'touch') {
-        titleDeviceBadge.textContent = 'INPUT: TOUCH // MANUAL';
+        titleDeviceBadge.textContent = '입력: 터치 (수동)';
       } else {
         titleDeviceBadge.textContent = coarse
-          ? 'INPUT: AUTO // TOUCH'
-          : 'INPUT: AUTO // PC';
+          ? '입력: 자동 (터치)'
+          : '입력: 자동 (PC)';
       }
     }
     if (runtimeReady && input && settings.controlMode === 'auto') {
@@ -2404,7 +2661,7 @@ function bootstrap() {
     if (titleSelQuality && titleSelQuality.value !== key) titleSelQuality.value = key;
     if (pauseSelQuality && pauseSelQuality.value !== key) pauseSelQuality.value = key;
     if (titleQualityBadge) {
-      titleQualityBadge.textContent = `QUALITY: ${QUALITY_PRESETS[key].label || key.toUpperCase()}`;
+      titleQualityBadge.textContent = `품질: ${QUALITY_PRESETS[key].label || key}`;
     }
 
     if (runtimeReady && engine) {
@@ -2592,12 +2849,18 @@ function bootstrap() {
         syncTouchOverlayVisibility();
 
         eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+        const maxUnlocked = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, metaState.maxUnlockedHeat || 0));
+        if (selectedHeatLevel > maxUnlocked) selectedHeatLevel = maxUnlocked;
         const heatCfg = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
-    const dailyHpMult = selectedMissionMode === 'daily' ? (getTodayDailyModifier().enemyHpMult || 1.0) : 1.0;
-    waveDirector.endlessMode = selectedMissionMode === 'endless';
-    waveDirector.endlessLoop = 0;
-    waveDirector.globalEnemyHpMult = heatCfg.enemyHpMult * dailyHpMult;
-    waveDirector.start();
+        const dailyHpMult = selectedMissionMode === 'daily' ? (getTodayDailyModifier().enemyHpMult || 1.0) : 1.0;
+        waveDirector.endlessMode = selectedMissionMode === 'endless';
+        waveDirector.endlessLoop = 0;
+        waveDirector.globalEnemyHpMult = heatCfg.enemyHpMult * dailyHpMult;
+        waveDirector.globalEnemyDmgMult = heatCfg.enemyDmgMult || 1.0;
+        if (interactables) {
+          interactables.enemyDamageMult = waveDirector.getEffectiveEnemyDmgMult();
+        }
+        waveDirector.start();
         syncHudImmediate();
 
         // Render one pre-warmed frame during blackout to bake shadows & upload textures
@@ -2786,7 +3049,7 @@ function bootstrap() {
       unlockAchievement('first_clear');
       unlockAchievement('citadel_clear');
       unlockAchievement('abyss_clear');
-      if (selectedHeatLevel >= 2) unlockAchievement('heat_clear');
+      tryUnlockNextHeat(selectedHeatLevel);
     }
     saveMetaState();
     renderMedalsStrip();
@@ -2913,7 +3176,9 @@ function bootstrap() {
   // ---------------------------------------------------------------------------
   // 7. DOM Event Bindings (Title, Pause, Result & Live Settings Sync)
   // ---------------------------------------------------------------------------
-  if (btnDeploy) btnDeploy.addEventListener('click', () => startNewGame());
+  if (btnDeploy) btnDeploy.addEventListener('click', () => showTitleSubpanel('deploy'));
+  if (btnDeployBack) btnDeployBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnDeployLaunch) btnDeployLaunch.addEventListener('click', () => startNewGame());
   if (btnTitleArmory) btnTitleArmory.addEventListener('click', () => showTitleSubpanel('armory'));
   if (btnArmoryBack) btnArmoryBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnTitleArsenal) btnTitleArsenal.addEventListener('click', () => showTitleSubpanel('arsenal'));
@@ -3054,7 +3319,7 @@ function bootstrap() {
         const newIdx = getStyleTier(telemetry.styleMeter);
         if (newIdx !== telemetry.styleTierIdx) {
           telemetry.styleTierIdx = newIdx;
-          if (newIdx === 0) telemetry.lastStyleCallout = 'STYLE';
+          if (newIdx === 0) telemetry.lastStyleCallout = '스타일';
         }
         updateStyleHudUI();
       }
@@ -3160,7 +3425,7 @@ function bootstrap() {
               if (hudManager && typeof hudManager.showAnnouncement === 'function' && dropW) {
                 hudManager.showAnnouncement(
                   `${dropW.shortName} 자동 업그레이드!`,
-                  `MK.${ocLv + 1} 강화 완료 · 외형 및 탄환 이펙트 진화`,
+                  `${ocLv + 1}단계 강화 완료 · 외형 및 탄환 이펙트 진화`,
                   'info'
                 );
               }
@@ -3218,7 +3483,7 @@ function bootstrap() {
           triggerUltScreenFlash('rgba(245,158,11,0.75)', 0.55);
           playerController.addScreenShake(0.45);
           if (hudManager && typeof hudManager.showAnnouncement === 'function') {
-            hudManager.showAnnouncement('궁극기: 궤도 포격!', 'ORBITAL BARRAGE — 5연쇄 궤도 타격 투하', 'info');
+            hudManager.showAnnouncement('궁극기: 궤도 포격!', '5연쇄 궤도 타격 투하', 'info');
           }
         } else if (fid === 'strider') {
           // STRIDER-04: PHASE OVERCLOCK (6s 60% enemy time-dilation + hyper speed + infinite ammo)

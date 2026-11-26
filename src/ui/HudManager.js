@@ -341,10 +341,10 @@ class HudManager {
     on(EVENTS.BARREL_EXPLODED, (p) => {
       const label =
         p && p.gimmickType === 'emp_pylon'
-          ? 'EMP PYLON OVERLOADED'
+          ? 'EMP 파일런 과부하!'
           : p && p.gimmickType === 'shield_relay'
-          ? 'SHIELD RELAY SHATTERED'
-          : 'THERMITE DRUM DETONATED';
+          ? '쉴드 중계기 파괴!'
+          : '연료 드럼통 폭발!';
       this._pushKillfeed(label, p && p.gimmickType ? 'boss' : 'headshot');
     });
     on(EVENTS.ANNOUNCEMENT, (p) => {
@@ -365,11 +365,11 @@ class HudManager {
       if (!p || !p.weapon) return;
       const msg = p.unlocked
         ? `무기 교체: ${p.weapon.shortName}`
-        : `${p.weapon.shortName} 오버클럭 +${p.overclockLevel * 15}%`;
+        : `${p.weapon.shortName} 오버클럭 +${p.overclockLevel * 18}%`;
       this._pushKillfeed(msg, 'headshot');
       const tip = p.unlocked
         ? `${p.weapon.name} 장착 완료` + (p.replacedWeapon ? ` (${p.replacedWeapon.shortName} 바닥에 드랍)` : '')
-        : `${p.weapon.name} 화력 강화 (+15%) 및 탄약 완충`;
+        : `${p.weapon.name} 화력 강화 (+18%) 및 탄약 완충`;
       this.showOnboardingTip(tip, 3.0);
     });
     on(EVENTS.MAP_TRANSITION, (p) => this._onMapTransition(p));
@@ -432,7 +432,7 @@ class HudManager {
     }
 
     if (this._minimapTag) {
-      this._minimapTag.textContent = (arenaData && arenaData.mapCode) || 'SEC-09';
+      this._minimapTag.textContent = (arenaData && arenaData.mapCode) || '제09구역';
     }
 
     // Force immediate redraw on next update tick
@@ -654,9 +654,9 @@ class HudManager {
     if (payload.captured && !this._zoneCapturedNotified) {
       this._zoneCapturedNotified = true;
       this.showAnnouncement(
-        'AETHER DROP // ORBITAL UPLINK',
-        'TERRA-BEACON SECURED',
-        'SHIELD & AMMO RESTORED // +1,200 BONUS',
+        '궤도 전송 완료',
+        '테라비콘 점령 완료',
+        '쉴드 및 탄약 회복 · +1,200 보너스',
         'clear-alert',
         2.8
       );
@@ -673,10 +673,10 @@ class HudManager {
     const tPad = String(payload.totalWaves || 15).padStart(2, '0');
     const kicker = payload.isBossWave
       ? '최종 보스 출현'
-      : `WAVE ${wPad} / ${tPad}`;
+      : `웨이브 ${wPad} / ${tPad}`;
     this.showAnnouncement(
       kicker,
-      payload.name || `WAVE ${payload.wave}`,
+      payload.name || `웨이브 ${payload.wave}`,
       payload.subtitle || payload.objective || '',
       payload.isBossWave ? 'boss-alert' : '',
       1.9
@@ -689,7 +689,7 @@ class HudManager {
     } else if (payload.wave === 8) {
       this.showOnboardingTip('이지스 쉴드 중계기가 적 체력을 회복시킵니다 — 최우선 파괴하세요', 4.8);
     } else if (payload.wave === 11) {
-      this.showOnboardingTip('시안 저중력 구역(LOW-G)으로 고공 도약하고, 과부하 돌격병의 연쇄 폭발을 유도하세요', 5.0);
+      this.showOnboardingTip('시안 저중력 구역으로 고공 도약하고, 과부하 돌격병의 연쇄 폭발을 유도하세요', 5.0);
     } else if (payload.wave === 12) {
       this.showOnboardingTip('보라색 차원 게이트가 소환수를 전개합니다 — 게이트를 최우선으로 파괴하세요', 5.0);
     } else if (payload.wave === 14) {
@@ -707,18 +707,18 @@ class HudManager {
     if (!payload) return;
     if (payload.isFinalWave) {
       this.showAnnouncement(
-        'AETHER DROP COMPLETE',
-        'EARTH RECLAIMED',
-        `+${payload.scoreBonus || 0} CLEAR BONUS`,
+        '지구 수복 작전 완수',
+        '지구 수복 완료',
+        `+${payload.scoreBonus || 0} 클리어 보너스`,
         'clear-alert',
         2.6
       );
     } else {
       const wPad = String(payload.wave || 1).padStart(2, '0');
       this.showAnnouncement(
-        `WAVE ${wPad} COMPLETE`,
-        'SECTOR CLEARED',
-        `+${payload.scoreBonus || 0} BONUS // PREPARING NEXT DROP`,
+        `웨이브 ${wPad} 완료`,
+        '구역 소탕 완료',
+        `+${payload.scoreBonus || 0} 보너스 · 다음 강하 준비`,
         'clear-alert',
         2.5
       );
@@ -729,11 +729,11 @@ class HudManager {
   _onMapTransition(payload) {
     const nextMeta = payload && MAPS[payload.nextMapIndex] ? MAPS[payload.nextMapIndex] : null;
     const subtitle = nextMeta
-      ? `ORBITAL REDEPLOYMENT TO ${nextMeta.name}`
-      : 'ORBITAL REDEPLOYMENT IN PROGRESS';
-    this.showAnnouncement('AETHER DROP', 'SECTOR REDEPLOYMENT', subtitle, 'clear-alert', 2.4);
+      ? `${nextMeta.name}(으)로 이동 중`
+      : '궤도 재배치 진행 중';
+    this.showAnnouncement('작전 경보', '구역 이동', subtitle, 'clear-alert', 2.4);
     if (nextMeta) {
-      this._pushKillfeed(`REDEPLOYED // ${nextMeta.code}`, 'pickup');
+      this._pushKillfeed(`재배치 · ${nextMeta.code}`, 'pickup');
     }
   }
 
@@ -741,9 +741,9 @@ class HudManager {
   _onBossPhase(payload) {
     if (!payload) return;
     this.showAnnouncement(
-      `PHASE ${payload.phase} // ${payload.name || 'FURNACE OVERDRIVE'}`,
-      payload.bossName || 'COLOSSUS-IV // ASH TITAN',
-      payload.callout || 'ESCORTS DEPLOYED — EVADE SLAG BARRAGE',
+      `${payload.phase}페이즈 · ${payload.name || '노심 과부하'}`,
+      payload.bossName || 'COLOSSUS-IV · 잿빛 거신',
+      payload.callout || '호위 병력 투입 — 포격을 회피하세요',
       'boss-alert',
       3.4
     );
@@ -755,10 +755,10 @@ class HudManager {
     this._healFlashIntensity = Math.max(this._healFlashIntensity, 0.78);
     const label =
       payload.type === 'health'
-        ? `+${Math.round(payload.amount || 35)} HULL INTEGRITY`
+        ? `체력 +${Math.round(payload.amount || 35)} 회복`
         : payload.type === 'shield'
-        ? `+${Math.round(payload.amount || 40)} SHIELD MATRIX`
-        : 'AMMO CRATE RESUPPLIED';
+        ? `쉴드 +${Math.round(payload.amount || 40)} 회복`
+        : '탄약 보급 완료';
     this._pushKillfeed(label, 'pickup');
   }
 
@@ -946,21 +946,21 @@ class HudManager {
       }
 
       // Live mobility status badge
-      let mob = 'READY';
+      let mob = '대시 준비';
       let mobBoost = false;
       if (player.isDashing) {
-        mob = 'OMNI-DASH';
+        mob = '옴니 대시';
         mobBoost = true;
       } else if (player.isSliding) {
-        mob = 'SLIDE BOOST';
+        mob = '슬라이드';
         mobBoost = true;
       } else if (!player.isGrounded) {
-        mob = 'AIRBORNE';
+        mob = '공중 기동';
       } else if (player.isSprinting) {
-        mob = 'SPRINT';
+        mob = '전술 질주';
         mobBoost = true;
       } else if (player.isCrouching) {
-        mob = 'CROUCH';
+        mob = '앉기';
       }
 
       if (c.mobility !== mob || c.mobilityBoost !== mobBoost) {
@@ -1022,29 +1022,29 @@ class HudManager {
       if (c.wave !== wave.wave) {
         c.wave = wave.wave;
         if (this._waveBadge) {
-          this._waveBadge.textContent = wave.totalWaves === 0 ? `ENDLESS // W${Math.max(1, wave.wave)}` : `WAVE ${Math.max(1, wave.wave)} / ${wave.totalWaves || 15}`;
+          this._waveBadge.textContent = wave.totalWaves === 0 ? `무한 강하 · ${Math.max(1, wave.wave)}웨이브` : `웨이브 ${Math.max(1, wave.wave)} / ${wave.totalWaves || 15}`;
         }
       }
       if (c.waveName !== wave.waveName) {
         c.waveName = wave.waveName;
-        if (this._waveName) this._waveName.textContent = wave.waveName || 'ORBITAL TOUCHDOWN';
+        if (this._waveName) this._waveName.textContent = wave.waveName || '궤도 강하 개시';
       }
 
       if (wave.inIntermission) {
-        const interStr = `NEXT DROP IN ${Math.ceil(wave.intermissionRemaining)}S`;
+        const interStr = `다음 강하까지 ${Math.ceil(wave.intermissionRemaining)}초`;
         if (c.intermissionStr !== interStr) {
           c.intermissionStr = interStr;
           if (this._hostilesCount) this._hostilesCount.textContent = interStr;
-          if (this._objectiveText) this._objectiveText.textContent = 'RESUPPLY & REPOSITION';
+          if (this._objectiveText) this._objectiveText.textContent = '재보급 및 위치 정비';
           c.hostiles = -2;
-          c.objective = 'RESUPPLY & REPOSITION';
+          c.objective = '재보급 및 위치 정비';
         }
       } else {
         if (c.hostiles !== wave.enemiesRemaining) {
           c.hostiles = wave.enemiesRemaining;
           c.intermissionStr = '';
           if (this._hostilesCount) {
-            this._hostilesCount.textContent = `HOSTILES: ${wave.enemiesRemaining}`;
+            this._hostilesCount.textContent = `적 잔여: ${wave.enemiesRemaining}`;
           }
         }
         if (c.objective !== wave.objective) {
@@ -1080,22 +1080,22 @@ class HudManager {
     if (zoneActive && zone) {
       const zPct = Math.round(clamp(zone.progress || 0, 0, 1) * 100);
       let zClass = '';
-      let zLabel = 'TERRA-BEACON // STANDBY';
+      let zLabel = '테라비콘 · 대기 중';
       if (zone.captured) {
         zClass = 'capturing';
-        zLabel = 'TERRA-BEACON // SECURED';
+        zLabel = '테라비콘 · 점령 완료';
       } else if (zone.contesting) {
         zClass = 'contested';
-        zLabel = 'TERRA-BEACON // CONTESTED!';
+        zLabel = '테라비콘 · 경합 중!';
       } else if (zone.owner === 'player') {
         zClass = 'capturing';
         zLabel =
           zone.captureSpeedMultiplier > 1.5
-            ? 'TERRA-BEACON // FAST UPLINK'
-            : 'TERRA-BEACON // UPLINKING';
+            ? '테라비콘 · 고속 전송 중'
+            : '테라비콘 · 전송 중';
       } else if (zone.owner === 'enemy') {
         zClass = 'contested';
-        zLabel = 'TERRA-BEACON // HOSTILE LOCK';
+        zLabel = '테라비콘 · 적 점거 중';
       }
 
       if (c.zoneClass !== zClass) {
@@ -1124,7 +1124,7 @@ class HudManager {
         c.bossName = boss.name;
         if (this._bossName) this._bossName.textContent = boss.name;
       }
-      const phaseTxt = `PHASE ${boss.phase} // ${boss.phaseName}`;
+      const phaseTxt = `${boss.phase}페이즈 · ${boss.phaseName}`;
       if (c.bossPhase !== phaseTxt) {
         c.bossPhase = phaseTxt;
         if (this._bossPhaseBadge) this._bossPhaseBadge.textContent = phaseTxt;
@@ -1169,10 +1169,10 @@ class HudManager {
             this._bossShieldLink.classList.toggle('broken', linkKey !== 'link');
             this._bossShieldLink.textContent =
               linkKey === 'link'
-                ? 'SHIELD LINK (-65% DMG)'
+                ? '방어막 연결 (피해 -65%)'
                 : linkKey === 'exposed'
-                ? 'CORE EXPOSED (+35% DMG)'
-                : 'LINK DISRUPTED';
+                ? '코어 노출 (피해 +35%)'
+                : '연결 차단됨';
           }
         }
       }
@@ -1264,7 +1264,7 @@ class HudManager {
         this._pickupPrompt.classList.remove('hidden');
         this._pickupPrompt.classList.toggle('secondary-drop', isSec);
         this._pickupPrompt.textContent = isSame
-          ? `[F] ${near.weapon.name} 오버클럭 (+15%)`
+          ? `[F] ${near.weapon.name} 오버클럭 (+18%)`
           : `[F] ${near.weapon.name} 장착 (${near.currentName} 바닥에 드랍)`;
       } else {
         this._pickupPrompt.classList.add('hidden');
@@ -1277,7 +1277,7 @@ class HudManager {
         for (let i = 0; i < snapshot.activeSynergies.length; i++) {
           const syn = snapshot.activeSynergies[i];
           const cls = syn.id === 'vanguard' ? 'vanguard' : syn.id === 'mobility' ? 'zone' : '';
-          chips.push(`<span class="hud-buff-chip ${cls}">★ ${syn.name}</span>`);
+          chips.push(`<span class="hud-buff-chip ${cls}">${syn.name}</span>`);
         }
       }
       const key = chips.join('|');
@@ -1550,7 +1550,7 @@ class HudManager {
           e.archetype.id === 'mortar_artillery'
         ) {
           this._onboardingFlags.firstMortar = true;
-          this.showOnboardingTip('포격수(SIEGE MORTAR)의 주황 조준 레이저가 고정되기 전에 대시로 회피하세요', 4.5);
+          this.showOnboardingTip('공성 박격포병의 주황 조준 레이저가 고정되기 전에 대시로 회피하세요', 4.5);
         }
         if (
           !this._onboardingFlags.firstOverlord &&
@@ -1884,7 +1884,7 @@ class HudManager {
           : (s.wave || 0) >= 10
           ? 'AEGIS-IX 격파 완료 — 이지스 궤도 성채 완전 탈환'
           : 'COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보'
-        : `WAVE ${s.wave || 1}에서 기체 파괴 — 재투입 준비 완료`;
+        : `${s.wave || 1}웨이브에서 기체 파괴 — 재투입 준비 완료`;
     }
     if (this._endRank) {
       this._endRank.textContent = rank;

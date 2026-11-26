@@ -184,9 +184,9 @@ class ArenaBuilder {
     const arenaData = {
       mapId: 'dead_metropolis',
       mapIndex: 0,
-      mapCode: 'SEC-09',
-      mapName: 'SECTOR-09 // DEAD METROPOLIS',
-      mapSubtitle: 'RUINED OVERPASS & TERRA-BEACON PLAZA',
+      mapCode: '제09구역',
+      mapName: '제09구역 · 폐허 메트로폴리스',
+      mapSubtitle: '붕괴된 고가도로 및 테라비콘 광장',
       atmosphere: {
         bgColor: 0x5c4b3c,
         fogColor: 0x6e5a49,

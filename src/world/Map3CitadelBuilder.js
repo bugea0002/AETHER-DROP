@@ -188,9 +188,9 @@ class Map3CitadelBuilder {
     const arenaData = {
       mapId: 'crater_citadel',
       mapIndex: 2,
-      mapCode: 'SEC-00',
-      mapName: 'SECTOR-00 // THE CRATER CITADEL',
-      mapSubtitle: 'SHATTERED ORBITAL ELEVATOR — BOSS CRUCIBLE',
+      mapCode: '제00구역',
+      mapName: '제00구역 · 분화구 요새',
+      mapSubtitle: '파괴된 궤도 승강기 — 보스 결전 구역',
       atmosphere: {
         bgColor: 0x36221e,
         fogColor: 0x452d26,

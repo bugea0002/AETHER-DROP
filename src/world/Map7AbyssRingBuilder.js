@@ -100,9 +100,9 @@ class Map7AbyssRingBuilder {
     return {
       mapId: 'abyss_conduit_ring',
       mapIndex: 7,
-      mapCode: 'SEC-108',
-      mapName: 'SECTOR-108 // ABYSSAL CONDUIT RING',
-      mapSubtitle: 'LOW-G ORBITAL CONDUIT & DIMENSIONAL RIFT',
+      mapCode: '제108구역',
+      mapName: '제108구역 · 심연 도관 링',
+      mapSubtitle: '저중력 궤도 도관 및 차원 균열',
       atmosphere: {
         bgColor: 0x05040f,
         fogColor: 0x0b0720,

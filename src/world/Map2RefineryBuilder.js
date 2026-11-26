@@ -191,9 +191,9 @@ class Map2RefineryBuilder {
     const arenaData = {
       mapId: 'sunken_refinery',
       mapIndex: 1,
-      mapCode: 'SEC-14',
-      mapName: 'SECTOR-14 // SUNKEN REFINERY',
-      mapSubtitle: 'SMOG-CHOKED INDUSTRIAL CRUCIBLE',
+      mapCode: '제14구역',
+      mapName: '제14구역 · 가라앉은 정유소',
+      mapSubtitle: '매연이 가득한 산업 용광로 구역',
       atmosphere: {
         bgColor: 0x3b352e,
         fogColor: 0x4d473f,

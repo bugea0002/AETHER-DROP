@@ -122,6 +122,7 @@ class Interactables {
     this.collisionWorld = collisionWorld;
     this.eventBus = eventBus;
     this.arenaData = arenaData || {};
+    this.enemyDamageMult = 1.0;
 
     this.root = new THREE.Group();
     this.root.name = 'InteractablesRoot';
@@ -2375,7 +2376,8 @@ class Interactables {
             const dz = playerController.position.z - m.pos.z;
             const dy = Math.abs(playerController.position.y - m.pos.y);
             if (dx * dx + dz * dz <= m.radius * m.radius && dy < 2.6) {
-              playerController.applyDamage(m.damage, m.pos);
+              const dmgMult = Number.isFinite(this.enemyDamageMult) ? this.enemyDamageMult : 1.0;
+              playerController.applyDamage(Math.max(1, Math.round(m.damage * dmgMult)), m.pos);
             }
           }
           if (m.hitEnemies && m.enemyDamage > 0 && enemies && enemies.length > 0) {
@@ -2417,7 +2419,8 @@ class Interactables {
           const onGroundHeight = playerController.position.y < sw.origin.y + 1.05;
           if (onGroundHeight && Math.abs(dist - radius) < 1.35) {
             sw.hitPlayer = true;
-            playerController.applyDamage(28, sw.origin);
+            const dmgMult = Number.isFinite(this.enemyDamageMult) ? this.enemyDamageMult : 1.0;
+            playerController.applyDamage(Math.max(1, Math.round(28 * dmgMult)), sw.origin);
           }
         }
       }

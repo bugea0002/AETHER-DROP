@@ -126,9 +126,9 @@ class Map6OrbitalDrydockBuilder {
     return {
       mapId: 'aegis_drydock',
       mapIndex: 5,
-      mapCode: 'SEC-99',
-      mapName: 'SECTOR-99 // AEGIS DRYDOCK',
-      mapSubtitle: 'COMMAND CITADEL & DREADNOUGHT KEEL',
+      mapCode: '제99구역',
+      mapName: '제99구역 · 이지스 건조 도크',
+      mapSubtitle: '궤도 사령부 및 기함 선체 — 2막 보스 구역',
       atmosphere: {
         bgColor: 0x050712,
         fogColor: 0x0c1026,

@@ -127,9 +127,9 @@ class Map5AegisReactorBayBuilder {
     return {
       mapId: 'aegis_reactor_bay',
       mapIndex: 4,
-      mapCode: 'SEC-74',
-      mapName: 'SECTOR-74 // AEGIS REACTOR BAY',
-      mapSubtitle: 'PROPULSION CORE & HEAT-SINK CRUCIBLE',
+      mapCode: '제74구역',
+      mapName: '제74구역 · 이지스 원자로실',
+      mapSubtitle: '추진 노심 및 방열 냉각 구역',
       atmosphere: {
         bgColor: 0x0e061c,
         fogColor: 0x1a0b32,

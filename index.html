@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta
@@ -8,7 +8,7 @@
   />
   <meta name="theme-color" content="#12100e" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>AETHER DROP // RECLAIM EARTH</title>
+  <title>AETHER DROP</title>
 
   <script type="importmap">
     {
@@ -43,7 +43,6 @@
         <div class="title-rail">
           <div class="title-hero">
             <h1 class="title-logo">AETHER <span>DROP</span></h1>
-            <p class="title-subtitle">RECLAIM EARTH</p>
             <div class="title-pilot-meta">
               <span id="title-unit-badge">VANGUARD-09</span>
               <span class="title-pilot-dot" aria-hidden="true"></span>
@@ -52,24 +51,12 @@
           </div>
 
           <!-- AAA Left-Aligned Vertical Command Menu -->
-          <nav id="title-menu-main" class="title-menu-card" aria-label="Main Menu">
-            <div class="mission-config-bar" aria-label="작전 모드 및 위협도 선택">
-              <div class="mode-pills" role="group" aria-label="작전 모드">
-                <button id="mode-campaign" class="mode-pill active" type="button">캠페인</button>
-                <button id="mode-endless" class="mode-pill" type="button">무한 강하</button>
-                <button id="mode-daily" class="mode-pill" type="button">오늘의 작전</button>
-              </div>
-              <button id="btn-heat-cycle" class="heat-pill" type="button" title="클릭하여 위협도 계약 변경">HEAT 0 · 표준</button>
-            </div>
-            <div id="mission-mode-desc" class="mission-mode-desc">표준 15웨이브 궤도 수복 작전 · 위협도 없음</div>
-
+          <nav id="title-menu-main" class="title-menu-card" aria-label="메인 메뉴">
             <button id="btn-deploy" class="mil-btn primary deploy-btn" type="button">
               <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v12"/><path d="M7 9l5 5 5-5"/><path d="M5 17l2 4h10l2-4"/><path d="M4 21h16"/></svg>
               <span>작전 개시</span>
             </button>
-            <button id="btn-tutorial" class="mil-btn tutorial-btn" type="button" style="margin-top:8px;width:100%;border-color:rgba(56,189,248,0.65);color:#bae6fd;background:rgba(8,26,46,0.78);">
-              <span>전술 훈련장 (튜토리얼)</span>
-            </button>
+            <div id="mission-mode-desc" class="mission-mode-desc">캠페인 · 위협 0 · 표준</div>
 
             <div class="aaa-nav-list">
               <button id="btn-title-armory" class="aaa-nav-btn" type="button">
@@ -77,7 +64,6 @@
                   <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"/><path d="M12 8v6"/><path d="M9 11h6"/></svg>
                   <span>기체 강화</span>
                 </span>
-                <span class="aaa-nav-meta">ARMORY</span>
               </button>
 
               <button id="btn-title-arsenal" class="aaa-nav-btn" type="button">
@@ -85,7 +71,7 @@
                   <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="2"/></svg>
                   <span>무장 브리핑</span>
                 </span>
-                <span class="aaa-nav-meta">7 WEAPONS</span>
+                <span class="aaa-nav-meta">7종</span>
               </button>
 
               <button id="btn-title-controls" class="aaa-nav-btn" type="button">
@@ -93,7 +79,6 @@
                   <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 12h4M8 10v4"/><circle cx="16" cy="10.5" r="1"/><circle cx="18.5" cy="13" r="1"/></svg>
                   <span>조작 가이드</span>
                 </span>
-                <span class="aaa-nav-meta">CONTROLS</span>
               </button>
 
               <div class="aaa-utility-row">
@@ -109,18 +94,98 @@
                     <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                     <span>도전과제</span>
                   </span>
-                  <span id="title-ach-badge" class="aaa-nav-meta">0/23</span>
+                  <span id="title-ach-badge" class="aaa-nav-meta">0/25</span>
                 </button>
               </div>
             </div>
           </nav>
         </div>
 
+        <!-- Sub-Panel Deploy: Mission Mode & HEAT 0-10 Selector -->
+        <section id="title-panel-deploy" class="title-subpanel hidden" aria-label="작전 개시 설정">
+          <div class="subpanel-header">
+            <div>
+              <span class="subpanel-kicker">작전 모드 및 위협 단계 선택</span>
+              <h2 class="subpanel-title">작전 개시</h2>
+            </div>
+            <button id="btn-deploy-back" class="mil-btn small" type="button">뒤로</button>
+          </div>
+
+          <div class="deploy-body">
+            <div class="deploy-section">
+              <div class="deploy-section-head">
+                <span class="deploy-section-label">1. 작전 모드 선택</span>
+                <span id="deploy-mode-badge" class="deploy-section-meta">표준 · 15웨이브</span>
+              </div>
+              <div class="deploy-mode-tabs" role="tablist" aria-label="작전 모드">
+                <button id="mode-campaign" class="deploy-mode-tab active" type="button" role="tab">
+                  <strong class="deploy-mode-title">캠페인</strong>
+                  <span class="deploy-mode-sub">1~15 웨이브 · 3대 보스 토벌</span>
+                </button>
+                <button id="mode-endless" class="deploy-mode-tab" type="button" role="tab">
+                  <strong class="deploy-mode-title">무한 강하</strong>
+                  <span class="deploy-mode-sub">15웨이브 순환 · 무한 위협 증폭</span>
+                </button>
+                <button id="mode-daily" class="deploy-mode-tab" type="button" role="tab">
+                  <strong class="deploy-mode-title">오늘의 작전</strong>
+                  <span class="deploy-mode-sub">일일 특수 전장 규칙 적용</span>
+                </button>
+              </div>
+              <div id="deploy-mode-detail" class="deploy-mode-detail">
+                표준 15웨이브 궤도 수복 작전입니다. 최종 보스 TRANSCENDENT-OMEGA를 격파하면 다음 위협 단계가 해금됩니다.
+              </div>
+            </div>
+
+            <div class="deploy-section">
+              <div class="deploy-section-head">
+                <span class="deploy-section-label">2. 위협 단계 (0 ~ 10)</span>
+                <span id="deploy-heat-unlock-status" class="deploy-section-meta">해금 단계: 0 / 10</span>
+              </div>
+              <div id="deploy-heat-grid" class="deploy-heat-grid" role="radiogroup" aria-label="위협 단계"></div>
+              <div class="deploy-heat-stats">
+                <div class="deploy-stat-box">
+                  <span class="deploy-stat-k">선택 단계</span>
+                  <strong id="deploy-stat-tier" class="deploy-stat-v">위협 0 · 표준</strong>
+                </div>
+                <div class="deploy-stat-box">
+                  <span class="deploy-stat-k">적 체력</span>
+                  <strong id="deploy-stat-hp" class="deploy-stat-v">100%</strong>
+                </div>
+                <div class="deploy-stat-box">
+                  <span class="deploy-stat-k">적 공격력</span>
+                  <strong id="deploy-stat-dmg" class="deploy-stat-v">100%</strong>
+                </div>
+                <div class="deploy-stat-box accent">
+                  <span class="deploy-stat-k">골드 보상</span>
+                  <strong id="deploy-stat-gold" class="deploy-stat-v">100%</strong>
+                </div>
+              </div>
+              <div id="deploy-heat-hint" class="deploy-heat-hint">
+                현재 해금된 최고 위협 단계를 클리어하면 다음 단계가 자동으로 개방됩니다.
+              </div>
+            </div>
+          </div>
+
+          <div class="deploy-footer">
+            <div class="deploy-footer-left">
+              <div class="deploy-loadout-info">
+                <span class="deploy-loadout-kicker">출격 기체 및 기본 무장</span>
+                <strong id="deploy-loadout-text">VANGUARD-09 · M41-A 펄스 라이플 + W-01 용접 피스톨</strong>
+              </div>
+              <button id="btn-tutorial" class="deploy-tutorial-btn" type="button">전술 훈련장 (튜토리얼)</button>
+            </div>
+            <button id="btn-deploy-launch" class="mil-btn primary deploy-launch-btn" type="button">
+              <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v12"/><path d="M7 9l5 5 5-5"/><path d="M5 17l2 4h10l2-4"/><path d="M4 21h16"/></svg>
+              <span>궤도 출격 개시</span>
+            </button>
+          </div>
+        </section>
+
         <!-- Sub-Panel 0: Meta Armory (Separated Permanent Stats & Pilot Frame Shop) -->
         <section id="title-panel-armory" class="title-subpanel hidden" aria-label="기체 강화">
           <div class="subpanel-header">
             <div>
-              <span class="subpanel-kicker">ORBITAL HANGAR // 기체 정비 및 파일럿 격납고</span>
+              <span class="subpanel-kicker">기체 정비 및 파일럿 격납고</span>
               <h2 class="subpanel-title">기체 강화</h2>
             </div>
             <button id="btn-armory-back" class="mil-btn small" type="button">뒤로</button>
@@ -128,10 +193,13 @@
 
           <div class="armory-gold-bar">
             <div class="armory-tabs" role="tablist">
-              <button id="tab-armory-stats" class="armory-tab active" type="button">영구 스탯 개조 (8종 · Lv.10)</button>
+              <button id="tab-armory-stats" class="armory-tab active" type="button">영구 스탯 개조 (8종 · 최대 10단계)</button>
               <button id="tab-armory-frames" class="armory-tab" type="button">파일럿 기체 상점 (4종)</button>
             </div>
-            <span id="armory-gold-amount">0 G</span>
+            <div class="armory-gold-actions">
+              <button id="btn-armory-reset" class="armory-reset-btn" type="button" disabled>스탯 초기화</button>
+              <span id="armory-gold-amount">0 G</span>
+            </div>
           </div>
 
           <div id="armory-view-stats" class="armory-view-container">
@@ -144,7 +212,7 @@
         </section>
 
         <!-- Sub-Panel 1: Arsenal Briefing -->
-        <section id="title-panel-arsenal" class="title-subpanel hidden" aria-label="Arsenal Briefing">
+        <section id="title-panel-arsenal" class="title-subpanel hidden" aria-label="무장 브리핑">
           <div class="subpanel-header">
             <div>
               <span class="subpanel-kicker">VANGUARD-09 궤도 무장</span>
@@ -153,19 +221,19 @@
             <button id="btn-arsenal-back" class="mil-btn small" type="button">뒤로</button>
           </div>
 
-          <div class="arsenal-section-label">주무기 (PRIMARY // 1정 장착)</div>
+          <div class="arsenal-section-label">주무기 (1정 장착)</div>
           <div class="arsenal-grid">
             <article class="arsenal-card" style="--card-accent: #f59e0b">
               <div class="arsenal-top">
                 <span class="arsenal-slot">주무기 · 기본</span>
                 <span class="arsenal-role">전거리 돌격소총</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="pulse_rifle" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="pulse_rifle" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">M41-A 펄스 라이플</h3>
               <div class="arsenal-stats">
-                <span>14.6 DMG (2.0x HS)</span>
-                <span>620 RPM</span>
-                <span>30 MAG</span>
+                <span>피해 14.6 (치명 2.0배)</span>
+                <span>분당 620발</span>
+                <span>탄창 30발</span>
               </div>
               <p class="arsenal-desc">
                 안정적인 반동과 반사 조준경을 갖춘 표준 텅스텐 돌격소총. 전 거리 교전의 중심축입니다.
@@ -177,12 +245,12 @@
                 <span class="arsenal-slot">주무기 · 드랍</span>
                 <span class="arsenal-role">근접 돌파 산탄총</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="scattergun" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="scattergun" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">BR-12 브리처 샷건</h3>
               <div class="arsenal-stats">
-                <span>12.6x8 DMG (101 MAX)</span>
-                <span>78 RPM</span>
-                <span>8 MAG</span>
+                <span>피해 12.6×8 (최대 101)</span>
+                <span>분당 78발</span>
+                <span>탄창 8발</span>
               </div>
               <p class="arsenal-desc">
                 8발 텅스텐 산탄으로 강한 경직을 유발하는 근접 돌파용 샷건. 슬라이드 돌격에 특화되어 있습니다.
@@ -194,12 +262,12 @@
                 <span class="arsenal-slot">주무기 · 드랍</span>
                 <span class="arsenal-role">대물 관통 레일건</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="railgun" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="railgun" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">HV-7 레일 랜스</h3>
               <div class="arsenal-stats">
-                <span>69.2 DMG (관통)</span>
-                <span>40 RPM</span>
-                <span>4 MAG</span>
+                <span>피해 69.2 (관통)</span>
+                <span>분당 40발</span>
+                <span>탄창 4발</span>
               </div>
               <p class="arsenal-desc">
                 적과 방패를 관통하는 초고속 레일 랜스. 중장갑 방패병과 보스 약점 파괴에 최적화되어 있습니다.
@@ -211,30 +279,30 @@
                 <span class="arsenal-slot">주무기 · 드랍</span>
                 <span class="arsenal-role">고속 기동 기관단총</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="plasma_smg" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="plasma_smg" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">K-9 스크래퍼 PDW</h3>
               <div class="arsenal-stats">
-                <span>9.1 DMG (1.8x HS)</span>
-                <span>920 RPM</span>
-                <span>42 MAG</span>
+                <span>피해 9.1 (치명 1.8배)</span>
+                <span>분당 920발</span>
+                <span>탄창 42발</span>
               </div>
               <p class="arsenal-desc">
-                0.24초 고속 전환과 낮은 이동 탄퍼짐을 갖춘 920 RPM 기관단총. 드론 군집 정리에 유리합니다.
+                0.24초 고속 전환과 낮은 이동 탄퍼짐을 갖춘 고속 연사 기관단총. 드론 군집 정리에 유리합니다.
               </p>
             </article>
           </div>
 
-          <div class="arsenal-section-label">보조무기 (SECONDARY // 무재장전 · 1정 장착)</div>
+          <div class="arsenal-section-label">보조무기 (무재장전 · 1정 장착)</div>
           <div class="arsenal-grid secondary-grid">
             <article class="arsenal-card" style="--card-accent: #f97316">
               <div class="arsenal-top">
                 <span class="arsenal-slot">보조 · 기본</span>
                 <span class="arsenal-role">열기 과열 피스톨</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="weld_pistol" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="weld_pistol" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">W-01 용접 피스톨</h3>
               <div class="arsenal-stats">
-                <span>8.4 DMG (+30% 고열)</span>
+                <span>피해 8.4 (+30% 고열)</span>
                 <span>열기 게이지 (3배 지속)</span>
               </div>
               <p class="arsenal-desc">
@@ -247,10 +315,10 @@
                 <span class="arsenal-slot">보조 · 드랍</span>
                 <span class="arsenal-role">표식·방패관통</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="arc_rivet" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="arc_rivet" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">T-4 아크 리벳건</h3>
               <div class="arsenal-stats">
-                <span>15.1 DMG (관통·표식)</span>
+                <span>피해 15.1 (관통·표식)</span>
                 <span>3발 자동충전</span>
               </div>
               <p class="arsenal-desc">
@@ -261,29 +329,29 @@
             <article class="arsenal-card" style="--card-accent: #22c55e">
               <div class="arsenal-top">
                 <span class="arsenal-slot">보조 · 드랍</span>
-                <span class="arsenal-role">넉백·로켓점프</span>
+                <span class="arsenal-role">넉백·반동 도약</span>
               </div>
-              <div class="weapon-blueprint-box" data-weapon-preview="repulsor" aria-hidden="true"><span class="weapon-preview-loading">RENDERING 3D PROFILE...</span></div>
+              <div class="weapon-blueprint-box" data-weapon-preview="repulsor" aria-hidden="true"><span class="weapon-preview-loading">무기 불러오는 중...</span></div>
               <h3 class="arsenal-name">K-0 충격 리펄서</h3>
               <div class="arsenal-stats">
-                <span>20.2x5 근거리 충격</span>
+                <span>피해 20.2×5 근거리 충격</span>
                 <span>2회 자동충전</span>
               </div>
               <p class="arsenal-desc">
-                적을 강하게 밀어내며, 바닥을 보고 발사하면 반동으로 높게 도약하는 로켓 점프가 가능합니다.
+                적을 강하게 밀어내며, 바닥을 보고 발사하면 반동으로 높게 도약할 수 있습니다.
               </p>
             </article>
           </div>
 
           <div class="melee-brief-bar">
-            <span class="melee-tag">2슬롯 로드아웃 규칙</span>
+            <span class="melee-tag">무장 슬롯 규칙</span>
             <strong>주무기 1정 + 보조무기 1정 장착</strong>
-            <span>바닥 무기 [F]로 교체 시 기존 무기 드랍 // 동일 무기 획득 시 피해 +15% 오버클럭</span>
+            <span>바닥 무기 [F]로 교체 시 기존 무기 드랍 · 동일 무기 획득 시 피해 +18% 오버클럭</span>
           </div>
         </section>
 
         <!-- Sub-Panel 2: Controls Guide -->
-        <section id="title-panel-controls" class="title-subpanel hidden" aria-label="Controls Guide">
+        <section id="title-panel-controls" class="title-subpanel hidden" aria-label="조작 가이드">
           <div class="subpanel-header">
             <div>
               <span class="subpanel-kicker">전술 조작 체계</span>
@@ -294,7 +362,7 @@
 
           <div class="controls-columns">
             <div class="controls-box">
-              <h3 class="controls-heading">PC // 키보드 + 마우스</h3>
+              <h3 class="controls-heading">PC (키보드 + 마우스)</h3>
               <div class="kbd-showcase" aria-hidden="true">
                 <div class="kbd-group">
                   <div class="kbd-row"><span class="kbd-key accent">W</span></div>
@@ -307,27 +375,29 @@
                   <span class="kbd-caption">질주 · 슬라이드 · 대시 · 교체 · 근접</span>
                 </div>
                 <div class="kbd-group">
-                  <div class="kbd-row"><span class="kbd-key accent">LMB 사격</span><span class="kbd-key">RMB 조준</span></div>
+                  <div class="kbd-row"><span class="kbd-key accent">좌클릭 사격</span><span class="kbd-key">우클릭 조준</span></div>
                   <div class="kbd-row"><span class="kbd-key">1 주무기</span><span class="kbd-key">2 보조무기</span></div>
                   <span class="kbd-caption">전투 화기 운용</span>
                 </div>
               </div>
               <ul class="controls-list">
-                <li><span>WASD / 방향키</span><strong>이동 및 스트레이프</strong></li>
+                <li><span>WASD / 방향키</span><strong>이동 및 좌우 기동</strong></li>
                 <li><span>SHIFT</span><strong>전술 질주</strong></li>
                 <li><span>SPACE</span><strong>점프 / 2단 점프</strong></li>
                 <li><span>C / CTRL</span><strong>슬라이드 / 앉기</strong></li>
-                <li><span>Q / E / ALT</span><strong>2회 충전 옴니 대시</strong></li>
-                <li><span>좌클릭 / 우클릭</span><strong>사격 / 정밀 조준(ADS)</strong></li>
+                <li><span>Q / ALT</span><strong>옴니 대시</strong></li>
+                <li><span>E (길게 누르기)</span><strong>전방 에너지 방패 (비전투 자동 재생)</strong></li>
+                <li><span>X</span><strong>기체 궁극기 발동</strong></li>
+                <li><span>좌클릭 / 우클릭</span><strong>사격 / 정밀 조준</strong></li>
                 <li><span>1·2 / 휠</span><strong>주무기 ↔ 보조무기 전환</strong></li>
                 <li><span>F</span><strong>바닥 무기 줍기·교체 (기존 무기 드랍)</strong></li>
-                <li><span>R / V</span><strong>재장전 / 고열 블레이드</strong></li>
+                <li><span>R / V / TAB</span><strong>재장전 / 근접 블레이드 / 빌드 현황</strong></li>
                 <li><span>ESC / P</span><strong>일시 정지</strong></li>
               </ul>
             </div>
 
             <div class="controls-box">
-              <h3 class="controls-heading">태블릿·모바일 // 6버튼 터치</h3>
+              <h3 class="controls-heading">태블릿 · 모바일 (6버튼 터치)</h3>
               <div class="kbd-showcase" aria-hidden="true">
                 <div class="kbd-group">
                   <div class="kbd-row"><span class="kbd-key accent">좌측 이동 패드</span></div>
@@ -338,18 +408,18 @@
                   <span class="kbd-caption">카메라 조준 회전</span>
                 </div>
                 <div class="kbd-group">
-                  <div class="kbd-row"><span class="kbd-key accent">FIRE</span><span class="kbd-key">ADS</span><span class="kbd-key">JUMP</span><span class="kbd-key">DASH</span></div>
+                  <div class="kbd-row"><span class="kbd-key accent">사격</span><span class="kbd-key">조준</span><span class="kbd-key">점프</span><span class="kbd-key">대시</span></div>
                   <span class="kbd-caption">우측 6버튼 전투 액션</span>
                 </div>
               </div>
               <ul class="controls-list">
                 <li><span>좌측 패드</span><strong>이동 스틱 (85%↑ 자동 질주)</strong></li>
                 <li><span>우측 패드</span><strong>360&deg; 시점 회전</strong></li>
-                <li><span>FIRE</span><strong>누르면 사격 + 드래그 추적</strong></li>
-                <li><span>ADS</span><strong>정밀 조준 토글 (보정 강화)</strong></li>
-                <li><span>JUMP</span><strong>점프 / 2단 점프</strong></li>
-                <li><span>DASH / SLIDE</span><strong>탭: 옴니 대시 / 길게: 슬라이드</strong></li>
-                <li><span>RLD / SWAP</span><strong>재장전 / 무기 순환</strong></li>
+                <li><span>사격</span><strong>누르면 사격 + 드래그 추적</strong></li>
+                <li><span>조준</span><strong>정밀 조준 토글 (보정 강화)</strong></li>
+                <li><span>점프</span><strong>점프 / 2단 점프</strong></li>
+                <li><span>대시 / 슬라이드</span><strong>탭: 옴니 대시 / 길게: 슬라이드</strong></li>
+                <li><span>재장전 / 교체</span><strong>재장전 / 무기 순환</strong></li>
                 <li><span>우상단 II</span><strong>일시 정지 및 설정</strong></li>
               </ul>
             </div>
@@ -449,17 +519,20 @@
 
           <div class="ach-summary-bar">
             <div class="ach-progress-wrap">
-              <span id="ach-progress-text" class="ach-progress-text">달성 0 / 23</span>
+              <span id="ach-progress-text" class="ach-progress-text">달성 0 / 25</span>
               <div class="ach-progress-track">
                 <div id="ach-progress-fill" class="ach-progress-fill"></div>
               </div>
-              <span id="ach-stats-inline" class="ach-stats-inline">누적 처치 0 · 무한 최고 W0</span>
+              <span id="ach-stats-inline" class="ach-stats-inline">누적 처치 0 · 최고 해금 위협 0 · 무한 0웨이브</span>
             </div>
-            <div class="ach-filter-tabs" role="tablist" aria-label="도전과제 분류">
-              <button class="ach-filter-btn active" data-ach-cat="all" type="button">전체</button>
-              <button class="ach-filter-btn" data-ach-cat="combat" type="button">전투</button>
-              <button class="ach-filter-btn" data-ach-cat="mobility" type="button">기동</button>
-              <button class="ach-filter-btn" data-ach-cat="ops" type="button">작전</button>
+            <div class="ach-summary-right">
+              <button id="btn-ach-claim-all" class="ach-claim-btn hidden" type="button">보상 수령 (+0 G)</button>
+              <div class="ach-filter-tabs" role="tablist" aria-label="도전과제 분류">
+                <button class="ach-filter-btn active" data-ach-cat="all" type="button">전체</button>
+                <button class="ach-filter-btn" data-ach-cat="combat" type="button">전투</button>
+                <button class="ach-filter-btn" data-ach-cat="mobility" type="button">기동</button>
+                <button class="ach-filter-btn" data-ach-cat="ops" type="button">작전</button>
+              </div>
             </div>
           </div>
 
@@ -547,14 +620,14 @@
         <div id="minimap-frame">
           <div class="minimap-inner">
             <canvas id="minimap-canvas" width="140" height="140"></canvas>
-            <span id="minimap-tag" class="minimap-tag">SEC-09</span>
+            <span id="minimap-tag" class="minimap-tag">제09구역</span>
           </div>
         </div>
         <div class="telemetry-row">
           <span id="hud-gold-pill" class="hud-gold-pill">0 G</span>
           <span id="fps-counter" class="hidden">60 FPS</span>
-          <span id="low-g-badge" class="hud-act3-pill low-g hidden">LOW-G // 저중력</span>
-          <span id="void-gate-pill" class="hud-act3-pill void-gate hidden">VOID GATE 0</span>
+          <span id="low-g-badge" class="hud-act3-pill low-g hidden">저중력 구역</span>
+          <span id="void-gate-pill" class="hud-act3-pill void-gate hidden">차원 게이트 0</span>
         </div>
         <div id="hud-buff-row" class="hud-buff-row"></div>
       </div>
@@ -563,8 +636,8 @@
       <div class="hud-top-center">
         <div class="wave-strip">
           <div class="wave-left">
-            <span id="wave-badge">WAVE 1 / 15</span>
-            <span id="wave-name">ORBITAL TOUCHDOWN</span>
+            <span id="wave-badge">웨이브 1 / 15</span>
+            <span id="wave-name">궤도 강하 개시</span>
           </div>
           <div class="wave-right">
             <span id="hostiles-count">적 잔여: 0</span>
@@ -575,7 +648,7 @@
         <!-- Terra-Beacon Control Zone Progress -->
         <div id="zone-panel" class="hidden">
           <div class="zone-header">
-            <span id="zone-status-label">테라비콘 // 대기 중</span>
+            <span id="zone-status-label">테라비콘 · 대기 중</span>
             <span id="zone-pct">0%</span>
           </div>
           <div class="zone-track">
@@ -587,9 +660,9 @@
         <div id="boss-panel" class="hidden">
           <div class="boss-header">
             <div class="boss-title-group">
-              <span id="boss-name">COLOSSUS-IV // ASH TITAN</span>
-              <span id="boss-phase-badge">PHASE 1</span>
-              <span id="boss-shield-tag" class="hidden">ARMOR SURGE</span>
+              <span id="boss-name">COLOSSUS-IV · 잿빛 거신</span>
+              <span id="boss-phase-badge">1페이즈</span>
+              <span id="boss-shield-tag" class="hidden">장갑 과충전</span>
             </div>
             <span id="boss-hp-text">2400 / 2400</span>
           </div>
@@ -603,7 +676,7 @@
               <span class="boss-turrets-label">부유 포탑</span>
               <div id="boss-turrets-pips" class="boss-turrets-pips"></div>
             </div>
-            <span id="boss-shield-link" class="boss-shield-link">SHIELD LINK ACTIVE</span>
+            <span id="boss-shield-link" class="boss-shield-link">방어막 연결 활성</span>
           </div>
         </div>
       </div>
@@ -619,9 +692,9 @@
 
       <!-- Center-Top Tactical Callout Banner -->
       <div id="announcement-banner" aria-live="polite">
-        <span id="announcement-kicker">AETHER DROP</span>
-        <div id="announcement-title">ORBITAL TOUCHDOWN</div>
-        <span id="announcement-sub">DROP POD SECURED — CLEAR DEAD METROPOLIS SCOUTS</span>
+        <span id="announcement-kicker">작전 경보</span>
+        <div id="announcement-title">궤도 강하 개시</div>
+        <span id="announcement-sub">착륙 지점 확보 완료 — 정찰 기계를 섬멸하세요</span>
       </div>
 
       <!-- Top-Right: Score, Combo Multiplier, Pause Button & Fixed 4-Slot Killfeed -->
@@ -630,7 +703,7 @@
           <div id="style-rank-card" aria-label="스타일 랭크">
             <span id="style-grade">D</span>
             <div class="style-meta">
-              <span id="style-callout">STYLE</span>
+              <span id="style-callout">스타일</span>
               <div class="style-bar-track"><div id="style-bar-fill"></div></div>
             </div>
           </div>
@@ -649,8 +722,8 @@
           <button
             id="hud-pause-btn"
             type="button"
-            title="Pause / Settings (ESC / P)"
-            aria-label="Pause Game"
+            title="일시 정지 / 설정 (ESC / P)"
+            aria-label="일시 정지"
           >
             II
           </button>
@@ -688,7 +761,7 @@
 
         <div class="mobility-row">
           <div class="dash-pips">
-            <span class="dash-label">DASH</span>
+            <span class="dash-label">대시</span>
             <div id="dash-pip-0" class="dash-pip ready">
               <div id="dash-pip-fill-0" class="dash-pip-fill"></div>
             </div>
@@ -706,7 +779,7 @@
       <!-- Dedicated Tutorial Step Guidance Banner -->
       <div id="tutorial-banner" class="tutorial-banner hidden">
         <div class="tut-header">
-          <span id="tut-step-badge" class="tut-badge">STEP 1 / 6</span>
+          <span id="tut-step-badge" class="tut-badge">단계 1 / 6</span>
           <span id="tut-step-title" class="tut-title">기동 및 맵 오브젝트</span>
           <button id="btn-tut-exit" class="tut-exit-btn" type="button">훈련 종료 [ESC]</button>
         </div>
@@ -756,8 +829,8 @@
       <div class="hud-bottom-right">
         <div id="weapon-panel">
           <div class="weapon-meta">
-            <span id="weapon-name">M41-A KINETIC RIFLE</span>
-            <span id="weapon-role">ALL-RANGE KINETIC ASSAULT</span>
+            <span id="weapon-name">M41-A 펄스 라이플</span>
+            <span id="weapon-role">전거리 돌격소총</span>
           </div>
           <div class="ammo-readout">
             <span id="ammo-mag">30</span>
@@ -802,19 +875,19 @@
     <div id="touch-overlay" class="hidden">
       <div id="touch-move-zone">
         <div id="touch-joy-base">
-          <span id="touch-joy-sprint-label">SPRINT</span>
+          <span id="touch-joy-sprint-label">질주</span>
           <div id="touch-joy-knob"></div>
         </div>
       </div>
 
       <div id="touch-look-zone"></div>
 
-      <button id="touch-btn-fire" class="touch-btn" type="button" aria-label="사격">FIRE</button>
-      <button id="touch-btn-ads" class="touch-btn" type="button" aria-label="정밀 조준">ADS</button>
-      <button id="touch-btn-jump" class="touch-btn" type="button" aria-label="점프">JUMP</button>
-      <button id="touch-btn-dash" class="touch-btn" type="button" aria-label="대시 / 길게 누르면 슬라이드">DASH<br>SLIDE</button>
-      <button id="touch-btn-reload" class="touch-btn" type="button" aria-label="재장전">RLD</button>
-      <button id="touch-btn-swap" class="touch-btn" type="button" aria-label="무기 전환">SWAP</button>
+      <button id="touch-btn-fire" class="touch-btn" type="button" aria-label="사격">사격</button>
+      <button id="touch-btn-ads" class="touch-btn" type="button" aria-label="정밀 조준">조준</button>
+      <button id="touch-btn-jump" class="touch-btn" type="button" aria-label="점프">점프</button>
+      <button id="touch-btn-dash" class="touch-btn" type="button" aria-label="대시 / 길게 누르면 슬라이드">대시<br>슬라이드</button>
+      <button id="touch-btn-reload" class="touch-btn" type="button" aria-label="재장전">재장전</button>
+      <button id="touch-btn-swap" class="touch-btn" type="button" aria-label="무기 전환">교체</button>
       <button id="touch-btn-pickup" class="touch-btn hidden" type="button" aria-label="바닥 무기 교체">교체</button>
       <button id="touch-btn-pause" class="touch-btn" type="button" aria-label="일시 정지">II</button>
     </div>
@@ -825,7 +898,7 @@
     <div id="upgrade-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
       <div class="modal-card upgrade-modal-card">
         <div class="modal-header">
-          <span id="upgrade-kicker" class="modal-kicker">WAVE CLEAR // 궤도 보급 선택</span>
+          <span id="upgrade-kicker" class="modal-kicker">웨이브 완료 · 궤도 보급 선택</span>
           <h2 id="upgrade-title" class="modal-title">전술 강화 카드 선택 (1 / 2 / 3)</h2>
         </div>
         <div id="upgrade-cards-grid" class="upgrade-cards-grid"></div>
@@ -946,7 +1019,7 @@
                 <p id="end-subtitle">COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보</p>
               </div>
               <div class="rank-stamp-box" aria-label="작전 평가 등급">
-                <span class="rank-stamp-label">RANK</span>
+                <span class="rank-stamp-label">등급</span>
                 <div id="end-rank">S+</div>
               </div>
             </div>
@@ -979,7 +1052,7 @@
               </div>
               <div class="stat-tile">
                 <span class="stat-k">도달 웨이브</span>
-                <span id="stat-wave" class="stat-v">1 / 5</span>
+                <span id="stat-wave" class="stat-v">1 / 15</span>
               </div>
               <div class="stat-tile">
                 <span class="stat-k">작전 시간</span>
@@ -1003,9 +1076,9 @@
   <!-- Graceful WebGL Fallback Banner (z: 999) -->
   <div id="webgl-fallback" class="hidden" role="alert">
     <div class="fallback-card">
-      <h2>WEBGL RENDERER UNAVAILABLE</h2>
+      <h2>3D 그래픽 가속 불가</h2>
       <p id="webgl-fallback-msg">
-        AETHER DROP requires WebGL hardware acceleration. Please enable WebGL in your browser settings or update your graphics driver and reload.
+        게임을 실행하려면 브라우저의 WebGL 하드웨어 가속이 필요합니다. 브라우저 설정에서 WebGL을 활성화하거나 그래픽 드라이버를 업데이트한 뒤 새로고침하세요.
       </p>
     </div>
   </div>

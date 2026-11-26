@@ -100,9 +100,9 @@ class Map8AbyssSanctumBuilder {
     return {
       mapId: 'transcendent_sanctum',
       mapIndex: 8,
-      mapCode: 'SEC-120',
-      mapName: 'SECTOR-120 // TRANSCENDENT ABYSS SANCTUM',
-      mapSubtitle: 'ORBITAL SINGULARITY CORE — FINAL BOSS',
+      mapCode: '제120구역',
+      mapName: '제120구역 · 초월 심연 성소',
+      mapSubtitle: '궤도 특이점 노심 — 최종 결전 구역',
       atmosphere: {
         bgColor: 0x06030e,
         fogColor: 0x100724,

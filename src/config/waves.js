@@ -10,7 +10,7 @@ __define("src/config/waves.js", (__exports, __require) => {
 const ENEMY_ARCHETYPES = {
   rusher_drone: {
     id: 'rusher_drone',
-    name: 'SCAVENGER DRONE',
+    name: '고철 정찰 드론',
     hp: 75,
     speed: 8.6,
     radius: 0.55,
@@ -30,12 +30,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.28,
     description:
-      'High-speed hovering salvage drone that flushes players from cover and swarms elevated ruins. Fragile furnace optic breaks swiftly to K-9 hipfire or BR-12 buckshot.',
+      '엄폐물 뒤의 적을 몰아내고 공중을 비행하는 고속 정찰 드론입니다.',
   },
 
   tactical_trooper: {
     id: 'tactical_trooper',
-    name: 'RUST-WALKER TROOPER',
+    name: '고철 보병',
     hp: 120,
     speed: 6.2,
     radius: 0.5,
@@ -55,12 +55,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.35,
     description:
-      'Corroded bipedal infantry unit that strafes mid-range wreckage and contests the Terra-Beacon. Clean 3-headshot M41-A kill or instant HV-7 body delete.',
+      '중거리 교전을 수행하며 테라비콘 거점을 압박하는 이족 보행 기계 보병입니다.',
   },
 
   heavy_enforcer: {
     id: 'heavy_enforcer',
-    name: 'BULWARK JUGGERNAUT',
+    name: '불워크 중장갑병',
     hp: 290,
     speed: 4.1,
     radius: 0.78,
@@ -80,12 +80,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.55,
     description:
-      'Shielded weathered-iron siege frame advancing into Terra-Beacon perimeters with heavy molten-slag volleys. Counter with HV-7 headshots, volatile fuel drums, or BR-12 flanks.',
+      '방패를 들고 거점으로 전진하며 중화력을 투사하는 중장갑 공성 기체입니다.',
   },
 
   sniper_stalker: {
     id: 'sniper_stalker',
-    name: 'DEADEYE RECON',
+    name: '데드아이 저격병',
     hp: 105,
     speed: 5.4,
     radius: 0.45,
@@ -105,12 +105,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.95,
     description:
-      'Long-range rusty overwatch marksman anchoring upper catwalks with a visible 0.95s crimson target-lock beam. Dash across its firing window or counter-snipe with the HV-7.',
+      '상층 통로에서 붉은 조준 레이저로 장거리 저격을 가하는 정밀 사격 기체입니다.',
   },
 
   cyber_mech_boss: {
     id: 'cyber_mech_boss',
-    name: 'COLOSSUS-IV // ASH TITAN',
+    name: 'COLOSSUS-IV · 잿빛 거신',
     hp: 3600,
     speed: 4.8,
     radius: 1.55,
@@ -130,12 +130,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.7,
     description:
-      'Towering burnt-crimson siege automaton guarding the Crater Citadel orbital elevator with twin rotary slag cannons, phased shield surges, and escort waves. Target its glowing cranial furnace core and use jump pads for vertical angles.',
+      '분화구 요새의 궤도 승강기를 지키는 초대형 공성 보스입니다. 두부 노심 약점을 집중 사격하세요.',
   },
 
   interceptor_drone: {
     id: 'interceptor_drone',
-    name: 'AEGIS INTERCEPTOR',
+    name: '이지스 요격 드론',
     hp: 118,
     speed: 9.4,
     radius: 0.62,
@@ -155,12 +155,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.28,
     description:
-      'Twin tilt-rotor orbital gunship banking above flight decks while alternating twin wingtip blaster pods.',
+      '비행갑판 상공을 선회하며 양측 날개 포드로 연속 사격을 가하는 궤도 요격기입니다.',
   },
 
   shock_breacher: {
     id: 'shock_breacher',
-    name: 'SHOCK BREACHER',
+    name: '쇼크 돌격병',
     hp: 170,
     speed: 7.4,
     radius: 0.60,
@@ -180,12 +180,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.36,
     description:
-      'Hunched pneumatic assault breacher charging into close quarters with a 4-pellet heavy scatter cannon.',
+      '4발 산탄 캐논을 장착하고 근거리로 빠르게 돌진해 오는 강습 기체입니다.',
   },
 
   rail_warden: {
     id: 'rail_warden',
-    name: 'AEGIS PHALANX',
+    name: '이지스 중방패병',
     hp: 365,
     speed: 4.3,
     radius: 0.78,
@@ -205,12 +205,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.52,
     description:
-      'Armored orbital vanguard wielding a full-body reactive shield and twin magnetic rail lances. Shatter its defense with EMP pylons or piercing rail rounds.',
+      '반응형 전신 방패와 쌍열 레일건을 갖춘 중장갑 정예병입니다. EMP 파일런이나 관통 무기로 제압하세요.',
   },
 
   mortar_artillery: {
     id: 'mortar_artillery',
-    name: 'SIEGE MORTAR',
+    name: '공성 박격포병',
     hp: 255,
     speed: 3.9,
     radius: 0.75,
@@ -230,12 +230,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.88,
     description:
-      'Heavy wide-stanced bombardment walker projecting an amber target-lock laser before unleashing a 3-round plasma mortar salvo.',
+      '주황 조준 레이저 고정 후 3발의 플라즈마 박격포탄을 투하하는 중포격 기체입니다.',
   },
 
   vanguard_assassin: {
     id: 'vanguard_assassin',
-    name: 'PHANTOM STALKER',
+    name: '팬텀 암살병',
     hp: 155,
     speed: 8.8,
     radius: 0.48,
@@ -255,12 +255,12 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.30,
     description:
-      'Reverse-jointed stealth flanker executing sudden lateral evasion dashes while firing crisp 4-round pulse bursts.',
+      '좌우 회피 대시를 구사하며 4점사 펄스 사격을 가하는 은신 기동 기체입니다.',
   },
 
   aegis_overlord_boss: {
     id: 'aegis_overlord_boss',
-    name: 'AEGIS-IX // ORBITAL OVERLORD',
+    name: 'AEGIS-IX · 궤도 군주',
     hp: 6300,
     speed: 5.1,
     radius: 1.65,
@@ -280,7 +280,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.68,
     description:
-      'Supreme dreadnought commander of the Aegis Orbital Drydock armed with dual rail siege cannons, 4 gyroscopic reactor rings, and phased barriers. Break EMP pylons and shield relays to strip its barrier.',
+      '이지스 건조 도크를 수호하는 궤도 사령 보스입니다. 위상 방어막 전개 시 EMP 파일런과 쉴드 중계기를 파괴하세요.',
   },
 
   // === ACT 3: ORBITAL ABYSS CORE ARCHETYPES (WAVES 11-15) ===
@@ -313,7 +313,7 @@ const ENEMY_ARCHETYPES = {
     overloadPlayerDamage: 48,
     overloadEnemyDamage: 85,
     description:
-      'Volatile orbital shock unit that enters Overload Frenzy below 50% HP or near targets, erupting in a 8m chain detonation.',
+      '체력이 50% 이하로 떨어지거나 근접하면 과부하 폭주 상태에 돌입해 연쇄 폭발을 일으킵니다.',
   },
 
   void_warper: {
@@ -341,7 +341,7 @@ const ENEMY_ARCHETYPES = {
     blinkCooldown: 5.5,
     blinkTelegraph: 0.32,
     description:
-      'Dimensional flanker that telegraphs a violet rift and blinks directly onto player flanks every 5.5s.',
+      '보라색 차원 균열을 예고한 뒤 플레이어 측면으로 공간 도약하는 기습 병력입니다.',
   },
 
   void_swarmer: {
@@ -366,7 +366,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.22,
     description:
-      'Fast airborne rift-spawned drone continuously summoned from Void Gates until the dimensional gate is shattered.',
+      '차원 게이트를 파괴할 때까지 지속적으로 소환되는 고속 공중 균열 드론입니다.',
   },
 
   abyss_sentinel: {
@@ -392,7 +392,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.48,
     description:
-      'Heavy obsidian-plated abyssal sentinel firing triple plasma bursts while guarding dimensional conduits.',
+      '차원 도관을 수호하며 3연발 플라즈마 탄막을 발사하는 중장갑 심연 파수꾼입니다.',
   },
 
   transcendent_omega_boss: {
@@ -419,7 +419,7 @@ const ENEMY_ARCHETYPES = {
     turretShieldEnabled: true,
     telegraphTime: 0.62,
     description:
-      'Transcendent biomechanical colossus tethered to orbiting floating turrets that sustain a 65% damage-reduction Shield Link until destroyed.',
+      '주변 부유 포탑과 방어막 링크(피해 65% 감소)로 연결된 최종 초월 보스입니다. 포탑을 모두 파괴하면 코어가 노출됩니다.',
   },
 };
 
@@ -427,9 +427,9 @@ const WAVES = [
   {
     wave: 1,
     mapIndex: 0,
-    name: 'ORBITAL TOUCHDOWN',
-    subtitle: 'DROP POD SECURED — CLEAR DEAD METROPOLIS SCOUTS',
-    objective: 'ELIMINATE ALL SCRAP-MACHINES',
+    name: '궤도 강하 개시',
+    subtitle: '착륙 지점 확보 완료 — 폐허 메트로폴리스 정찰대 섬멸',
+    objective: '구역 내 모든 적 기계 군단 섬멸',
     objectiveType: 'eliminate',
     controlZoneActive: false,
     isBossWave: false,
@@ -445,9 +445,9 @@ const WAVES = [
   {
     wave: 2,
     mapIndex: 0,
-    name: 'TERRA-BEACON UPLINK',
-    subtitle: 'TERRA-BEACON ONLINE — HOLD PLAZA & CLEAR OVERWATCH',
-    objective: 'ACTIVATE TERRA-BEACON & CLEAR WAVE',
+    name: '테라비콘 연결',
+    subtitle: '테라비콘 가동 — 광장 거점을 점령하고 저격 병력 제압',
+    objective: '테라비콘 점령 및 웨이브 소탕',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -464,9 +464,9 @@ const WAVES = [
   {
     wave: 3,
     mapIndex: 1,
-    name: 'REFINERY BREACH',
-    subtitle: 'SECTOR-14 SMOG FRONT — SHATTER THE BULWARK LINE',
-    objective: 'HOLD TERRA-BEACON & DESTROY BULWARKS',
+    name: '정유소 돌파',
+    subtitle: '제14구역 매연 전선 — 불워크 중장갑 방어선 붕괴',
+    objective: '테라비콘 사수 및 중장갑 병력 격파',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -484,9 +484,9 @@ const WAVES = [
   {
     wave: 4,
     mapIndex: 1,
-    name: 'SMOG CRUCIBLE',
-    subtitle: 'COMBINED-ARMS SWARM — MAXIMUM FERAL DENSITY',
-    objective: 'COMPLETE BEACON SYNC & SURVIVE ASSAULT',
+    name: '매연 용광로 격전',
+    subtitle: '제병 합동 총공세 — 최고 밀집 파상 공세',
+    objective: '테라비콘 동기화 완료 및 공세 생존',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -504,9 +504,9 @@ const WAVES = [
   {
     wave: 5,
     mapIndex: 2,
-    name: 'COLOSSUS-IV // ASH TITAN',
-    subtitle: 'SECTOR-00 CRATER CITADEL — TOPPLE THE ASH TITAN',
-    objective: 'DESTROY COLOSSUS-IV // PREPARE ORBITAL ASCENT',
+    name: 'COLOSSUS-IV · 잿빛 거신',
+    subtitle: '제00구역 분화구 요새 — 잿빛 거신 토벌',
+    objective: 'COLOSSUS-IV 격파 및 궤도 상승 준비',
     objectiveType: 'boss',
     controlZoneActive: false,
     isBossWave: true,
@@ -522,24 +522,24 @@ const WAVES = [
     bossPhases: [
       {
         phase: 1,
-        name: 'DIRECTIVE: ENGAGE',
+        name: '교전 개시',
         hpThreshold: 1.0,
         speedMultiplier: 1.0,
         fireRateMultiplier: 1.0,
         burstCount: 3,
         shieldPulse: false,
-        callout: 'ASH TITAN AWAKENED — TARGET CRANIAL FURNACE CORE',
+        callout: '잿빛 거신 각성 — 두부 노심 약점을 노리세요',
         escorts: [],
       },
       {
         phase: 2,
-        name: 'DIRECTIVE: FURNACE OVERDRIVE',
+        name: '노심 과부하',
         hpThreshold: 0.66,
         speedMultiplier: 1.18,
         fireRateMultiplier: 1.3,
         burstCount: 5,
         shieldPulse: true,
-        callout: 'PHASE 2 OVERDRIVE — SCAVENGERS & DEADEYE DEPLOYED',
+        callout: '2페이즈 과부하 — 정찰 드론과 저격 병력이 증원됩니다',
         escorts: [
           { type: 'rusher_drone', count: 3 },
           { type: 'sniper_stalker', count: 1 },
@@ -547,13 +547,13 @@ const WAVES = [
       },
       {
         phase: 3,
-        name: 'DIRECTIVE: SCORCHED EARTH',
+        name: '초토화 포격',
         hpThreshold: 0.33,
         speedMultiplier: 1.35,
         fireRateMultiplier: 1.65,
         burstCount: 7,
         shieldPulse: true,
-        callout: 'CRITICAL FURNACE — SCORCHED EARTH BARRAGE ACTIVE',
+        callout: '노심 임계점 돌파 — 초토화 전방위 포격 가동',
         escorts: [
           { type: 'rusher_drone', count: 3 },
           { type: 'heavy_enforcer', count: 1 },
@@ -564,9 +564,9 @@ const WAVES = [
   {
     wave: 6,
     mapIndex: 3,
-    name: 'FLIGHT DECK BREACH',
-    subtitle: 'SECTOR-61 AEGIS HANGAR — EMP PYLONS & INTERCEPTORS ONLINE',
-    objective: 'HOLD TERRA-BEACON // SHOOT EMP PYLONS TO STUN SHIELDED FOES',
+    name: '비행갑판 침투',
+    subtitle: '제61구역 이지스 격납고 — EMP 파일런 및 요격기 교전',
+    objective: '테라비콘 점령 · EMP 파일런 사격으로 적 방패 해제',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -585,9 +585,9 @@ const WAVES = [
   {
     wave: 7,
     mapIndex: 3,
-    name: 'HANGAR OVERDRIVE',
-    subtitle: 'PHANTOM STALKERS & ORBITAL DECK SWEEPS ENGAGED',
-    objective: 'PURGE AEGIS WING // EVADE ORBITAL TARGETING STRIKES',
+    name: '격납고 과부하',
+    subtitle: '팬텀 암살병 출현 및 궤도 조준 포격 가동',
+    objective: '이지스 전대 섬멸 및 궤도 포격 지대 회피',
     objectiveType: 'eliminate',
     controlZoneActive: false,
     isBossWave: false,
@@ -607,9 +607,9 @@ const WAVES = [
   {
     wave: 8,
     mapIndex: 4,
-    name: 'REACTOR CONTAINMENT',
-    subtitle: 'SECTOR-74 AEGIS REACTOR — SHIELD RELAYS SUSTAINING HOSTILES',
-    objective: 'SHATTER SHIELD RELAYS & CAPTURE TERRA-BEACON',
+    name: '원자로 구역 봉쇄',
+    subtitle: '제74구역 원자로실 — 쉴드 중계기가 적을 지속적으로 회복시킵니다',
+    objective: '쉴드 중계기 파괴 및 테라비콘 점령',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -629,9 +629,9 @@ const WAVES = [
   {
     wave: 9,
     mapIndex: 4,
-    name: 'CORE MELTDOWN',
-    subtitle: 'MAXIMUM AEGIS GUARD — THERMAL SURGES & ARTILLERY LOCK',
-    objective: 'ELIMINATE REACTOR DEFENDERS // DESTROY SHIELD RELAYS',
+    name: '노심 융해 위기',
+    subtitle: '이지스 최정예 방어대 — 열폭풍과 박격포 집중 포격',
+    objective: '원자로 방어군 섬멸 및 쉴드 중계기 파괴',
     objectiveType: 'eliminate',
     controlZoneActive: false,
     isBossWave: false,
@@ -651,9 +651,9 @@ const WAVES = [
   {
     wave: 10,
     mapIndex: 5,
-    name: 'AEGIS-IX // ORBITAL OVERLORD',
-    subtitle: 'SECTOR-99 COMMAND DRYDOCK — SHATTER THE ORBITAL OVERLORD',
-    objective: 'DESTROY AEGIS-IX // SHOOT EMP & SHIELD RELAYS ON PHASE SURGE',
+    name: 'AEGIS-IX · 궤도 군주',
+    subtitle: '제99구역 사령 도크 — 궤도 군주 격파',
+    objective: 'AEGIS-IX 격파 · 방어막 가동 시 EMP 파일런과 중계기 파괴',
     objectiveType: 'boss',
     controlZoneActive: false,
     isBossWave: true,
@@ -671,24 +671,24 @@ const WAVES = [
     bossPhases: [
       {
         phase: 1,
-        name: 'DIRECTIVE: ORBITAL LOCKDOWN',
+        name: '궤도 봉쇄 지령',
         hpThreshold: 1.0,
         speedMultiplier: 1.0,
         fireRateMultiplier: 1.0,
         burstCount: 4,
         shieldPulse: false,
-        callout: 'AEGIS-IX OVERLORD DEPLOYED — TARGET WINGED CROWN CORE',
+        callout: 'AEGIS-IX 출현 — 상단 날개 관 코어를 사격하세요',
         escorts: [],
       },
       {
         phase: 2,
-        name: 'DIRECTIVE: AEGIS PHALANX',
+        name: '이지스 방진 전개',
         hpThreshold: 0.66,
         speedMultiplier: 1.18,
         fireRateMultiplier: 1.28,
         burstCount: 6,
         shieldPulse: true,
-        callout: 'PHASE 2 PHALANX — BREAK EMP PYLONS / RELAYS TO STRIP BARRIER',
+        callout: '2페이즈 방진 — EMP 파일런과 중계기를 파괴해 방어막을 해제하세요',
         escorts: [
           { type: 'interceptor_drone', count: 3 },
           { type: 'rail_warden', count: 1 },
@@ -697,13 +697,13 @@ const WAVES = [
       },
       {
         phase: 3,
-        name: 'DIRECTIVE: DREADNOUGHT APOCALYPSE',
+        name: '기함 종말 과부하',
         hpThreshold: 0.33,
         speedMultiplier: 1.34,
         fireRateMultiplier: 1.55,
         burstCount: 8,
         shieldPulse: true,
-        callout: 'FINAL OVERDRIVE — SIEGE MORTARS & PHANTOM STALKERS INBOUND',
+        callout: '최종 과부하 — 공성 박격포병 및 팬텀 암살병 긴급 투입',
         escorts: [
           { type: 'interceptor_drone', count: 3 },
           { type: 'mortar_artillery', count: 2 },
@@ -717,8 +717,8 @@ const WAVES = [
   {
     wave: 11,
     mapIndex: 7,
-    name: 'ABYSSAL INCURSION',
-    subtitle: 'SECTOR-108 // LOW-G CONDUIT RING & OVERLOAD SWARM',
+    name: '심연 침공',
+    subtitle: '제108구역 · 저중력 도관 링 및 과부하 자폭 무리',
     objective: '저중력 구역을 활용해 과부하 자폭 드론과 차원 도약병 섬멸',
     objectiveType: 'eliminate',
     controlZoneActive: false,
@@ -742,9 +742,9 @@ const WAVES = [
   {
     wave: 12,
     mapIndex: 7,
-    name: 'RIFT CONVERGENCE',
-    subtitle: 'SECTOR-108 // DIMENSIONAL VOID GATE BREACH',
-    objective: '차원 게이트 파괴 및 테라-비콘 점령',
+    name: '균열 수렴',
+    subtitle: '제108구역 · 차원 게이트 개방',
+    objective: '차원 게이트 파괴 및 테라비콘 점령',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -767,8 +767,8 @@ const WAVES = [
   {
     wave: 13,
     mapIndex: 7,
-    name: 'SINGULARITY BREACH',
-    subtitle: 'SECTOR-108 // TWIN VOID GATES ACTIVE',
+    name: '특이점 돌파',
+    subtitle: '제108구역 · 양측 차원 게이트 2기 가동',
     objective: '양측 차원 게이트 2기 파괴 및 심연 파수꾼 섬멸',
     objectiveType: 'eliminate',
     controlZoneActive: false,
@@ -794,9 +794,9 @@ const WAVES = [
   {
     wave: 14,
     mapIndex: 8,
-    name: 'SANCTUM THRESHOLD',
-    subtitle: 'SECTOR-120 // TRANSCENDENT SANCTUM VANGUARD',
-    objective: '성소 차원 게이트 2기 & 쉴드 중계기 파괴 후 비콘 점령',
+    name: '성소 문턱',
+    subtitle: '제120구역 · 초월 성소 선봉대',
+    objective: '성소 차원 게이트 2기 및 쉴드 중계기 파괴 후 비콘 점령',
     objectiveType: 'hybrid_control',
     controlZoneActive: true,
     isBossWave: false,
@@ -821,8 +821,8 @@ const WAVES = [
   {
     wave: 15,
     mapIndex: 8,
-    name: 'TRANSCENDENT JUDGMENT',
-    subtitle: 'FINAL SINGULARITY // TRANSCENDENT-OMEGA ENGAGED',
+    name: '초월의 심판',
+    subtitle: '최종 특이점 · TRANSCENDENT-OMEGA 교전 개시',
     objective: '부유 포탑을 파괴해 방어막을 해제하고 TRANSCENDENT-OMEGA 격파',
     objectiveType: 'boss',
     controlZoneActive: false,
@@ -847,7 +847,7 @@ const WAVES = [
     bossPhases: [
       {
         phase: 1,
-        name: 'SINGULARITY LINK',
+        name: '특이점 방어 연결',
         hpThreshold: 1.0,
         speedMultiplier: 1.0,
         fireRateMultiplier: 1.0,
@@ -859,7 +859,7 @@ const WAVES = [
       },
       {
         phase: 2,
-        name: 'DIMENSIONAL RIFT',
+        name: '차원 균열 전개',
         hpThreshold: 0.66,
         speedMultiplier: 1.24,
         fireRateMultiplier: 1.28,
@@ -867,7 +867,7 @@ const WAVES = [
         turretCount: 3,
         shieldPulse: true,
         voidGateSpawn: true,
-        callout: '부유 포탑 3기 & 차원 게이트 개방 · 보스 공간 도약 개시',
+        callout: '부유 포탑 3기 및 차원 게이트 개방 · 보스 공간 도약 개시',
         escorts: [
           { type: 'void_warper', count: 2 },
           { type: 'volatile_rusher', count: 2 },
@@ -875,7 +875,7 @@ const WAVES = [
       },
       {
         phase: 3,
-        name: 'TRANSCENDENT COLLAPSE',
+        name: '초월 붕괴 임계',
         hpThreshold: 0.33,
         speedMultiplier: 1.48,
         fireRateMultiplier: 1.56,
@@ -883,7 +883,7 @@ const WAVES = [
         turretCount: 4,
         shieldPulse: true,
         centralLowG: true,
-        callout: '부유 포탑 4기 전개 · 중앙 저중력 펄스 & 십자 초고열 섬멸포!',
+        callout: '부유 포탑 4기 전개 · 중앙 저중력 펄스 및 십자 섬멸포!',
         escorts: [
           { type: 'abyss_sentinel', count: 1 },
           { type: 'void_warper', count: 2 },

@@ -170,6 +170,10 @@ class WaveDirector {
     this._bossSpecialCycle = 0;
     this._victory = false;
     this._bossEntity = null;
+    this.globalEnemyHpMult = 1.0;
+    this.globalEnemyDmgMult = 1.0;
+    this.endlessMode = false;
+    this.endlessLoop = 0;
 
     // Hybrid Control Zone pacing state
     this._waveZoneBonusAwarded = false;
@@ -279,6 +283,17 @@ class WaveDirector {
    */
   setInteractables(interactables) {
     this._interactables = interactables || null;
+    if (this._interactables) {
+      this._interactables.enemyDamageMult = this.getEffectiveEnemyDmgMult();
+    }
+  }
+
+  getEffectiveEnemyHpMult() {
+    return (this.globalEnemyHpMult || 1.0) * (1.0 + (this.endlessLoop || 0) * 0.30);
+  }
+
+  getEffectiveEnemyDmgMult() {
+    return (this.globalEnemyDmgMult || 1.0) * (1.0 + (this.endlessLoop || 0) * 0.18);
   }
 
   /**
@@ -507,6 +522,7 @@ class WaveDirector {
     }
     if (newInteractables) {
       this._interactables = newInteractables;
+      this._interactables.enemyDamageMult = this.getEffectiveEnemyDmgMult();
     }
 
     for (let i = 0; i < this._enemies.length; i++) {
@@ -596,6 +612,7 @@ class WaveDirector {
       if (typeof this._interactables.setTurretProjectileCallback === 'function') {
         this._interactables.setTurretProjectileCallback(this._boundSpawnProjectile);
       }
+      this._interactables.enemyDamageMult = this.getEffectiveEnemyDmgMult();
     }
 
     // Build wave spawn queue (boss spawns first on Boss Waves; regular units interleaved for variety)
@@ -690,11 +707,12 @@ class WaveDirector {
   _handleEnemyOverload(enemy) {
     if (!enemy || !this._interactables || typeof this._interactables.triggerOverloadBlast !== 'function') return;
     const arch = enemy.archetype || {};
+    const scaledPlayerDmg = Math.max(1, Math.round((arch.overloadPlayerDamage || 48) * this.getEffectiveEnemyDmgMult()));
     this._interactables.triggerOverloadBlast(
       enemy.center || enemy.position,
       arch.overloadRadius || 8.0,
       arch.overloadEnemyDamage || 85,
-      arch.overloadPlayerDamage || 48,
+      scaledPlayerDmg,
       this._lastPlayerController,
       this._livingTargets,
       enemy
@@ -714,6 +732,11 @@ class WaveDirector {
     const archetypeId = Math.random() < 0.7 ? 'void_swarmer' : 'volatile_rusher';
     const spawned = this._spawnEnemyAtPos(archetypeId, spawnPos, wave);
     if (spawned) {
+      const scaleMult = this.getEffectiveEnemyHpMult();
+      if (scaleMult > 1.01) {
+        spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
+        spawned.hp = spawned.maxHp;
+      }
       this._livingTargets.push(spawned);
     }
   }
@@ -1011,7 +1034,7 @@ class WaveDirector {
         const nextType = this._spawnQueue.shift();
         const spawned = this._spawnEnemy(nextType, playerController, wave);
         if (spawned) {
-          const scaleMult = (this.globalEnemyHpMult || 1.0) * (1.0 + (this.endlessLoop || 0) * 0.30);
+          const scaleMult = this.getEffectiveEnemyHpMult();
           if (scaleMult > 1.01) {
             spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
             spawned.hp = spawned.maxHp;
@@ -1049,7 +1072,7 @@ class WaveDirector {
           if (drone) {
             drone.isSupplyDrone = true;
             drone.eliteAffix = 'supply_drone';
-            drone.displayName = '★ 황금 보급 드론';
+            drone.displayName = '황금 보급 드론';
             drone.maxHp = Math.round(drone.maxHp * 1.6);
             drone.hp = drone.maxHp;
             if (typeof drone.setScaleMultiplier === 'function') {
@@ -1320,6 +1343,7 @@ class WaveDirector {
         scoreBonus: waveBonus,
         totalScore: this.score,
         isFinalWave,
+        endlessLoopCleared: isEndlessLoopEnd,
         nextIntermission: isFinalWave ? 0 : wave.intermissionTime,
       });
     }
@@ -1327,10 +1351,13 @@ class WaveDirector {
     if (isEndlessLoopEnd) {
       this.endlessLoop = (this.endlessLoop || 0) + 1;
       this._currentWaveIndex = -1;
+      if (this._interactables) {
+        this._interactables.enemyDamageMult = this.getEffectiveEnemyDmgMult();
+      }
       if (this.eventBus) {
         this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
-          kicker: `무한 강하 // LOOP ${this.endlessLoop}`,
-          title: `위협 단계 상승 (적 체력 +${this.endlessLoop * 30}%)`,
+          kicker: `무한 강하 · ${this.endlessLoop}회차`,
+          title: `위협 상승 (적 체력 +${this.endlessLoop * 30}% · 공격력 +${this.endlessLoop * 18}%)`,
           subtitle: '다음 궤도 강하 구역으로 순환 진입합니다',
           duration: 3.4,
         });
@@ -1588,7 +1615,7 @@ class WaveDirector {
     slot.position.copy(origin);
     slot.dir.copy(dir).normalize();
     slot.speed = speed;
-    slot.damage = damage;
+    slot.damage = Math.max(1, Math.round(damage * this.getEffectiveEnemyDmgMult()));
     slot.radius = radius;
     slot.life = 0;
     slot.maxLife = isSniperBeam ? 1.4 : 3.2;
@@ -1730,7 +1757,7 @@ class WaveDirector {
     s.maxHp = boss.maxHp;
     s.hpRatio = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
     s.phase = boss.currentPhase;
-    s.phaseName = boss._phaseName || `PHASE ${boss.currentPhase}`;
+    s.phaseName = boss._phaseName || `${boss.currentPhase}페이즈`;
     s.shieldActive = boss._phaseShieldTimer > 0 || Boolean(boss._turretShieldActive);
     s.turretShieldActive = Boolean(boss._turretShieldActive);
     s.coreExposed = (boss._coreExposedTimer || 0) > 0;

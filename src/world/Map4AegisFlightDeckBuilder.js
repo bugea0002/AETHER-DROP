@@ -126,9 +126,9 @@ class Map4AegisFlightDeckBuilder {
     return {
       mapId: 'aegis_flight_deck',
       mapIndex: 3,
-      mapCode: 'SEC-61',
-      mapName: 'SECTOR-61 // AEGIS FLIGHT DECK',
-      mapSubtitle: 'ORBITAL HANGAR BAY & CATWALK APRON',
+      mapCode: '제61구역',
+      mapName: '제61구역 · 이지스 비행갑판',
+      mapSubtitle: '궤도 격납고 및 공중 통로',
       atmosphere: {
         bgColor: 0x061020,
         fogColor: 0x0a1c36,

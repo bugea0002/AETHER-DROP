@@ -236,10 +236,10 @@ class TutorialMapBuilder {
     // 6. Diegetic Zone Signboards on All 4 Walls
     const signGeo = this._trackGeo(new THREE.PlaneGeometry(8.2, 2.05));
     const signConfigs = [
-      { code: 'ZONE D // FIRING RANGE', title: '표적 사격 · 방패 방어', col: '#ef4444', pos: [0, 6.8, -innerBound + 0.22], rotY: 0 },
-      { code: 'ZONE A // MOBILITY DECK', title: '점프 패드 · 고지대 도약', col: '#f59e0b', pos: [-innerBound + 0.22, 6.8, 7.5], rotY: Math.PI * 0.5 },
-      { code: 'ZONE C // SUPPLY BAY', title: '회복 아이템 · 무기 드랍', col: '#22c55e', pos: [innerBound - 0.22, 6.8, 8.5], rotY: -Math.PI * 0.5 },
-      { code: 'TRN-00 // VANGUARD', title: '종합 전술 훈련장', col: '#38bdf8', pos: [0, 6.8, innerBound - 0.22], rotY: Math.PI },
+      { code: '구역 D · 사격장', title: '표적 사격 · 방패 방어', col: '#ef4444', pos: [0, 6.8, -innerBound + 0.22], rotY: 0 },
+      { code: '구역 A · 기동 구역', title: '점프 패드 · 고지대 도약', col: '#f59e0b', pos: [-innerBound + 0.22, 6.8, 7.5], rotY: Math.PI * 0.5 },
+      { code: '구역 C · 보급 구역', title: '회복 아이템 · 무기 드랍', col: '#22c55e', pos: [innerBound - 0.22, 6.8, 8.5], rotY: -Math.PI * 0.5 },
+      { code: '훈련장 · VANGUARD', title: '종합 전술 훈련장', col: '#38bdf8', pos: [0, 6.8, innerBound - 0.22], rotY: Math.PI },
     ];
     for (let i = 0; i < signConfigs.length; i++) {
       const sc = signConfigs[i];
@@ -385,8 +385,8 @@ class TutorialMapBuilder {
     return {
       mapId: 'tutorial_training_bay',
       mapIndex: 6,
-      mapCode: 'TRN-00',
-      mapName: 'SECTOR-00 // VANGUARD TRAINING BAY',
+      mapCode: '훈련장',
+      mapName: '제01구역 · 전술 훈련장',
       mapSubtitle: '전술 기동 · 방패 · 무기 강화 종합 훈련장',
       atmosphere: {
         bgColor: 0x0c1424,
