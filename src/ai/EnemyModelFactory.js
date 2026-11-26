@@ -14,11 +14,11 @@ __define("src/ai/EnemyModelFactory.js", (__exports, __require) => {
  * death-dissolve animations, and zero-stutter rig pooling without affecting siblings.
  */
 const ACT1_GLB_MODELS = Object.freeze({
-  rusher_drone: './assets/models/rusher_drone.glb?v=20261127c',
-  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127c',
-  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127c',
-  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127c',
-  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127c',
+  rusher_drone: './assets/models/rusher_drone.glb?v=20261127d',
+  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127d',
+  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127d',
+  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127d',
+  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127d',
 });
 
 class EnemyModelFactory {
@@ -3249,7 +3249,13 @@ class EnemyModelFactory {
   }
 
   _createHeavyBlastShieldMesh(ownedMaterials) {
-    const curvedShieldGeo = this._getGeo('bulwark_blast_shield', () => {
+    const isGlb = EnemyModelFactory._glbCache.has('heavy_enforcer');
+    const curvedShieldGeo = this._getGeo(isGlb ? 'bulwark_blast_shield_compact' : 'bulwark_blast_shield', () => {
+      if (isGlb) {
+        const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
+        geo.translate(0, -0.02, -0.80);
+        return geo;
+      }
       const geo = new THREE.CylinderGeometry(1.15, 1.15, 1.24, 18, 1, true, -0.44, 0.88);
       geo.translate(0, 0, -1.06);
       return geo;
@@ -3377,6 +3383,11 @@ class EnemyModelFactory {
     }
 
     if (archetypeId === 'heavy_enforcer' && shieldMesh) {
+      shieldMesh.geometry = this._getGeo('bulwark_blast_shield_compact', () => {
+        const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
+        geo.translate(0, -0.02, -0.80);
+        return geo;
+      });
       const shieldFrame = leftArm.getObjectByName('ShieldFrame') || bodyGroup.getObjectByName('ShieldFrame');
       if (shieldFrame) {
         shieldMesh.position.set(0, 0, 0.02);

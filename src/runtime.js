@@ -68,9 +68,42 @@ const MODULE_FILES = [
 ];
 
 async function bootModularGame() {
+  const firebaseImport = import("./firebase/FirebaseService.js?v=20261127d").catch((err) => {
+    console.warn("[AETHER DROP] Firebase module unavailable, continuing in local mode:", err);
+    if (typeof globalThis.__define === "function") {
+      globalThis.__define("src/firebase/FirebaseService.js", (__exports) => {
+        Object.assign(__exports, {
+          initFirebase: async () => false,
+          isFirebaseReady: () => false,
+          onAuthChange: (cb) => {
+            if (typeof cb === "function") cb(null);
+            return () => {};
+          },
+          getCurrentUser: () => null,
+          signInWithGoogle: async () => {
+            throw new Error("Firebase 인증 모듈을 불러올 수 없습니다.");
+          },
+          signOutUser: async () => {},
+          fetchLeaderboard: async () => [],
+          submitLeaderboardRecord: async () => {
+            throw new Error("리더보드 연결이 비활성화되어 있습니다.");
+          },
+          fetchCloudMetaState: async () => null,
+          saveCloudMetaState: async () => null,
+          sanitizeCloudMeta: (m) => m,
+          getLocalDateKey: () => new Date().toISOString().slice(0, 10),
+          sanitizeCallsign: (raw, fb = "PILOT") => {
+            const s = String(raw || "").replace(/[\r\n\t<>]/g, "").trim().slice(0, 18);
+            return s.length >= 1 ? s : fb;
+          },
+        });
+      });
+    }
+  });
+
   await Promise.all([
-    import("./firebase/FirebaseService.js?v=20261127c"),
-    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261127c")),
+    firebaseImport,
+    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261127d")),
   ]);
   globalThis.__require("src/main.js");
 }
