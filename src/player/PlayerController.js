@@ -44,6 +44,8 @@ class PlayerController {
     this.yaw = 0;
     this.pitch = 0;
 
+    this.mods = this._defaultMods();
+
     this.maxHealth = PLAYER_CONFIG.maxHealth + (this.mods ? this.mods.maxHealthBonus : 0);
     this.health = this.maxHealth;
     this.maxShield = PLAYER_CONFIG.maxShield + (this.mods ? this.mods.maxShieldBonus : 0);
@@ -51,12 +53,14 @@ class PlayerController {
     this.inZoneBuff = false;
     this.dashOverdriveTimer = 0;
     this.reactiveArmorTimer = 0;
-    this.maxGuardEnergy = 100;
-    this.guardEnergy = 100;
+    this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
+    this.guardEnergy = this.maxGuardEnergy;
     this.isGuarding = false;
     this.guardBreakTimer = 0;
     this.guardHitFlash = 0;
     this._guardRegenDelay = 0;
+    this._timeSinceCombat = 3.0;
+    this.isOutOfCombat = true;
     this.ultCharge = 0;
     this.ultActiveTimer = 0;
     this.ultInvulnTimer = 0;
@@ -65,6 +69,8 @@ class PlayerController {
     this.phaseInvulnTimer = 0;
     this.reloadBuffTimer = 0;
     this.hyperBarrageTimer = 0;
+    this.arenaGravityScale = 1.0;
+    this.inLowGravityZone = false;
     this._guardCheckVec = new THREE.Vector3();
     this.isAlive = true;
 
@@ -83,28 +89,6 @@ class PlayerController {
     this.speed = 0;
     this.currentFov = PLAYER_CONFIG.baseFov;
     this.cameraRoll = 0;
-
-    // Step 2: Meta + Roguelike Tactical Card & Synergy Modifiers
-    this.inZoneBuff = false;
-    this.dashOverdriveTimer = 0;
-    this.reactiveArmorTimer = 0;
-    this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
-    this.guardEnergy = this.maxGuardEnergy;
-    this.isGuarding = false;
-    this.guardBreakTimer = 0;
-    this.guardHitFlash = 0;
-    this._guardRegenDelay = 0;
-    this.ultCharge = 0;
-    this.ultActiveTimer = 0;
-    this.ultInvulnTimer = 0;
-    this.timeSlowTimer = 0;
-    this.ultDamageMult = 1.0;
-    this.phaseInvulnTimer = 0;
-    this.reloadBuffTimer = 0;
-    this.hyperBarrageTimer = 0;
-    this.arenaGravityScale = 1.0;
-    this.inLowGravityZone = false;
-    this.mods = this._defaultMods();
 
     // Internal locomotion & timers
     this._coyoteTimer = 0;
@@ -250,6 +234,14 @@ class PlayerController {
     this.health = this.maxHealth;
     this.maxShield = PLAYER_CONFIG.maxShield + (this.mods ? this.mods.maxShieldBonus : 0);
     this.shield = this.maxShield;
+    this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
+    this.guardEnergy = this.maxGuardEnergy;
+    this.isGuarding = false;
+    this.guardBreakTimer = 0;
+    this.guardHitFlash = 0;
+    this._guardRegenDelay = 0;
+    this._timeSinceCombat = 3.0;
+    this.isOutOfCombat = true;
     this.inZoneBuff = false;
     this.dashOverdriveTimer = 0;
     this.reactiveArmorTimer = 0;
@@ -713,20 +705,33 @@ class PlayerController {
     if (this.guardHitFlash > 0) this.guardHitFlash = Math.max(0, this.guardHitFlash - clampedDt * 4.5);
     if (this.guardBreakTimer > 0) this.guardBreakTimer = Math.max(0, this.guardBreakTimer - clampedDt);
 
+    this._timeSinceCombat += clampedDt;
     const prevGuarding = this.isGuarding;
     const wantsGuard = this.input.isDown('guard');
     if (wantsGuard && this.guardBreakTimer <= 0 && this.guardEnergy > 1.0) {
       this.isGuarding = true;
       this.isAds = false;
-      this._guardRegenDelay = 0.90;
+      this._guardRegenDelay = 0.75;
+      this._timeSinceCombat = 0;
     } else {
       this.isGuarding = false;
       if (this._guardRegenDelay > 0) {
         this._guardRegenDelay = Math.max(0, this._guardRegenDelay - clampedDt);
-      } else if (this.guardEnergy < this.maxGuardEnergy) {
-        const regenRate = (this.mods && this.mods.frameId === 'bastion' ? 16.8 : 11.2) * (this.mods && this.mods.guardRegenMult ? this.mods.guardRegenMult : 1.0);
-        this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + regenRate * clampedDt);
       }
+    }
+
+    this.isOutOfCombat = this._timeSinceCombat >= 2.2;
+    if (
+      !this.isGuarding &&
+      this.isOutOfCombat &&
+      this.guardBreakTimer <= 0 &&
+      this._guardRegenDelay <= 0 &&
+      this.guardEnergy < this.maxGuardEnergy
+    ) {
+      const regenRate =
+        (this.mods && this.mods.frameId === 'bastion' ? 48.0 : 32.0) *
+        (this.mods && this.mods.guardRegenMult ? this.mods.guardRegenMult : 1.0);
+      this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + regenRate * clampedDt);
     }
 
     if (this.isGuarding !== prevGuarding && this.eventBus) {
@@ -738,6 +743,16 @@ class PlayerController {
     }
 
     this._timeSinceDamaged += clampedDt;
+    if (
+      this.mods &&
+      this.mods.passiveShieldRegenRate > 0 &&
+      this._timeSinceCombat >= 2.5 &&
+      this._timeSinceDamaged >= 3.0 &&
+      this.shield < this.maxShield
+    ) {
+      const sRate = this.mods.passiveShieldRegenRate * (this.mods.shieldRegenMult || 1.0);
+      this.shield = Math.min(this.maxShield, this.shield + sRate * clampedDt);
+    }
     if (this.inZoneBuff && this.mods && this.mods.zoneRegenHp > 0 && this.health < this.maxHealth) {
       this.health = Math.min(this.maxHealth, this.health + this.mods.zoneRegenHp * clampedDt);
     }
@@ -1029,6 +1044,7 @@ class PlayerController {
         this.guardEnergy = Math.max(0, this.guardEnergy - energyCost);
         this.guardHitFlash = 1.0;
         this._guardRegenDelay = 0.65;
+        this._timeSinceCombat = 0;
         let guardBroken = false;
         if (this.guardEnergy <= 0.01) {
           this.guardEnergy = 0;
@@ -1049,6 +1065,7 @@ class PlayerController {
     }
 
     this._timeSinceDamaged = 0;
+    this._timeSinceCombat = 0;
 
     const dmgScale = this.reactiveArmorTimer > 0 ? 0.55 : 1.0;
     let remaining = amount * dmgScale;
@@ -1124,13 +1141,31 @@ class PlayerController {
     }
   }
 
+  markCombatActivity() {
+    this._timeSinceCombat = 0;
+    this.isOutOfCombat = false;
+  }
+
   /**
-   * Aggressive kill shield-siphon reward (+headshot bonus).
+   * Aggressive kill shield-siphon reward (Armory siphon module / cards / daily modifiers).
    * @param {boolean} [isHeadshot=false]
    */
   onEnemyKill(isHeadshot = false) {
-    // Item 8: No HP or Shield recovery on kill — dodge, block with [E] Front Shield, or collect pickups!
     this.addUltCharge(isHeadshot ? 7 : 5);
+    const killShield = (this.mods && this.mods.killShieldBonus) || 0;
+    if (killShield > 0 && this.isAlive && this.shield < this.maxShield) {
+      const prevShield = this.shield;
+      this.shield = Math.min(this.maxShield, this.shield + killShield);
+      const shieldGain = this.shield - prevShield;
+      if (shieldGain > 0 && this.eventBus) {
+        this.eventBus.emit(EVENTS.PLAYER_HEALED, {
+          healthGain: 0,
+          shieldGain,
+          health: this.health,
+          shield: this.shield,
+        });
+      }
+    }
   }
 
   addUltCharge(amount) {
@@ -1198,6 +1233,7 @@ class PlayerController {
     s.maxGuardEnergy = this.maxGuardEnergy;
     s.guardBreakTimer = this.guardBreakTimer;
     s.guardHitFlash = this.guardHitFlash;
+    s.isOutOfCombat = this.isOutOfCombat;
     s.ultCharge = this.ultCharge;
     s.ultActiveTimer = this.ultActiveTimer;
     s.frameId = (this.mods && this.mods.frameId) || 'vanguard';

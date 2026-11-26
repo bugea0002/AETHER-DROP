@@ -950,8 +950,8 @@ function bootstrap() {
       cardsHtml += '<span style="opacity:0.65;">아직 획득한 전술 카드가 없습니다.</span>';
     } else {
       for (let i = 0; i < runCards.length; i++) {
-        const cid = runCards[i];
-        const card = TACTICAL_CARDS.find((c) => c.id === cid);
+        const entry = runCards[i];
+        const card = typeof entry === 'string' ? TACTICAL_CARDS.find((c) => c.id === entry) : entry;
         if (!card) continue;
         const s = SYNERGIES[card.tag] || SYNERGIES.assault;
         cardsHtml += `<span class="build-card-chip" style="border-left-color:${s.color}" title="${card.desc}">[${s.tagLabel}] ${card.name}</span>`;
@@ -1010,6 +1010,12 @@ function bootstrap() {
 
     if (_guardFillEl && _guardTextEl) {
       const gPct = Math.max(0, Math.min(100, Math.round((pSnap.guardEnergy / Math.max(1, pSnap.maxGuardEnergy)) * 100)));
+      const isRegening = Boolean(
+        pSnap.isOutOfCombat &&
+        !pSnap.isGuarding &&
+        pSnap.guardBreakTimer <= 0 &&
+        pSnap.guardEnergy < pSnap.maxGuardEnergy - 0.5
+      );
       _guardFillEl.style.width = gPct + '%';
       _guardFillEl.style.background =
         pSnap.guardBreakTimer > 0
@@ -1017,7 +1023,14 @@ function bootstrap() {
           : fid === 'bastion'
           ? 'linear-gradient(90deg,#16a34a,#4ade80)'
           : 'linear-gradient(90deg,#0284c7,#38bdf8)';
-      _guardTextEl.textContent = pSnap.guardBreakTimer > 0 ? '파괴됨' : pSnap.isGuarding ? `방어 ${gPct}%` : gPct + '%';
+      _guardTextEl.textContent =
+        pSnap.guardBreakTimer > 0
+          ? '파괴됨'
+          : pSnap.isGuarding
+          ? `방어 ${gPct}%`
+          : isRegening
+          ? `재생 ${gPct}%`
+          : gPct + '%';
     }
 
     if (_ultRingEl && _ultTextEl) {
@@ -1034,6 +1047,12 @@ function bootstrap() {
     }
     if (_frameBadgeEl && _frameStatusEl) {
       _frameBadgeEl.textContent = (mods && mods.frameName) || 'VANGUARD-09';
+      const isGuardRegen = Boolean(
+        pSnap.isOutOfCombat &&
+        !pSnap.isGuarding &&
+        pSnap.guardBreakTimer <= 0 &&
+        pSnap.guardEnergy < pSnap.maxGuardEnergy - 0.5
+      );
       _frameStatusEl.textContent =
         pSnap.ultActiveTimer > 0
           ? '궁극기 가동!'
@@ -1041,6 +1060,8 @@ function bootstrap() {
           ? '방패 전개 중'
           : pSnap.guardBreakTimer > 0
           ? '방패 복구 대기'
+          : isGuardRegen
+          ? '방패 재생 중'
           : '전술 대기';
     }
   }
@@ -1071,7 +1092,8 @@ function bootstrap() {
       moveSpeedMult: (1.0 + (lv.thruster || 0) * 0.025) * (frame.speedMult || 1.0),
       dashCooldownMult: Math.max(0.42, (1.0 - (lv.thruster || 0) * 0.045) * (frame.dashCdMult || 1.0)),
       shieldRegenMult: 1.0 + (lv.shield || 0) * 0.08,
-      killShieldBonus: 0,
+      passiveShieldRegenRate: (lv.shield || 0) * 1.4,
+      killShieldBonus: (lv.siphon || 0) * 3,
       maxHealthBonus: (lv.hull || 0) * 12 + (frame.hpBonus || 0),
       maxShieldBonus: (lv.shield || 0) * 12 + (frame.shieldBonus || 0),
       salvageGoldMult: 1.0 + (lv.salvage || 0) * 0.08,
@@ -1104,7 +1126,7 @@ function bootstrap() {
       if (dm.shieldBonus) mods.maxShieldBonus += dm.shieldBonus;
     }
 
-    mods.guardRegenMult = 1.0;
+    mods.guardRegenMult = 1.0 + (lv.shield || 0) * 0.08;
     mods.ultChargeMult = 1.0;
     mods.ultDamageBonus = 1.0;
     mods.ultDurationBonus = 0;
@@ -1145,16 +1167,15 @@ function bootstrap() {
           mods.armorPiercer = true;
           break;
         case 'aegis_capacitor':
-          mods.maxHealthBonus += 30;
-          mods.maxShieldBonus += 30;
-          mods.shieldRegenMult *= 1.35;
+          mods.maxHealthBonus += 35;
+          mods.maxShieldBonus += 35;
+          mods.guardCostMult = Math.max(0.25, mods.guardCostMult * 0.78);
           break;
         case 'kinetic_momentum':
           mods.killGuardBonus += 10;
-          mods.moveSpeedMult *= 1.10;
-          mods.dashCooldownMult *= 0.85;
-          mods.killShieldBonus += 10;
-          mods.killAmmoRefund += 2;
+          mods.moveSpeedMult *= 1.12;
+          mods.dashCooldownMult *= 0.82;
+          mods.killAmmoRefund += 3;
           break;
         case 'orbital_overload':
           mods.fireRateMult *= 1.16;
@@ -1227,6 +1248,7 @@ function bootstrap() {
     if (mods.synergyAssault) list.push(SYNERGIES.assault);
     if (mods.synergyMobility) list.push(SYNERGIES.mobility);
     if (mods.synergyVanguard) list.push(SYNERGIES.vanguard);
+    if (mods.synergyTactical) list.push(SYNERGIES.tactical);
     return list;
   }
 
@@ -1590,6 +1612,7 @@ function bootstrap() {
     maxStyleTierIdx: 0,
     lastStyleCallout: 'STYLE',
     lastSwapTime: -99,
+    _lastReactiveBlast: -99,
     wasGroundedPrev: true,
     airTimeAccum: 0,
     airKills: 0,
@@ -1668,6 +1691,7 @@ function bootstrap() {
     telemetry.maxStyleTierIdx = 0;
     telemetry.lastStyleCallout = 'STYLE';
     telemetry.lastSwapTime = -99;
+    telemetry._lastReactiveBlast = -99;
     telemetry.wasGroundedPrev = true;
     telemetry.airTimeAccum = 0;
     telemetry.airKills = 0;
@@ -2148,8 +2172,8 @@ function bootstrap() {
         addStylePoints(14, '궤도 과부하!');
       }
 
-      // Rare Card: Mark Contagion (jump T-4 mark to 2 nearest enemies within 10m)
-      if (mods && mods.markContagion && deadEnemy && deadEnemy.markedTimer > 0 && waveDirector) {
+      // Rare Card: Mark Contagion (jump T-4 mark to 2 nearest enemies within 10m + 25 dmg)
+      if (mods && mods.markContagion && deadEnemy && (deadEnemy.markedTimer > 0 || isHs) && waveDirector) {
         const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
         const nearby = [];
         for (let ei = 0; ei < activeEnemies.length; ei++) {
@@ -2161,7 +2185,7 @@ function bootstrap() {
         nearby.sort((a, b) => a.dist - b.dist);
         for (let ni = 0; ni < Math.min(2, nearby.length); ni++) {
           nearby[ni].e.markedTimer = 4.0;
-          nearby[ni].e.applyDamage(20, nearby[ni].e.center || nearby[ni].e.position, false, null, { isExplosion: false });
+          nearby[ni].e.applyDamage(25, nearby[ni].e.center || nearby[ni].e.position, false, null, { isExplosion: false });
         }
       }
     });
@@ -2237,6 +2261,26 @@ function bootstrap() {
         telemetry.styleMeter = Math.max(0, telemetry.styleMeter - 20);
         telemetry.styleTierIdx = getStyleTier(telemetry.styleMeter);
         updateStyleHudUI();
+        if (
+          playerController &&
+          playerController.mods &&
+          playerController.mods.reactiveArmor &&
+          waveDirector &&
+          telemetry.elapsedSec - (telemetry._lastReactiveBlast || -99) >= 0.45
+        ) {
+          telemetry._lastReactiveBlast = telemetry.elapsedSec;
+          const pPos = playerController.position;
+          const activeE = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < activeE.length; ei++) {
+            const e = activeE[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 6.0) {
+              const dir = e.position.clone().sub(pPos).normalize();
+              e.applyDamage(40, e.center || e.position, false, dir, { isExplosion: true, knockback: 14 });
+            }
+          }
+          spawnUltShockRing(pPos, 6.2, 0x38bdf8, 0.35);
+        }
       }
       if (gameState === 'playing' && p && p.isFatal) {
         beginEndingSequence(false);
@@ -2247,7 +2291,9 @@ function bootstrap() {
       if (!p || !p.amount) return;
       const styleTier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
       const heat = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
-      const salvageMult = 1.0 + ((metaState.levels && metaState.levels.salvage) || 0) * 0.08;
+      const salvageMult =
+        (playerController && playerController.mods && playerController.mods.salvageGoldMult) ||
+        (1.0 + ((metaState.levels && metaState.levels.salvage) || 0) * 0.08);
       metaState.gold += Math.max(1, Math.round(p.amount * styleTier.goldMult * heat.goldMult * salvageMult));
       saveMetaState();
       if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
@@ -3048,7 +3094,7 @@ function bootstrap() {
               const d = e.position.distanceTo(pPos);
               if (d <= 7.5) {
                 const dir = e.position.clone().sub(pPos).normalize();
-                e.applyDamage(55, e.center || e.position, false, dir, { isExplosion: true, knockback: 14 });
+                e.applyDamage(60, e.center || e.position, false, dir, { isExplosion: true, knockback: 14 });
                 slamHits++;
               }
             }

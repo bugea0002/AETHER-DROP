@@ -605,7 +605,7 @@ class HudManager {
 
     if (!this._onboardingFlags.firstKill) {
       this._onboardingFlags.firstKill = true;
-      this.showOnboardingTip('쉴드 흡수 +25 — 연속 처치와 헤드샷으로 방어막을 유지하세요', 4.0);
+      this.showOnboardingTip('전방 방패 [E]는 비전투 시 자동 재생 · 상점 회복 모듈과 드랍 아이템으로 쉴드를 유지하세요', 4.0);
     }
   }
 

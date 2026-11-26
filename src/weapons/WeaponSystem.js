@@ -563,7 +563,24 @@ class WeaponSystem {
     if (!pc || !pc.mods || !pc.mods.slideReload) return;
     const w = WEAPONS[this.currentIndex];
     const st = this._ammoStates[this.currentIndex];
-    if (!w || !st || st.ammo >= w.magSize || st.reserve <= 0) return;
+    if (!w || !st) return;
+    if (w.mech === 'heat') {
+      if (st.heat > 0 || st.overheated) {
+        st.heat = Math.max(0, st.heat - 40);
+        st.overheated = false;
+        st.ammo = Math.round(st.heat);
+        this._updateAmmoBar(this._rigs[this.currentIndex], st.ammo, w.magSize, 1.0);
+      }
+      return;
+    }
+    if (w.mech === 'regen' || w.mech === 'repulsor') {
+      if (st.ammo < w.magSize) {
+        st.ammo = Math.min(w.magSize, st.ammo + Math.ceil(w.magSize * 0.4));
+        this._updateAmmoBar(this._rigs[this.currentIndex], st.ammo, w.magSize, 1.0);
+      }
+      return;
+    }
+    if (st.ammo >= w.magSize || st.reserve <= 0) return;
     const add = Math.min(Math.ceil(w.magSize * 0.4), w.magSize - st.ammo, st.reserve);
     if (add > 0) {
       st.ammo += add;
@@ -1030,6 +1047,9 @@ class WeaponSystem {
     this._meleeHitProcessed = false;
     this._meleeRig.root.visible = true;
 
+    if (this.playerController && typeof this.playerController.markCombatActivity === 'function') {
+      this.playerController.markCombatActivity();
+    }
     this.playerController.getEyePosition(this._eyePos);
     this._meleePayload.position = this._eyePos;
     this.eventBus.emit(EVENTS.WEAPON_MELEE, this._meleePayload);
@@ -1230,6 +1250,9 @@ class WeaponSystem {
   /** @private */
   _fireShot(weapon, rig, ammoState, spread, isAds, targets) {
     const pc = this.playerController;
+    if (pc && typeof pc.markCombatActivity === 'function') {
+      pc.markCombatActivity();
+    }
     const mods = pc && pc.mods ? pc.mods : null;
     const slideFree = Boolean(mods && mods.slideOverclock && pc && pc.isSliding);
     const overdrive = (pc && pc.dashOverdriveTimer > 0) || slideFree;
@@ -1273,7 +1296,8 @@ class WeaponSystem {
     } else if (!overdrive) {
       ammoState.ammo = Math.max(0, ammoState.ammo - 1);
     }
-    const rpmMult = (mods ? mods.fireRateMult : 1.0) * (overdrive ? 1.3 : 1.0);
+    const tacReloadRate = pc && pc.reloadBuffTimer > 0 ? 1.25 : 1.0;
+    const rpmMult = (mods ? mods.fireRateMult : 1.0) * (overdrive ? 1.3 : 1.0) * tacReloadRate;
     this._fireCooldown = 60 / (weapon.rpm * rpmMult);
     this._spreadBloom = Math.min(0.036, this._spreadBloom + weapon.hipSpread * 0.35);
 
@@ -1551,10 +1575,10 @@ class WeaponSystem {
         }
         const hsMult = h.isHead ? weapon.headshotMultiplier + (mods ? mods.headshotBonus : 0) : 1.0;
         let falloffMult = 1.0;
-        if (weapon.falloffStart && h.distance > weapon.falloffStart) {
+        if (weapon.falloffStart && h.dist > weapon.falloffStart) {
           const endD = weapon.falloffEnd || weapon.range;
           const minM = weapon.falloffMinMult || 0.45;
-          const t = Math.min(1, (h.distance - weapon.falloffStart) / Math.max(1, endD - weapon.falloffStart));
+          const t = Math.min(1, (h.dist - weapon.falloffStart) / Math.max(1, endD - weapon.falloffStart));
           falloffMult = 1.0 - t * (1.0 - minM);
         }
         if (
@@ -1678,20 +1702,28 @@ class WeaponSystem {
         acc.entity.markedTimer = 4.0;
       }
 
-      // Precision Refund card: +ammo on kill
+      // Precision Refund / Kinetic Momentum card: +ammo on kill (or vent heat on heat weapons)
       if (acc.killed && acc.entity && acc.entity.isEnemy && mods && mods.killAmmoRefund > 0) {
-        ammoState.ammo = Math.min(weapon.magSize, ammoState.ammo + mods.killAmmoRefund);
+        if (weapon.mech === 'heat') {
+          ammoState.heat = Math.max(0, ammoState.heat - mods.killAmmoRefund * 6);
+          ammoState.overheated = false;
+          ammoState.ammo = Math.round(ammoState.heat);
+        } else {
+          ammoState.ammo = Math.min(weapon.magSize, ammoState.ammo + mods.killAmmoRefund);
+        }
         this._updateAmmoBar(rig, ammoState.ammo, weapon.magSize, 1.0);
       }
 
-      // Assault 2-Card Synergy: Headshot triggers 4m kinetic blast (+35 AoE damage)
+      // Assault 2/4-Card Synergy: Headshot triggers 4m (or 7m at 4 cards) kinetic blast (+35 AoE damage)
       if (acc.isHeadshot && mods && mods.synergyAssault && targets && targets.length > 0) {
-        this.vfxManager.spawnExplosion(acc.point, 2.6, 0xf59e0b);
+        const blastRadius = mods.synergyAssault4 ? 7.0 : 4.0;
+        const blastRadiusSq = blastRadius * blastRadius;
+        this.vfxManager.spawnExplosion(acc.point, mods.synergyAssault4 ? 4.4 : 2.6, 0xf59e0b);
         for (let k = 0; k < targets.length; k++) {
           const other = targets[k];
           if (!other || other === acc.entity || !other.isAlive || !other.isEnemy) continue;
           const distSq = other.position.distanceToSquared(acc.point);
-          if (distSq <= 16.0) {
+          if (distSq <= blastRadiusSq) {
             other.applyDamage(35, other.center, false, null, { isExplosion: true });
           }
         }
@@ -1699,11 +1731,12 @@ class WeaponSystem {
     }
 
     // 6. Camera Recoil, Screen Shake & 1P Mechanical Kickback ("손맛"!)
-    const yawKick = (Math.random() - 0.5) * 2.0 * weapon.recoilYaw;
-    pc.addRecoil(weapon.recoilPitch, yawKick, weapon.recoilRecovery);
-    pc.addScreenShake(weapon.cameraShake);
+    const recoilScale = pc && pc.reloadBuffTimer > 0 ? 0.65 : 1.0;
+    const yawKick = (Math.random() - 0.5) * 2.0 * weapon.recoilYaw * recoilScale;
+    pc.addRecoil(weapon.recoilPitch * recoilScale, yawKick, weapon.recoilRecovery);
+    pc.addScreenShake(weapon.cameraShake * recoilScale);
 
-    const adsKickScale = isAds ? 0.55 : 1.0;
+    const adsKickScale = (isAds ? 0.55 : 1.0) * recoilScale;
     const isHeavy = weapon.id === 'scattergun' || weapon.id === 'railgun';
     this._recoilZVel += (isHeavy ? 1.55 : 0.82) * adsKickScale;
     this._recoilPitchVel += (isHeavy ? 3.8 : 1.55) * adsKickScale;
