@@ -51,6 +51,20 @@ class PlayerController {
     this.inZoneBuff = false;
     this.dashOverdriveTimer = 0;
     this.reactiveArmorTimer = 0;
+    this.maxGuardEnergy = 100;
+    this.guardEnergy = 100;
+    this.isGuarding = false;
+    this.guardBreakTimer = 0;
+    this.guardHitFlash = 0;
+    this._guardRegenDelay = 0;
+    this.ultCharge = 0;
+    this.ultActiveTimer = 0;
+    this.ultInvulnTimer = 0;
+    this.timeSlowTimer = 0;
+    this.ultDamageMult = 1.0;
+    this.phaseInvulnTimer = 0;
+    this.reloadBuffTimer = 0;
+    this._guardCheckVec = new THREE.Vector3();
     this.isAlive = true;
 
     this.isGrounded = false;
@@ -73,6 +87,19 @@ class PlayerController {
     this.inZoneBuff = false;
     this.dashOverdriveTimer = 0;
     this.reactiveArmorTimer = 0;
+    this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
+    this.guardEnergy = this.maxGuardEnergy;
+    this.isGuarding = false;
+    this.guardBreakTimer = 0;
+    this.guardHitFlash = 0;
+    this._guardRegenDelay = 0;
+    this.ultCharge = 0;
+    this.ultActiveTimer = 0;
+    this.ultInvulnTimer = 0;
+    this.timeSlowTimer = 0;
+    this.ultDamageMult = 1.0;
+    this.phaseInvulnTimer = 0;
+    this.reloadBuffTimer = 0;
     this.mods = this._defaultMods();
 
     // Internal locomotion & timers
@@ -182,6 +209,15 @@ class PlayerController {
     const prevMaxSh = this.maxShield;
     this.maxHealth = PLAYER_CONFIG.maxHealth + this.mods.maxHealthBonus;
     this.maxShield = PLAYER_CONFIG.maxShield + this.mods.maxShieldBonus;
+    const prevMaxG = this.maxGuardEnergy || 100;
+    this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
+    if (refillVitals) {
+      this.guardEnergy = this.maxGuardEnergy;
+    } else if (this.maxGuardEnergy > prevMaxG) {
+      this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + (this.maxGuardEnergy - prevMaxG));
+    } else {
+      this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy);
+    }
     if (refillVitals) {
       this.health = this.maxHealth;
       this.shield = this.maxShield;
@@ -464,16 +500,22 @@ class PlayerController {
         this._slideCooldown = 0.25;
       }
 
-      this.velocity.y -= PLAYER_CONFIG.gravity * clampedDt;
+      const gravScale = this.mods && this.mods.lowGravity ? 0.75 : 1.0;
+      this.velocity.y -= PLAYER_CONFIG.gravity * gravScale * clampedDt;
     } else {
       // Standard ground / air locomotion (with meta/card moveSpeedMult)
       let targetSpeed =
         (this.isSprinting ? PLAYER_CONFIG.sprintSpeed : PLAYER_CONFIG.walkSpeed) *
         (this.mods ? this.mods.moveSpeedMult : 1.0);
-      if (this.isAds) {
+      if (this.isGuarding) {
+        targetSpeed *= 0.78;
+      } else if (this.isAds) {
         targetSpeed *= PLAYER_CONFIG.adsSpeedMultiplier;
       } else if (physicallyCrouched) {
         targetSpeed *= 0.56;
+      }
+      if (this.timeSlowTimer > 0) {
+        targetSpeed *= 1.25;
       }
 
       if (this.isGrounded) {
@@ -614,7 +656,8 @@ class PlayerController {
     }
 
     // 11. Dynamic FOV & Camera Roll
-    let targetFov = this.isAds && adsFov > 0 ? adsFov : PLAYER_CONFIG.baseFov;
+    const frameBaseFov = (this.mods && this.mods.baseFov) || PLAYER_CONFIG.baseFov;
+    let targetFov = this.isAds && adsFov > 0 ? adsFov : frameBaseFov;
     if (!this.isAds) {
       if (this.isDashing) {
         targetFov += PLAYER_CONFIG.dashFovBonus;
@@ -639,16 +682,40 @@ class PlayerController {
     }
     this.cameraRoll += (targetRoll - this.cameraRoll) * (1 - Math.exp(-11 * clampedDt));
 
-    // 12. Shield auto-regeneration (2x faster delay in Terra-Beacon + meta regen) & Zone HP regen
+    // 12. Front Energy Guard Shield [E], Special/Ultimate Timers (NO passive shield regen - dodge/guard/pickups only!)
     if (this.dashOverdriveTimer > 0) this.dashOverdriveTimer = Math.max(0, this.dashOverdriveTimer - clampedDt);
     if (this.reactiveArmorTimer > 0) this.reactiveArmorTimer = Math.max(0, this.reactiveArmorTimer - clampedDt);
+    if (this.phaseInvulnTimer > 0) this.phaseInvulnTimer = Math.max(0, this.phaseInvulnTimer - clampedDt);
+    if (this.reloadBuffTimer > 0) this.reloadBuffTimer = Math.max(0, this.reloadBuffTimer - clampedDt);
+    if (this.ultActiveTimer > 0) {
+      this.ultActiveTimer = Math.max(0, this.ultActiveTimer - clampedDt);
+      if (this.ultActiveTimer <= 0) this.ultDamageMult = 1.0;
+    }
+    if (this.ultInvulnTimer > 0) this.ultInvulnTimer = Math.max(0, this.ultInvulnTimer - clampedDt);
+    if (this.timeSlowTimer > 0) this.timeSlowTimer = Math.max(0, this.timeSlowTimer - clampedDt);
+    if (this.guardHitFlash > 0) this.guardHitFlash = Math.max(0, this.guardHitFlash - clampedDt * 4.5);
+    if (this.guardBreakTimer > 0) this.guardBreakTimer = Math.max(0, this.guardBreakTimer - clampedDt);
+
+    const wantsGuard = this.input.isDown('guard');
+    if (wantsGuard && this.guardBreakTimer <= 0 && this.guardEnergy > 1.0) {
+      this.isGuarding = true;
+      this.isAds = false;
+      this._guardRegenDelay = 0.45;
+    } else {
+      this.isGuarding = false;
+      if (this._guardRegenDelay > 0) {
+        this._guardRegenDelay = Math.max(0, this._guardRegenDelay - clampedDt);
+      } else if (this.guardEnergy < this.maxGuardEnergy) {
+        const regenRate = this.mods && this.mods.frameId === 'bastion' ? 42 : 28;
+        this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + regenRate * clampedDt);
+      }
+    }
+
+    if (this.ultActiveTimer <= 0 && this.ultCharge < 100) {
+      this.ultCharge = Math.min(100, this.ultCharge + 1.6 * clampedDt);
+    }
 
     this._timeSinceDamaged += clampedDt;
-    const effRegenDelay = PLAYER_CONFIG.shieldRegenDelay * (this.inZoneBuff ? 0.5 : 1.0);
-    const effRegenRate = PLAYER_CONFIG.shieldRegenRate * (this.mods ? this.mods.shieldRegenMult : 1.0);
-    if (this._timeSinceDamaged >= effRegenDelay && this.shield < this.maxShield) {
-      this.shield = Math.min(this.maxShield, this.shield + effRegenRate * clampedDt);
-    }
     if (this.inZoneBuff && this.mods && this.mods.zoneRegenHp > 0 && this.health < this.maxHealth) {
       this.health = Math.min(this.maxHealth, this.health + this.mods.zoneRegenHp * clampedDt);
     }
@@ -705,6 +772,9 @@ class PlayerController {
 
     if (this.mods && this.mods.synergyMobility) {
       this.dashOverdriveTimer = 2.0;
+    }
+    if (this.mods && this.mods.phaseBlink) {
+      this.phaseInvulnTimer = 0.35;
     }
     this._dashPayload.chargesRemaining = this.dashCharges;
     this.eventBus.emit(EVENTS.PLAYER_DASH, this._dashPayload);
@@ -910,6 +980,49 @@ class PlayerController {
       return { shieldDamage: 0, healthDamage: 0, killed: false };
     }
 
+    if (this.phaseInvulnTimer > 0 || this.ultInvulnTimer > 0) {
+      return { shieldDamage: 0, healthDamage: 0, killed: false, invulnerable: true };
+    }
+
+    if (this.isGuarding && this.guardEnergy > 0) {
+      let isFrontal = true;
+      if (sourcePos && Number.isFinite(sourcePos.x)) {
+        this.getLookDirection(this._lookDir);
+        this.getEyePosition(this._eyePos);
+        this._guardCheckVec.set(sourcePos.x - this._eyePos.x, 0, sourcePos.z - this._eyePos.z);
+        const len = this._guardCheckVec.length();
+        if (len > 0.05) {
+          this._guardCheckVec.multiplyScalar(1 / len);
+          const fwdLen = Math.hypot(this._lookDir.x, this._lookDir.z) || 1;
+          const dot = (this._lookDir.x / fwdLen) * this._guardCheckVec.x + (this._lookDir.z / fwdLen) * this._guardCheckVec.z;
+          isFrontal = dot > 0.20;
+        }
+      }
+      if (isFrontal) {
+        const costMult = (this.mods && this.mods.guardCostMult) || 1.0;
+        const energyCost = amount * costMult;
+        this.guardEnergy = Math.max(0, this.guardEnergy - energyCost);
+        this.guardHitFlash = 1.0;
+        this._guardRegenDelay = 0.65;
+        let guardBroken = false;
+        if (this.guardEnergy <= 0.01) {
+          this.guardEnergy = 0;
+          this.isGuarding = false;
+          this.guardBreakTimer = 2.0;
+          guardBroken = true;
+        }
+        this.addScreenShake(0.08);
+        this.eventBus.emit(EVENTS.GUARD_BLOCKED, {
+          amount,
+          guardEnergy: this.guardEnergy,
+          maxGuardEnergy: this.maxGuardEnergy,
+          guardBroken,
+          sourcePos,
+        });
+        return { shieldDamage: 0, healthDamage: 0, killed: false, blockedByGuard: true };
+      }
+    }
+
     this._timeSinceDamaged = 0;
 
     const dmgScale = this.reactiveArmorTimer > 0 ? 0.55 : 1.0;
@@ -990,11 +1103,13 @@ class PlayerController {
    * @param {boolean} [isHeadshot=false]
    */
   onEnemyKill(isHeadshot = false) {
-    const shieldBonus =
-      PLAYER_CONFIG.killShieldBonus +
-      (this.mods ? this.mods.killShieldBonus : 0) +
-      (isHeadshot ? PLAYER_CONFIG.headshotShieldBonus : 0);
-    this.heal(0, shieldBonus);
+    // Item 8: No HP or Shield recovery on kill — dodge, block with [E] Front Shield, or collect pickups!
+    this.addUltCharge(isHeadshot ? 14 : 10);
+  }
+
+  addUltCharge(amount) {
+    if (!Number.isFinite(amount) || amount <= 0 || this.ultActiveTimer > 0) return;
+    this.ultCharge = Math.min(100, this.ultCharge + amount);
   }
 
   /**
@@ -1051,6 +1166,14 @@ class PlayerController {
     s.speed = this.speed;
     s.currentFov = this.currentFov;
     s.cameraRoll = this.cameraRoll;
+    s.isGuarding = this.isGuarding;
+    s.guardEnergy = this.guardEnergy;
+    s.maxGuardEnergy = this.maxGuardEnergy;
+    s.guardBreakTimer = this.guardBreakTimer;
+    s.guardHitFlash = this.guardHitFlash;
+    s.ultCharge = this.ultCharge;
+    s.ultActiveTimer = this.ultActiveTimer;
+    s.frameId = (this.mods && this.mods.frameId) || 'vanguard';
     return s;
   }
 }

@@ -21,8 +21,9 @@ function wrapAngle(a) {
  * AETHER DROP: RECLAIM EARTH — Tactical Combat AI Enemy Entity
  * Implements a zero-allocation tactical FSM (spawn -> advance -> strafe -> telegraph
  * -> attack -> stagger -> dead) with CollisionWorld LOS checks, 3-whisker cover
- * flanking, hover flight navigation, procedural rig articulation, sniper lock-on
- * crimson laser telegraph, directional blast shields, and multi-phase boss overdrive.
+ * flanking, hover flight navigation, procedural rig articulation, crimson/amber lock-on
+ * laser telegraphing, directional blast shields, agile flanker dashes, shotgun/mortar
+ * salvos, and multi-phase dreadnought boss overdrive.
  */
 class Enemy {
   /**
@@ -104,7 +105,8 @@ class Enemy {
     this._recoilAnim = 0;
     this._spawnTimer = 0.52;
     this._deathTimer = 0;
-    this._deathDuration = archetype.isBoss ? 1.15 : 0.45;
+    this._deathDuration =
+      archetype.id === 'aegis_overlord_boss' ? 1.35 : archetype.isBoss ? 1.15 : 0.45;
     this._deathTiltAxis = new THREE.Vector3(1, 0, 0);
 
     // Visual hit-flash & shield feedback timers
@@ -131,11 +133,18 @@ class Enemy {
     // Boss phase dynamic combat multipliers
     this._phaseSpeedMult = 1.0;
     this._phaseFireMult = 1.0;
-    this._phaseBurstCount = archetype.isBoss ? 3 : 1;
+    this._phaseBurstCount = archetype.isBoss
+      ? archetype.id === 'aegis_overlord_boss'
+        ? 4
+        : 3
+      : 1;
     this._phaseName =
       this.bossPhases && this.bossPhases.length > 0 ? this.bossPhases[0].name : '';
+    this._bossPatternCycle = 0;
+    this._bossActivePattern = 'rotary_barrage';
+    this._bossBurstShotIdx = 0;
 
-    // Sniper locked target point (locks smoothly then freezes final 0.2s for dash counterplay)
+    // Sniper / Mortar locked target point (locks smoothly then freezes final 0.2s for dash counterplay)
     this._lockedAimPoint = new THREE.Vector3();
     this._sniperLockFrozen = false;
     this.isSniperLocking = false;
@@ -145,7 +154,13 @@ class Enemy {
     const headR = archetype.headRadius * 1.18 * HITBOX_SCALE;
     const bodyR = archetype.radius * 0.94 * HITBOX_SCALE;
     const lowerR = archetype.radius * 0.85 * HITBOX_SCALE;
-    const shieldR = archetype.isBoss ? 1.68 : 0.68;
+    const shieldR = archetype.isBoss
+      ? archetype.id === 'aegis_overlord_boss'
+        ? 1.85
+        : 1.68
+      : archetype.id === 'rail_warden'
+      ? 0.74
+      : 0.68;
 
     this._sphereHead = {
       center: new THREE.Vector3(),
@@ -192,6 +207,7 @@ class Enemy {
     this._probeDir = new THREE.Vector3();
     this._muzzleWorld = new THREE.Vector3();
     this._shotDir = new THREE.Vector3();
+    this._fanDir = new THREE.Vector3();
     this._laserStartLocal = new THREE.Vector3();
     this._laserEndLocal = new THREE.Vector3();
     this._laserDirLocal = new THREE.Vector3();
@@ -278,9 +294,16 @@ class Enemy {
 
     this._phaseSpeedMult = 1.0;
     this._phaseFireMult = 1.0;
-    this._phaseBurstCount = this.archetype.isBoss ? 3 : 1;
+    this._phaseBurstCount = this.archetype.isBoss
+      ? this.archetype.id === 'aegis_overlord_boss'
+        ? 4
+        : 3
+      : 1;
     this._phaseName =
       this.bossPhases && this.bossPhases.length > 0 ? this.bossPhases[0].name : '';
+    this._bossPatternCycle = 0;
+    this._bossActivePattern = 'rotary_barrage';
+    this._bossBurstShotIdx = 0;
 
     this._lockedAimPoint.set(0, 0, 0);
     this._sniperLockFrozen = false;
@@ -293,8 +316,9 @@ class Enemy {
       rig.root.scale.set(1, 1, 1);
       rig.root.visible = true;
 
+      const flyBaseY = this.archetype.id === 'interceptor_drone' ? 0.62 : 0.55;
       rig.bodyGroup.rotation.set(0, 0, 0);
-      rig.bodyGroup.position.set(0, this.archetype.isFlying ? 0.55 : 0, 0);
+      rig.bodyGroup.position.set(0, this.archetype.isFlying ? flyBaseY : 0, 0);
 
       if (rig.headGroup) {
         rig.headGroup.scale.set(1, 1, 1);
@@ -302,11 +326,16 @@ class Enemy {
       }
       if (rig.leftLeg) rig.leftLeg.rotation.set(0, 0, 0);
       if (rig.rightLeg) rig.rightLeg.rotation.set(0, 0, 0);
-      if (rig.leftArm) rig.leftArm.rotation.set(0, 0, 0);
+      if (rig.leftArm) {
+        rig.leftArm.rotation.set(0, 0, 0);
+        if (this.archetype.id === 'interceptor_drone') {
+          rig.leftArm.position.z = 0.14;
+        }
+      }
       if (rig.rightArm) {
         rig.rightArm.rotation.set(0, 0, 0);
         if (this.archetype.isFlying) {
-          rig.rightArm.position.z = 0.12;
+          rig.rightArm.position.z = this.archetype.id === 'interceptor_drone' ? 0.14 : 0.12;
         }
       }
 
@@ -430,8 +459,10 @@ class Enemy {
     this._sphereHead.center.copy(this.headPosition);
 
     if (this.archetype.isFlying) {
-      this._sphereTorso.center.set(px, py + 0.54, pz);
-      this._sphereLower.center.set(px, py + 0.36, pz);
+      const torsoOff = this.archetype.id === 'interceptor_drone' ? 0.60 : 0.54;
+      const lowerOff = this.archetype.id === 'interceptor_drone' ? 0.38 : 0.36;
+      this._sphereTorso.center.set(px, py + torsoOff, pz);
+      this._sphereLower.center.set(px, py + lowerOff, pz);
     } else {
       this._sphereTorso.center.set(px, py + h * 0.62, pz);
       this._sphereLower.center.set(px, py + h * 0.28, pz);
@@ -440,16 +471,17 @@ class Enemy {
     if (this.archetype.hasShield) {
       if (this.archetype.isBoss) {
         if (this._phaseShieldTimer > 0 && this.rig.shieldMesh) {
-          this._sphereShield.center.set(px, py + 2.02, pz);
+          const bossShieldY = this.archetype.id === 'aegis_overlord_boss' ? 2.28 : 2.02;
+          this._sphereShield.center.set(px, py + bossShieldY, pz);
           return this._hitSpheres4;
         }
         return this._hitSpheres3;
       }
 
-      // Heavy Enforcer curved frontal riot shield positioned directly on shieldMesh
+      // Heavy Enforcer / Rail Warden frontal blast shield positioned directly on shieldMesh
       if (this.rig.shieldMesh) {
         this.rig.shieldMesh.getWorldPosition(this._sphereShield.center);
-        this._sphereShield.center.y -= 0.06;
+        this._sphereShield.center.y -= this.archetype.id === 'rail_warden' ? 0.02 : 0.06;
         return this._hitSpheres4;
       }
     }
@@ -515,6 +547,14 @@ class Enemy {
         ? 0.06
         : this.archetype.id === 'heavy_enforcer'
         ? 0.32
+        : this.archetype.id === 'rail_warden'
+        ? 0.34
+        : this.archetype.id === 'mortar_artillery'
+        ? 0.38
+        : this.archetype.id === 'shock_breacher'
+        ? 0.50
+        : this.archetype.id === 'vanguard_assassin'
+        ? 0.82
         : this.archetype.isFlying
         ? 1.15
         : 0.72;
@@ -534,7 +574,16 @@ class Enemy {
       (isHeadshot || dealt >= 38 || (options && options.isExplosion))
     ) {
       this.state = 'stagger';
-      this._staggerTimer = this.archetype.id === 'heavy_enforcer' ? 0.15 : 0.22;
+      this._staggerTimer =
+        this.archetype.id === 'heavy_enforcer'
+          ? 0.15
+          : this.archetype.id === 'rail_warden'
+          ? 0.16
+          : this.archetype.id === 'shock_breacher'
+          ? 0.17
+          : this.archetype.id === 'mortar_artillery'
+          ? 0.18
+          : 0.22;
       this._staggerCooldown = 1.45;
       this._hideLaser();
     }
@@ -593,6 +642,7 @@ class Enemy {
           this.eventBus.emit(EVENTS.BOSS_PHASE, {
             phase: p.phase,
             name: p.name,
+            bossName: this.archetype ? this.archetype.name : 'BOSS',
             callout: p.callout,
             escorts: p.escorts || [],
             bossId: this.id,
@@ -711,13 +761,21 @@ class Enemy {
       return;
     }
 
-    // Smooth yaw turn toward player (faster for drone & sniper, weighty for heavy/boss)
+    // Smooth yaw turn toward player (faster for drone, assassin & sniper, weighty for heavy/mortar/boss)
     const turnRate = this.archetype.isFlying
-      ? 9.0
+      ? this.archetype.id === 'interceptor_drone'
+        ? 9.8
+        : 9.0
       : this.archetype.isBoss
       ? 3.8 * this._phaseSpeedMult
-      : this.archetype.id === 'heavy_enforcer'
+      : this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden'
       ? 4.6
+      : this.archetype.id === 'mortar_artillery'
+      ? 4.2
+      : this.archetype.id === 'vanguard_assassin'
+      ? 9.2
+      : this.archetype.id === 'shock_breacher'
+      ? 8.2
       : 7.4;
     const yawDiff = wrapAngle(targetYaw - this._yaw);
     this._yaw += yawDiff * (1 - Math.exp(-turnRate * clampedDt));
@@ -768,13 +826,21 @@ class Enemy {
           break;
         }
 
-        // Periodic strafe direction reversal
+        // Periodic strafe direction reversal + agile assassin dash burst
         this._strafeSwitchTimer -= clampedDt;
         if (this._strafeSwitchTimer <= 0) {
           this._strafeDir = -this._strafeDir;
-          this._strafeSwitchTimer = 1.6 + Math.random() * 1.9;
-          // Troopers & snipers occasionally pause briefly to brace/aim
-          if (
+          const isAgile =
+            this.archetype.id === 'vanguard_assassin' || this.archetype.id === 'interceptor_drone';
+          this._strafeSwitchTimer = isAgile ? 1.0 + Math.random() * 1.3 : 1.6 + Math.random() * 1.9;
+
+          if (this.archetype.id === 'vanguard_assassin' && horizDist > 0.01) {
+            const invH = 1 / horizDist;
+            const dashSideX = -(dz * invH) * this._strafeDir;
+            const dashSideZ = (dx * invH) * this._strafeDir;
+            this.velocity.x += dashSideX * 9.5;
+            this.velocity.z += dashSideZ * 9.5;
+          } else if (
             (this.archetype.id === 'tactical_trooper' || this.archetype.id === 'sniper_stalker') &&
             Math.random() < 0.32
           ) {
@@ -799,22 +865,37 @@ class Enemy {
           else if (horizDist < pref * 0.68) radialWeight = -0.58;
 
           const strafeWeight =
-            this.archetype.id === 'heavy_enforcer'
+            this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden'
               ? 0.42
-              : this.archetype.id === 'sniper_stalker'
-              ? 0.55
+              : this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery'
+              ? 0.50
+              : this.archetype.id === 'vanguard_assassin'
+              ? 0.95
+              : this.archetype.id === 'shock_breacher'
+              ? 0.88
               : 0.82;
 
           let vx = fwdX * radialWeight + sideX * strafeWeight;
           let vz = fwdZ * radialWeight + sideZ * strafeWeight;
           const mag = Math.hypot(vx, vz);
           if (mag > 0.01) {
-            const strafeSpd = moveSpeed * (this.archetype.id === 'sniper_stalker' ? 0.65 : 0.78);
+            const strafeMult =
+              this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery'
+                ? 0.65
+                : this.archetype.id === 'vanguard_assassin'
+                ? 0.92
+                : 0.78;
+            const strafeSpd = moveSpeed * strafeMult;
             vx = (vx / mag) * strafeSpd;
             vz = (vz / mag) * strafeSpd;
 
-            // Keep elevated snipers from blindly strafing off catwalk ledges
-            if (this.archetype.id === 'sniper_stalker' && this.position.y > 1.2) {
+            // Keep elevated snipers, mortars & assassins from blindly strafing off catwalk ledges
+            if (
+              (this.archetype.id === 'sniper_stalker' ||
+                this.archetype.id === 'mortar_artillery' ||
+                this.archetype.id === 'vanguard_assassin') &&
+              this.position.y > 1.2
+            ) {
               const probeX = this.position.x + (vx / strafeSpd) * 1.2;
               const probeZ = this.position.z + (vz / strafeSpd) * 1.2;
               const aheadFloor = this.collisionWorld.getGroundHeightAt(
@@ -851,19 +932,25 @@ class Enemy {
           this.archetype.telegraphTime / (this.archetype.isBoss ? Math.sqrt(this._phaseFireMult) : 1.0);
         const progress = Math.max(0, Math.min(1, 1 - this._telegraphTimer / Math.max(0.05, totalTelegraph)));
 
-        // Drones keep lightly drifting; ground units brace during telegraph
+        // Drones keep lightly drifting; shielded heavies & shock breachers press forward during windup
         if (this.archetype.isFlying && horizDist > 0.01) {
           const sideX = -(dz / horizDist) * this._strafeDir;
           const sideZ = (dx / horizDist) * this._strafeDir;
           desiredVx = sideX * moveSpeed * 0.45;
           desiredVz = sideZ * moveSpeed * 0.45;
-        } else if (this.archetype.id === 'heavy_enforcer' && horizDist > 6) {
+        } else if (
+          (this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden') &&
+          horizDist > 6
+        ) {
           desiredVx = (dx / horizDist) * moveSpeed * 0.35;
           desiredVz = (dz / horizDist) * moveSpeed * 0.35;
+        } else if (this.archetype.id === 'shock_breacher' && horizDist > 5.0) {
+          desiredVx = (dx / horizDist) * moveSpeed * 0.55;
+          desiredVz = (dz / horizDist) * moveSpeed * 0.55;
         }
 
-        // Deadeye Recon visible crimson lock-on laser telegraph!
-        if (this.archetype.id === 'sniper_stalker') {
+        // Deadeye Recon crimson & Siege Mortar molten-amber visible lock-on laser telegraph!
+        if (this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery') {
           if (progress < 0.78) {
             // Smoothly tracks player chest during first 78% of lock-on
             this._lockedAimPoint.x += (playerEyePos.x - this._lockedAimPoint.x) * (1 - Math.exp(-10 * clampedDt));
@@ -886,6 +973,10 @@ class Enemy {
 
         if (this._telegraphTimer <= 0) {
           this.state = 'attack';
+          if (this.archetype.isBoss) {
+            this._selectNextBossPattern();
+          }
+          this._bossBurstShotIdx = 0;
           this._burstRemaining = this._getBurstCount();
           this._burstShotTimer = 0;
         }
@@ -1092,10 +1183,35 @@ class Enemy {
     switch (this.archetype.id) {
       case 'rusher_drone':
         return 2;
+      case 'interceptor_drone':
+        return 3;
       case 'tactical_trooper':
         return 3;
+      case 'shock_breacher':
+        return 1; // Fires 4-pellet pneumatic buckshot fan per trigger pull
+      case 'rail_warden':
+        return 2;
+      case 'mortar_artillery':
+        return 3;
+      case 'vanguard_assassin':
+        return 4;
       case 'cyber_mech_boss':
+        if (this._bossActivePattern === 'molten_fan') return this.currentPhase >= 3 ? 3 : 2;
+        if (this._bossActivePattern === 'twin_slam_salvo') return this.currentPhase >= 2 ? 3 : 2;
+        if (this._bossActivePattern === 'spiral_barrage') return this.currentPhase >= 3 ? 9 : 6;
         return this._phaseBurstCount;
+      case 'aegis_overlord_boss':
+        if (this._bossActivePattern === 'orbital_fan') return this.currentPhase >= 3 ? 3 : 2;
+        if (this._bossActivePattern === 'ring_nova') return this.currentPhase >= 3 ? 2 : 1;
+        if (this._bossActivePattern === 'sniper_lance') return this.currentPhase >= 2 ? 3 : 2;
+        if (this._bossActivePattern === 'cross_barrage') return 3;
+        return this._phaseBurstCount > 1
+          ? this._phaseBurstCount
+          : this.currentPhase >= 3
+          ? 8
+          : this.currentPhase === 2
+          ? 6
+          : 4;
       default:
         return 1;
     }
@@ -1106,10 +1222,27 @@ class Enemy {
     switch (this.archetype.id) {
       case 'rusher_drone':
         return 0.13;
+      case 'interceptor_drone':
+        return 0.10;
       case 'tactical_trooper':
         return 0.14;
+      case 'rail_warden':
+        return 0.18;
+      case 'mortar_artillery':
+        return 0.16;
+      case 'vanguard_assassin':
+        return 0.085;
       case 'cyber_mech_boss':
+        if (this._bossActivePattern === 'molten_fan') return 0.32;
+        if (this._bossActivePattern === 'twin_slam_salvo') return 0.28;
+        if (this._bossActivePattern === 'spiral_barrage') return 0.11;
         return Math.max(0.10, 0.19 / this._phaseFireMult);
+      case 'aegis_overlord_boss':
+        if (this._bossActivePattern === 'orbital_fan') return 0.28;
+        if (this._bossActivePattern === 'ring_nova') return 0.42;
+        if (this._bossActivePattern === 'sniper_lance') return 0.26;
+        if (this._bossActivePattern === 'cross_barrage') return 0.24;
+        return Math.max(0.09, 0.16 / this._phaseFireMult);
       default:
         return 0.15;
     }
@@ -1119,12 +1252,35 @@ class Enemy {
    * Compute exact world muzzle origin & projectile trajectory and emit via WaveDirector pool.
    * @private
    */
+  _selectNextBossPattern() {
+    if (this.archetype.id === 'cyber_mech_boss') {
+      const patterns =
+        this.currentPhase >= 2
+          ? ['rotary_barrage', 'molten_fan', 'twin_slam_salvo', 'spiral_barrage']
+          : ['rotary_barrage', 'molten_fan', 'twin_slam_salvo'];
+      this._bossActivePattern = patterns[this._bossPatternCycle % patterns.length];
+      this._bossPatternCycle++;
+    } else if (this.archetype.id === 'aegis_overlord_boss') {
+      const patterns =
+        this.currentPhase >= 2
+          ? ['rail_volley', 'orbital_fan', 'ring_nova', 'sniper_lance', 'cross_barrage']
+          : ['rail_volley', 'orbital_fan', 'sniper_lance', 'ring_nova'];
+      this._bossActivePattern = patterns[this._bossPatternCycle % patterns.length];
+      this._bossPatternCycle++;
+    }
+  }
+
   _fireShot(playerEyePos, spawnProjectileFn) {
     if (typeof spawnProjectileFn !== 'function') return;
 
-    // Boss alternates between right and left 6-barrel rotary cannons
+    // Dual-weapon enemies & bosses alternate cleanly between right and left muzzles
     let muzzleObj = this.rig.weaponMuzzle;
-    if (this.archetype.isBoss && this.rig.leftWeaponMuzzle) {
+    const hasDualMuzzle =
+      (this.archetype.isBoss ||
+        this.archetype.id === 'interceptor_drone' ||
+        this.archetype.id === 'vanguard_assassin') &&
+      this.rig.leftWeaponMuzzle;
+    if (hasDualMuzzle) {
       this._altMuzzleToggle = !this._altMuzzleToggle;
       if (this._altMuzzleToggle) {
         muzzleObj = this.rig.leftWeaponMuzzle;
@@ -1141,9 +1297,16 @@ class Enemy {
       );
     }
 
-    // Aim point (sniper shoots along its locked telegraph beam; others aim cleanly at player torso/eye)
+    // Aim point (sniper shoots along locked telegraph beam; others aim cleanly at player torso/eye)
     if (this.archetype.id === 'sniper_stalker') {
       this._shotDir.subVectors(this._lockedAimPoint, this._muzzleWorld);
+    } else if (this.archetype.id === 'mortar_artillery') {
+      // Mortar locks onto target area slightly softened for 3-round bombardment salvo
+      this._shotDir.set(
+        this._lockedAimPoint.x - this._muzzleWorld.x,
+        playerEyePos.y - 0.18 - this._muzzleWorld.y,
+        this._lockedAimPoint.z - this._muzzleWorld.z
+      );
     } else {
       this._shotDir.set(
         playerEyePos.x - this._muzzleWorld.x,
@@ -1159,14 +1322,246 @@ class Enemy {
       this._shotDir.multiplyScalar(1 / len);
     }
 
-    // Subtle tactical spread (sniper is razor accurate; boss rotary barrage fans slightly)
+    const projRadius =
+      this.archetype.id === 'heavy_enforcer'
+        ? 0.18
+        : this.archetype.id === 'mortar_artillery'
+        ? 0.19
+        : this.archetype.id === 'aegis_overlord_boss'
+        ? 0.17
+        : this.archetype.isBoss
+        ? 0.16
+        : this.archetype.id === 'rail_warden'
+        ? 0.14
+        : this.archetype.id === 'shock_breacher' || this.archetype.id === 'sniper_stalker'
+        ? 0.08
+        : 0.09;
+
+    const isSniperBeam = this.archetype.id === 'sniper_stalker';
+    this._recoilAnim = 1.0;
+
+    // Shock Breacher 4-pellet pneumatic buckshot fan (zero-GC)
+    if (this.archetype.id === 'shock_breacher') {
+      const fanAngles = [-0.11, -0.036, 0.036, 0.11];
+      for (let i = 0; i < fanAngles.length; i++) {
+        const a = fanAngles[i];
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        this._fanDir
+          .set(
+            this._shotDir.x * cosA - this._shotDir.z * sinA,
+            this._shotDir.y + (Math.random() - 0.5) * 0.038,
+            this._shotDir.x * sinA + this._shotDir.z * cosA
+          )
+          .normalize();
+        spawnProjectileFn(
+          this._muzzleWorld,
+          this._fanDir,
+          this.archetype.projectileSpeed,
+          this.archetype.damage,
+          this.archetype.color,
+          projRadius,
+          this.archetype.id,
+          false
+        );
+      }
+      return;
+    }
+
+    // Stage 5 Boss (COLOSSUS-IV // ASH TITAN) diversified attack patterns
+    if (this.archetype.id === 'cyber_mech_boss') {
+      const shotIdx = this._bossBurstShotIdx++;
+      if (this._bossActivePattern === 'molten_fan') {
+        const fanAngles =
+          this.currentPhase >= 3
+            ? [-0.24, -0.16, -0.08, 0, 0.08, 0.16, 0.24]
+            : [-0.18, -0.09, 0, 0.09, 0.18];
+        for (let i = 0; i < fanAngles.length; i++) {
+          const a = fanAngles[i];
+          const cosA = Math.cos(a);
+          const sinA = Math.sin(a);
+          this._fanDir
+            .set(
+              this._shotDir.x * cosA - this._shotDir.z * sinA,
+              this._shotDir.y + (shotIdx % 2 === 0 ? 0.015 : -0.015),
+              this._shotDir.x * sinA + this._shotDir.z * cosA
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._fanDir,
+            this.archetype.projectileSpeed * 0.92,
+            this.archetype.damage * 0.85,
+            0xff4d1a,
+            0.18,
+            this.archetype.id,
+            false
+          );
+        }
+        return;
+      }
+      if (this._bossActivePattern === 'twin_slam_salvo' && this.rig.weaponMuzzle && this.rig.leftWeaponMuzzle) {
+        const muzzles = [this.rig.weaponMuzzle, this.rig.leftWeaponMuzzle];
+        for (let m = 0; m < muzzles.length; m++) {
+          muzzles[m].getWorldPosition(this._muzzleWorld);
+          this._fanDir
+            .set(
+              playerEyePos.x - this._muzzleWorld.x,
+              playerEyePos.y - 0.18 - this._muzzleWorld.y,
+              playerEyePos.z - this._muzzleWorld.z
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._fanDir,
+            this.archetype.projectileSpeed * 1.12,
+            this.archetype.damage * 0.95,
+            0xff6b1a,
+            0.22,
+            this.archetype.id,
+            false
+          );
+        }
+        return;
+      }
+      if (this._bossActivePattern === 'spiral_barrage') {
+        const sweepAngle = Math.sin(shotIdx * 0.95) * (this.currentPhase >= 3 ? 0.22 : 0.16);
+        const cosA = Math.cos(sweepAngle);
+        const sinA = Math.sin(sweepAngle);
+        this._fanDir
+          .set(
+            this._shotDir.x * cosA - this._shotDir.z * sinA,
+            this._shotDir.y + Math.cos(shotIdx * 1.2) * 0.03,
+            this._shotDir.x * sinA + this._shotDir.z * cosA
+          )
+          .normalize();
+        spawnProjectileFn(
+          this._muzzleWorld,
+          this._fanDir,
+          this.archetype.projectileSpeed * 1.05,
+          this.archetype.damage * 0.8,
+          0xff2e00,
+          0.16,
+          this.archetype.id,
+          false
+        );
+        return;
+      }
+    }
+
+    // Stage 10 Boss (AEGIS-IX // ORBITAL OVERLORD) diversified attack patterns
+    if (this.archetype.id === 'aegis_overlord_boss') {
+      const shotIdx = this._bossBurstShotIdx++;
+      if (this._bossActivePattern === 'orbital_fan') {
+        const spreadAngles =
+          this.currentPhase >= 3
+            ? [-0.26, -0.17, -0.085, 0, 0.085, 0.17, 0.26]
+            : [-0.20, -0.10, 0, 0.10, 0.20];
+        for (let i = 0; i < spreadAngles.length; i++) {
+          const a = spreadAngles[i] + (shotIdx % 2 === 0 ? 0 : 0.04);
+          const cosA = Math.cos(a);
+          const sinA = Math.sin(a);
+          this._fanDir
+            .set(
+              this._shotDir.x * cosA - this._shotDir.z * sinA,
+              this._shotDir.y + (Math.random() - 0.5) * 0.02,
+              this._shotDir.x * sinA + this._shotDir.z * cosA
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._fanDir,
+            this.archetype.projectileSpeed * 0.96,
+            this.archetype.damage * 0.85,
+            0x00e5ff,
+            0.17,
+            this.archetype.id,
+            false
+          );
+        }
+        return;
+      }
+      if (this._bossActivePattern === 'ring_nova') {
+        const count = this.currentPhase >= 3 ? 16 : 12;
+        const baseYaw = this._yaw + shotIdx * (Math.PI / count);
+        for (let i = 0; i < count; i++) {
+          const ang = baseYaw + (i / count) * Math.PI * 2;
+          this._fanDir.set(Math.sin(ang), -0.06, Math.cos(ang)).normalize();
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._fanDir,
+            this.archetype.projectileSpeed * 0.72,
+            this.archetype.damage * 0.9,
+            i % 2 === 0 ? 0x38bdf8 : 0xf59e0b,
+            0.20,
+            this.archetype.id,
+            false
+          );
+        }
+        return;
+      }
+      if (this._bossActivePattern === 'sniper_lance') {
+        spawnProjectileFn(
+          this._muzzleWorld,
+          this._shotDir,
+          68,
+          this.archetype.damage * 1.15,
+          0xf59e0b,
+          0.11,
+          this.archetype.id,
+          true
+        );
+        return;
+      }
+      if (this._bossActivePattern === 'cross_barrage') {
+        const offsets = [
+          [-0.08, 0.05],
+          [0.08, 0.05],
+          [-0.08, -0.04],
+          [0.08, -0.04],
+        ];
+        for (let i = 0; i < offsets.length; i++) {
+          const [yawOff, pitchOff] = offsets[i];
+          const cosA = Math.cos(yawOff);
+          const sinA = Math.sin(yawOff);
+          this._fanDir
+            .set(
+              this._shotDir.x * cosA - this._shotDir.z * sinA,
+              this._shotDir.y + pitchOff,
+              this._shotDir.x * sinA + this._shotDir.z * cosA
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._fanDir,
+            this.archetype.projectileSpeed * 1.06,
+            this.archetype.damage * 0.82,
+            i < 2 ? 0x38bdf8 : 0xf43f5e,
+            0.16,
+            this.archetype.id,
+            false
+          );
+        }
+        return;
+      }
+    }
+
+    // Subtle tactical spread (sniper/rail are razor accurate; drones/mortars fan slightly)
     const spread =
       this.archetype.id === 'sniper_stalker'
         ? 0.004
+        : this.archetype.id === 'rail_warden'
+        ? 0.012
+        : this.archetype.id === 'vanguard_assassin'
+        ? 0.024
+        : this.archetype.id === 'mortar_artillery'
+        ? 0.052
         : this.archetype.isBoss
-        ? 0.042
-        : this.archetype.id === 'rusher_drone'
-        ? 0.048
+        ? this.archetype.id === 'aegis_overlord_boss'
+          ? 0.028
+          : 0.042
+        : this.archetype.isFlying
+        ? 0.044
         : 0.032;
 
     if (spread > 0) {
@@ -1175,18 +1570,6 @@ class Enemy {
       this._shotDir.z += (Math.random() - 0.5) * spread * 2;
       this._shotDir.normalize();
     }
-
-    const projRadius =
-      this.archetype.id === 'heavy_enforcer'
-        ? 0.18
-        : this.archetype.isBoss
-        ? 0.16
-        : this.archetype.id === 'sniper_stalker'
-        ? 0.08
-        : 0.09;
-
-    const isSniperBeam = this.archetype.id === 'sniper_stalker';
-    this._recoilAnim = 1.0;
 
     spawnProjectileFn(
       this._muzzleWorld,
@@ -1257,7 +1640,11 @@ class Enemy {
 
     if (laser.material) {
       laser.material.opacity = this._sniperLockFrozen ? 0.96 : 0.52 + progress * 0.40;
-      laser.material.color.setHex(this._sniperLockFrozen ? 0xff1111 : 0xe62020);
+      if (this.archetype.id === 'mortar_artillery') {
+        laser.material.color.setHex(this._sniperLockFrozen ? 0xff7b00 : 0xea580c);
+      } else {
+        laser.material.color.setHex(this._sniperLockFrozen ? 0xff1111 : 0xe62020);
+      }
     }
   }
 
@@ -1270,14 +1657,14 @@ class Enemy {
   }
 
   /**
-   * Procedural articulation for all 5 archetypes (stride legs, recoil arms, banking drone,
-   * spinning rotors, rotary plasma barrels, boss orbital shield rings, diegetic health bar).
+   * Procedural articulation for all enemy & boss archetypes (stride legs, recoil arms,
+   * banking tilt-rotor gunships, spinning rotors, rotary/siege barrels, boss orbital shield rings).
    * @private
    */
   _updateRigAnimation(dt, elapsedTime, horizSpeed, playerPos) {
     const rig = this.rig;
 
-    // 1. Flying Rusher Drone banking & rapid ducted rotor spin
+    // 1. Flying Drones (Rusher Drone & Aegis Interceptor) banking & rapid ducted rotor spin
     if (this.archetype.isFlying) {
       const sinY = Math.sin(this._yaw);
       const cosY = Math.cos(this._yaw);
@@ -1289,23 +1676,36 @@ class Enemy {
       const bankBlend = 1 - Math.exp(-8 * dt);
       rig.bodyGroup.rotation.x += (targetPitch - rig.bodyGroup.rotation.x) * bankBlend;
       rig.bodyGroup.rotation.z += (targetRoll - rig.bodyGroup.rotation.z) * bankBlend;
-      rig.bodyGroup.position.y = 0.55 + Math.sin(elapsedTime * 5.2 + this._hoverSeed) * 0.06;
+      const hoverBaseY = this.archetype.id === 'interceptor_drone' ? 0.62 : 0.55;
+      rig.bodyGroup.position.y = hoverBaseY + Math.sin(elapsedTime * 5.2 + this._hoverSeed) * 0.06;
 
-      // Spin twin shrouded ducted rotors rapidly
+      // Spin twin shrouded ducted rotors / tilt-nacelle turbines rapidly
       const rotorSpin = (this.state === 'telegraph' || this.state === 'attack' ? 38 : 26) * dt;
       for (let i = 0; i < rig.rotors.length; i++) {
         rig.rotors[i].rotation.y += i % 2 === 0 ? rotorSpin : -rotorSpin;
       }
 
-      // Chin repeater recoil kick
-      rig.rightArm.position.z = 0.12 - this._recoilAnim * 0.09;
+      // Chin repeater or dual wingtip blaster pod recoil kick
+      if (this.archetype.id === 'interceptor_drone') {
+        const kick = 0.14 - this._recoilAnim * 0.09;
+        rig.rightArm.position.z = kick;
+        if (rig.leftArm) rig.leftArm.position.z = kick;
+      } else {
+        rig.rightArm.position.z = 0.12 - this._recoilAnim * 0.09;
+      }
     } else {
-      // 2. Bipedal Ground Units (Trooper, Heavy Enforcer, Sniper Stalker, Cyber-Mech Boss)
+      // 2. Bipedal Ground Units (Troopers, Heavy/Phalanx, Sniper, Breacher, Mortar, Assassin, Bosses)
       const speedNorm = Math.min(1.3, horizSpeed / Math.max(1, this.archetype.speed));
       const strideFreq = this.archetype.isBoss
-        ? 4.6 * this._phaseSpeedMult
-        : this.archetype.id === 'heavy_enforcer'
+        ? (this.archetype.id === 'aegis_overlord_boss' ? 4.4 : 4.6) * this._phaseSpeedMult
+        : this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden'
         ? 5.8
+        : this.archetype.id === 'mortar_artillery'
+        ? 4.8
+        : this.archetype.id === 'vanguard_assassin'
+        ? 10.2
+        : this.archetype.id === 'shock_breacher'
+        ? 9.4
         : 8.6;
 
       if (speedNorm > 0.08) {
@@ -1313,8 +1713,15 @@ class Enemy {
       }
 
       const swingAmp =
-        (this.archetype.isBoss ? 0.36 : this.archetype.id === 'heavy_enforcer' ? 0.40 : 0.56) *
-        speedNorm;
+        (this.archetype.isBoss
+          ? 0.36
+          : this.archetype.id === 'heavy_enforcer' ||
+            this.archetype.id === 'rail_warden' ||
+            this.archetype.id === 'mortar_artillery'
+          ? 0.40
+          : this.archetype.id === 'vanguard_assassin'
+          ? 0.62
+          : 0.56) * speedNorm;
       const stride = Math.sin(this._walkCycle) * swingAmp;
       const bob = Math.abs(Math.cos(this._walkCycle)) * (this.archetype.isBoss ? 0.10 : 0.045) * speedNorm;
 
@@ -1330,14 +1737,22 @@ class Enemy {
 
       // Weapon arm recoil & aiming brace
       if (rig.rightArm) {
-        const recoilPitch = this._recoilAnim * (this.archetype.isBoss ? 0.14 : 0.22);
-        rig.rightArm.rotation.x = -recoilPitch + Math.sin(elapsedTime * 2.4 + this._hoverSeed) * 0.025;
+        if (this.archetype.id === 'mortar_artillery') {
+          const elev = this.state === 'telegraph' ? -0.08 : -0.22;
+          rig.rightArm.rotation.x = elev - this._recoilAnim * 0.28;
+        } else {
+          const recoilPitch = this._recoilAnim * (this.archetype.isBoss ? 0.14 : 0.22);
+          rig.rightArm.rotation.x = -recoilPitch + Math.sin(elapsedTime * 2.4 + this._hoverSeed) * 0.025;
+        }
       }
       if (rig.leftArm) {
-        if (this.archetype.id === 'heavy_enforcer') {
-          // Hold energy riot shield steady & raise slightly when telegraphing/hit
+        if (this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden') {
+          // Hold energy blast shield steady & raise slightly when telegraphing/hit
           const brace = this.state === 'telegraph' || this._shieldFlashTimer > 0 ? -0.14 : 0;
           rig.leftArm.rotation.x += (brace - rig.leftArm.rotation.x) * (1 - Math.exp(-10 * dt));
+        } else if (this.archetype.id === 'vanguard_assassin') {
+          // Wrist-blade & forearm emitter slash/aim swing
+          rig.leftArm.rotation.x = -0.35 - this._recoilAnim * 0.45;
         } else if (this.archetype.isBoss) {
           rig.leftArm.rotation.x = -this._recoilAnim * 0.14;
         } else {

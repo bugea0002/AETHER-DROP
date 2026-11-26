@@ -88,6 +88,10 @@ class WeaponSystem {
       });
     }
 
+    // Build 3D Holographic Front Energy Guard Shield [E]
+    this._guardShieldGroup = this._buildGuardShieldMesh();
+    this._rigContainer.add(this._guardShieldGroup);
+
     // Build quick cyber-mantis melee blade rig
     this._meleeRig = this._factory.createMeleeBladeRig();
     this._meleeRig.root.visible = false;
@@ -305,6 +309,26 @@ class WeaponSystem {
     const rig = this._rigs[this.currentIndex];
     const ammoState = this._ammoStates[this.currentIndex];
     const pc = this.playerController;
+    this._guardElapsed = (this._guardElapsed || 0) + clampedDt;
+    if (this._guardShieldGroup && pc) {
+      const guarding = Boolean(pc.isGuarding);
+      const targetA = guarding ? 1.0 : 0.0;
+      this._guardRaiseAlpha += (targetA - this._guardRaiseAlpha) * Math.min(1, clampedDt * 16);
+      this._guardShieldGroup.visible = this._guardRaiseAlpha > 0.03;
+      if (this._guardShieldGroup.visible) {
+        const a = this._guardRaiseAlpha;
+        const flash = pc.guardHitFlash || 0;
+        this._guardShieldGroup.position.set(-0.08 * (1 - a * 0.55), -0.34 + a * 0.28, -0.58 + flash * 0.04);
+        this._guardShieldGroup.scale.setScalar(0.6 + a * 0.48 + flash * 0.08);
+        this._guardShieldGroup.rotation.z = Math.sin(this._guardElapsed * 2.2) * 0.04;
+        if (this._guardShieldFillMat) {
+          this._guardShieldFillMat.opacity = (0.20 + flash * 0.42) * a;
+        }
+        if (this._guardShieldEdgeMat) {
+          this._guardShieldEdgeMat.emissiveIntensity = 2.8 + flash * 4.5;
+        }
+      }
+    }
 
     // Timers & No-Reload Secondary Mechanics (Heat Cooling + Auto-Regen Charges)
     if (this._fireCooldown > 0) this._fireCooldown = Math.max(0, this._fireCooldown - clampedDt);
@@ -508,6 +532,66 @@ class WeaponSystem {
     }
   }
 
+  setPilotFrameStyle(frameId) {
+    if (this._factory && typeof this._factory.setPilotFrameStyle === 'function') {
+      this._factory.setPilotFrameStyle(frameId);
+    }
+    if (this._guardShieldFillMat && this._guardShieldEdgeMat) {
+      const col =
+        frameId === 'bastion'
+          ? 0x22c55e
+          : frameId === 'apex'
+          ? 0xf43f5e
+          : frameId === 'strider'
+          ? 0x00f0ff
+          : 0x38bdf8;
+      this._guardShieldFillMat.color.setHex(col);
+      this._guardShieldEdgeMat.color.setHex(col);
+      this._guardShieldEdgeMat.emissive.setHex(col);
+    }
+  }
+
+  _buildGuardShieldMesh() {
+    const g = new THREE.Group();
+    const hexGeo = new THREE.CircleGeometry(0.42, 6);
+    this._guardShieldFillMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.24,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const fill = new THREE.Mesh(hexGeo, this._guardShieldFillMat);
+    fill.renderOrder = 15;
+    g.add(fill);
+
+    const edgeGeo = new THREE.TorusGeometry(0.42, 0.014, 8, 6);
+    this._guardShieldEdgeMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: new THREE.Color(0x38bdf8),
+      emissiveIntensity: 3.2,
+      roughness: 0.15,
+      metalness: 0.2,
+      fog: false,
+    });
+    const edge = new THREE.Mesh(edgeGeo, this._guardShieldEdgeMat);
+    edge.renderOrder = 16;
+    g.add(edge);
+
+    const innerGeo = new THREE.RingGeometry(0.18, 0.20, 6);
+    const inner = new THREE.Mesh(innerGeo, this._guardShieldEdgeMat);
+    inner.position.z = 0.005;
+    inner.renderOrder = 16;
+    g.add(inner);
+
+    g.position.set(-0.08, -0.06, -0.58);
+    g.visible = false;
+    this._guardRaiseAlpha = 0;
+    this._guardElapsed = 0;
+    return g;
+  }
+
   equipFloorWeapon(weaponIndex) {
     const idx = Math.max(0, Math.min(WEAPONS.length - 1, Math.floor(weaponIndex)));
     const w = WEAPONS[idx];
@@ -517,7 +601,7 @@ class WeaponSystem {
 
     if (prevIdx === idx) {
       // Same weapon picked up -> Overclock +15% & visual 3D attachment evolution!
-      this.weaponOverclock[idx] = Math.min(3, (this.weaponOverclock[idx] || 0) + 1);
+      this.weaponOverclock[idx] = Math.min(5, (this.weaponOverclock[idx] || 0) + 1);
       this._applyOverclockVisual(idx);
       if (!w.noReload) {
         st.ammo = w.magSize;
@@ -1214,8 +1298,8 @@ class WeaponSystem {
           this._hitNormal.copy(this._rayDir).negate();
         }
 
-        const overclockMult = 1 + (this.weaponOverclock[this.currentIndex] || 0) * 0.15;
-        let totalDmgMult = overclockMult * (mods ? mods.damageMult : 1.0);
+        const overclockMult = 1 + (this.weaponOverclock[this.currentIndex] || 0) * 0.18;
+        let totalDmgMult = overclockMult * (mods ? mods.damageMult : 1.0) * (pc && pc.ultDamageMult ? pc.ultDamageMult : 1.0);
         if (pc && pc.inZoneBuff) totalDmgMult *= 1.15 + (mods ? mods.zoneDamageBonus : 0);
         if (pc && mods && mods.airDamageBonus > 0 && (!pc.isGrounded || pc.isSliding)) {
           totalDmgMult *= 1 + mods.airDamageBonus;
@@ -1307,12 +1391,16 @@ class WeaponSystem {
       // Guard against backwards tracer when target is point-blank inside muzzle depth
       const muzzleToImpactSq = this._tracerEnd.distanceToSquared(this._worldMuzzlePos);
       if (muzzleToImpactSq > 0.04) {
+        const ocLv = this.weaponOverclock[this.currentIndex] || 0;
+        const tColor =
+          ocLv >= 3 ? 0xffd700 : ocLv === 2 ? 0xc084fc : ocLv === 1 ? 0x38bdf8 : weapon.tracerColor;
+        const tWidth = weapon.tracerWidth * (1 + ocLv * 0.35);
         this.vfxManager.spawnTracer(
           this._worldMuzzlePos,
           this._tracerEnd,
-          weapon.tracerColor,
-          weapon.tracerWidth,
-          isRailgun
+          tColor,
+          tWidth,
+          isRailgun || ocLv >= 2
         );
       }
     }

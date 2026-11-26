@@ -5,13 +5,19 @@ const { TextureGenerator } = __require("src/world/TextureGenerator.js");
 const { ArenaBuilder } = __require("src/world/ArenaBuilder.js");
 const { Map2RefineryBuilder } = __require("src/world/Map2RefineryBuilder.js");
 const { Map3CitadelBuilder } = __require("src/world/Map3CitadelBuilder.js");
+const { Map4AegisFlightDeckBuilder } = __require("src/world/Map4AegisFlightDeckBuilder.js");
+const { Map5AegisReactorBayBuilder } = __require("src/world/Map5AegisReactorBayBuilder.js");
+const { Map6OrbitalDrydockBuilder } = __require("src/world/Map6OrbitalDrydockBuilder.js");
 
 /**
  * Campaign Map Manager for AETHER DROP: RECLAIM EARTH.
- * Manages clean 3-map campaign rotation across:
+ * Manages clean 6-map rotation across:
  * - 0: SECTOR-09 // DEAD METROPOLIS (ArenaBuilder)
  * - 1: SECTOR-14 // SUNKEN REFINERY (Map2RefineryBuilder)
  * - 2: SECTOR-00 // THE CRATER CITADEL (Map3CitadelBuilder)
+ * - 3: SECTOR-61 // AEGIS FLIGHT DECK (Map4AegisFlightDeckBuilder)
+ * - 4: SECTOR-74 // AEGIS REACTOR BAY (Map5AegisReactorBayBuilder)
+ * - 5: SECTOR-99 // AEGIS DRYDOCK (Map6OrbitalDrydockBuilder)
  *
  * Owns a single shared TextureGenerator instance so procedural CanvasTextures
  * stay cached across transitions and dispose cleanly with zero GPU memory leaks.
@@ -35,14 +41,14 @@ class MapManager {
 
   /**
    * Dispose the currently loaded sector, reset CollisionWorld, build the target
-   * campaign sector (0, 1, or 2), apply its atmosphere via Engine, and return arenaData.
+   * sector (0..5), apply its atmosphere via Engine, and return arenaData.
    *
    * @param {number} mapIndex
    * @returns {any}
    */
   loadMap(mapIndex) {
     const parsed = Number.isFinite(mapIndex) ? Math.floor(mapIndex) : 0;
-    const idx = parsed === 1 ? 1 : parsed === 2 ? 2 : 0;
+    const idx = parsed >= 0 && parsed <= 5 ? parsed : 0;
 
     if (this._activeBuilder) {
       this._activeBuilder.dispose();
@@ -63,6 +69,12 @@ class MapManager {
       builder = new Map2RefineryBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     } else if (idx === 2) {
       builder = new Map3CitadelBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
+    } else if (idx === 3) {
+      builder = new Map4AegisFlightDeckBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
+    } else if (idx === 4) {
+      builder = new Map5AegisReactorBayBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
+    } else if (idx === 5) {
+      builder = new Map6OrbitalDrydockBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     } else {
       builder = new ArenaBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     }

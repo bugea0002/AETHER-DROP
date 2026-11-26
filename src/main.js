@@ -346,11 +346,11 @@ function bootstrap() {
     }
     if (descEl) {
       if (selectedMissionMode === 'endless') {
-        descEl.textContent = `무한 강하: 5웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
+        descEl.textContent = `무한 강하: 10웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
       } else if (selectedMissionMode === 'daily') {
         descEl.textContent = `오늘의 작전 [${daily.name}]: ${daily.desc} · ${heat.desc}`;
       } else {
-        descEl.textContent = `표준 5웨이브 궤도 수복 작전 · ${heat.desc}`;
+        descEl.textContent = `표준 10웨이브 궤도 수복 작전 · ${heat.desc}`;
       }
     }
   }
@@ -364,15 +364,86 @@ function bootstrap() {
   let runCards = [];
   let draftChoices = [];
 
+  let _frameHudRoot = null;
+  let _visorEl = null;
+  let _guardFillEl = null;
+  let _guardTextEl = null;
+  let _ultFillEl = null;
+  let _ultTextEl = null;
+
+  function ensureTacticalFrameHudOverlay() {
+    if (_frameHudRoot) return;
+    _visorEl = document.createElement('div');
+    _visorEl.id = 'frame-visor-overlay';
+    _visorEl.style.cssText =
+      'position:fixed;inset:0;pointer-events:none;z-index:12;transition:box-shadow 0.35s ease,border-color 0.35s ease;border:2px solid transparent;display:none;';
+    document.body.appendChild(_visorEl);
+
+    _frameHudRoot = document.createElement('div');
+    _frameHudRoot.id = 'frame-tactical-bars';
+    _frameHudRoot.style.cssText =
+      'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:none;gap:14px;align-items:center;pointer-events:none;z-index:25;font-family:monospace;font-size:11px;letter-spacing:0.06em;';
+    _frameHudRoot.innerHTML = `
+      <div style="background:rgba(8,14,26,0.78);border:1px solid rgba(56,189,248,0.45);border-radius:6px;padding:5px 10px;min-width:155px;">
+        <div style="display:flex;justify-content:space-between;color:#bae6fd;margin-bottom:3px;"><span>[E] 전방 방패</span><span id="hud-guard-val">100%</span></div>
+        <div style="height:6px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;"><div id="hud-guard-fill" style="height:100%;width:100%;background:#38bdf8;transition:width 0.06s linear;"></div></div>
+      </div>
+      <div style="background:rgba(8,14,26,0.78);border:1px solid rgba(251,191,36,0.5);border-radius:6px;padding:5px 10px;min-width:165px;">
+        <div style="display:flex;justify-content:space-between;color:#fde68a;margin-bottom:3px;"><span>[X] 궁극기</span><span id="hud-ult-val">0%</span></div>
+        <div style="height:6px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;"><div id="hud-ult-fill" style="height:100%;width:0%;background:#f59e0b;transition:width 0.08s linear;"></div></div>
+      </div>`;
+    document.body.appendChild(_frameHudRoot);
+    _guardFillEl = document.getElementById('hud-guard-fill');
+    _guardTextEl = document.getElementById('hud-guard-val');
+    _ultFillEl = document.getElementById('hud-ult-fill');
+    _ultTextEl = document.getElementById('hud-ult-val');
+  }
+
+  function updateTacticalFrameHudOverlay(pSnap, mods) {
+    ensureTacticalFrameHudOverlay();
+    const visible = gameState === 'playing' && pSnap && pSnap.isAlive;
+    _visorEl.style.display = visible ? 'block' : 'none';
+    _frameHudRoot.style.display = visible ? 'flex' : 'none';
+    if (!visible) return;
+
+    const fid = (mods && mods.frameId) || 'vanguard';
+    const vCol = (mods && mods.visorColor) || 'rgba(245, 158, 11, 0.24)';
+    const fCol = (mods && mods.frameColor) || '#f59e0b';
+    const spread = fid === 'bastion' ? '52px' : fid === 'strider' ? '26px' : '38px';
+    const activeGlow = pSnap.ultActiveTimer > 0 ? `inset 0 0 80px ${fCol}` : `inset 0 0 ${spread} ${vCol}`;
+    _visorEl.style.boxShadow = activeGlow;
+    _visorEl.style.borderColor = fid === 'bastion' ? 'rgba(34,197,94,0.42)' : fid === 'apex' ? 'rgba(239,68,68,0.38)' : fid === 'strider' ? 'rgba(56,189,248,0.36)' : 'rgba(245,158,11,0.22)';
+
+    const gPct = Math.max(0, Math.min(100, Math.round((pSnap.guardEnergy / Math.max(1, pSnap.maxGuardEnergy)) * 100)));
+    _guardFillEl.style.width = gPct + '%';
+    _guardFillEl.style.background = pSnap.guardBreakTimer > 0 ? '#ef4444' : fid === 'bastion' ? '#22c55e' : '#38bdf8';
+    _guardTextEl.textContent = pSnap.guardBreakTimer > 0 ? '파괴됨' : gPct + '%';
+
+    const uPct = Math.max(0, Math.min(100, Math.round(pSnap.ultCharge || 0)));
+    _ultFillEl.style.width = (pSnap.ultActiveTimer > 0 ? 100 : uPct) + '%';
+    _ultFillEl.style.background = pSnap.ultActiveTimer > 0 ? '#22c55e' : uPct >= 100 ? '#f43f5e' : fCol;
+    _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? '발동 중!' : uPct >= 100 ? 'READY [X]' : uPct + '%';
+  }
+
   function computePlayerMods() {
     const lv = metaState.levels;
     const frame = getEquippedFrame();
     const mods = {
       frameId: frame.id,
       frameName: frame.name,
+      frameColor: frame.color || '#f59e0b',
+      visorColor: frame.visorColor || 'rgba(245, 158, 11, 0.24)',
+      baseFov: frame.baseFov || 80,
       dashMax: frame.dashMax || 2,
+      tacticalReload: Boolean(frame.tacticalReload),
+      phaseBlink: Boolean(frame.phaseBlink),
+      lowGravity: Boolean(frame.lowGravity),
       dashSlam: Boolean(frame.dashSlam),
       apexOverdrive: Boolean(frame.apexOverdrive),
+      chainLightning: Boolean(frame.chainLightning),
+      guardMax: frame.guardMax || 100,
+      guardCostMult: frame.guardCostMult || 1.0,
+      ultName: frame.ultName || '',
       damageMult: (1.0 + (lv.firepower || 0) * 0.04) * (frame.dmgMult || 1.0),
       headshotBonus: (lv.crit || 0) * 0.08,
       reloadSpeedMult: 1.0 + (lv.reload || 0) * 0.05,
@@ -380,7 +451,7 @@ function bootstrap() {
       moveSpeedMult: (1.0 + (lv.thruster || 0) * 0.025) * (frame.speedMult || 1.0),
       dashCooldownMult: Math.max(0.42, (1.0 - (lv.thruster || 0) * 0.045) * (frame.dashCdMult || 1.0)),
       shieldRegenMult: 1.0 + (lv.shield || 0) * 0.08,
-      killShieldBonus: (frame.killShield || 0) + (lv.siphon || 0) * 3,
+      killShieldBonus: 0,
       maxHealthBonus: (lv.hull || 0) * 12 + (frame.hpBonus || 0),
       maxShieldBonus: (lv.shield || 0) * 12 + (frame.shieldBonus || 0),
       salvageGoldMult: 1.0 + (lv.salvage || 0) * 0.08,
@@ -394,6 +465,8 @@ function bootstrap() {
       markContagion: false,
       thermalNova: false,
       slideOverclock: false,
+      armorPiercer: false,
+      orbitalOverload: false,
       synergyAssault: false,
       synergyMobility: false,
       synergyVanguard: false,
@@ -427,6 +500,26 @@ function bootstrap() {
         case 'mark_contagion': mods.markContagion = true; break;
         case 'thermal_nova': mods.thermalNova = true; break;
         case 'slide_overclock': mods.slideOverclock = true; break;
+        case 'armor_piercer':
+          mods.damageMult *= 1.14;
+          mods.headshotBonus += 0.35;
+          mods.armorPiercer = true;
+          break;
+        case 'aegis_capacitor':
+          mods.maxHealthBonus += 30;
+          mods.maxShieldBonus += 30;
+          mods.shieldRegenMult *= 1.35;
+          break;
+        case 'kinetic_momentum':
+          mods.moveSpeedMult *= 1.10;
+          mods.dashCooldownMult *= 0.85;
+          mods.killShieldBonus += 10;
+          mods.killAmmoRefund += 2;
+          break;
+        case 'orbital_overload':
+          mods.fireRateMult *= 1.16;
+          mods.orbitalOverload = true;
+          break;
       }
     }
 
@@ -543,7 +636,7 @@ function bootstrap() {
             </div>
             <div class="frame-special-box">
               <strong>특수능력 · ${f.specialName}</strong>
-              ${f.specialDesc}
+              ${f.specialDesc}<br><span style="color:#fde68a;font-size:0.86em;">★ 궁극기: ${f.ultName || ''} — ${f.ultDesc || ''}</span>
             </div>
             <button class="mil-btn armory-buy-btn" type="button" ${!owned && !canBuy ? 'disabled' : ''}>
               ${equipped ? '현재 장착 중' : owned ? '기체 장착' : `구매 (${f.cost} G)`}
@@ -637,7 +730,7 @@ function bootstrap() {
     draftChoices = pool.slice(0, 3);
 
     const { tagCounts } = computePlayerMods();
-    if (upgradeKicker) upgradeKicker.textContent = `WAVE 0${waveNum} 클리어 // 전술 강화 선택`;
+    if (upgradeKicker) upgradeKicker.textContent = `WAVE ${String(waveNum).padStart(2, '0')} 클리어 // 전술 강화 선택`;
     upgradeCardsGrid.innerHTML = '';
 
     for (let i = 0; i < draftChoices.length; i++) {
@@ -671,6 +764,10 @@ function bootstrap() {
         mark_contagion: "./assets/card-mark_contagion.webp",
         thermal_nova: "./assets/card-thermal_nova.webp",
         slide_overclock: "./assets/card-slide_overclock.webp",
+        armor_piercer: "./assets/card-tungsten_core.webp",
+        aegis_capacitor: "./assets/card-reactive_armor.webp",
+        kinetic_momentum: "./assets/card-thruster_tune.webp",
+        orbital_overload: "./assets/card-mark_contagion.webp",
       };
       const cardArtSrc = CARD_ART_MAP[card.id] || CARD_ART_MAP.tungsten_core;
       const cardArt = `<img class="tactical-card-img" src="${cardArtSrc}" alt="${card.name} 일러스트" />`;
@@ -792,6 +889,7 @@ function bootstrap() {
     slideKills: 0,
     swapKills: 0,
     meleeKills: 0,
+    aegisEliteKills: 0,
     weaponKills: {},
   };
 
@@ -869,6 +967,7 @@ function bootstrap() {
     telemetry.slideKills = 0;
     telemetry.swapKills = 0;
     telemetry.meleeKills = 0;
+    telemetry.aegisEliteKills = 0;
     telemetry.weaponKills = {};
     updateStyleHudUI();
   }
@@ -1068,15 +1167,65 @@ function bootstrap() {
       telemetry.lastSwapTime = telemetry.elapsedSec;
     });
 
+    // VANGUARD-09 Special: Tactical Reload grants 2.5s rapid fire & stability
+    eventBus.on(EVENTS.WEAPON_RELOADED, () => {
+      if (playerController && playerController.mods && playerController.mods.tacticalReload) {
+        playerController.reloadBuffTimer = 2.5;
+        if (hudManager && typeof hudManager.showAnnouncement === 'function') {
+          hudManager.showAnnouncement('전술 리로드 집중', '2.5초 연사 속도 +25% · 반동 안정화', 'info');
+        }
+      }
+    });
+
+    // STRIDER-04 Special: Phase-Blink VFX on dash
+    eventBus.on(EVENTS.PLAYER_DASH, () => {
+      if (playerController && playerController.mods && playerController.mods.phaseBlink && vfxManager) {
+        vfxManager.spawnExplosion(playerController.position, 2.2, 0x00f0ff);
+      }
+    });
+
+    // APEX-ZERO Special: Headshot Chain-Lightning Arc (7m radius, 50 dmg) + Ultimate Charge on hit
+    eventBus.on(EVENTS.DAMAGE_DEALT, (p) => {
+      if (!playerController || !p || !p.isEnemy) return;
+      playerController.addUltCharge(p.isHeadshot ? 1.8 : 0.7);
+      if (p.isHeadshot && playerController.mods && playerController.mods.chainLightning && waveDirector && p.point) {
+        const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+        let arcs = 0;
+        for (let ei = 0; ei < activeEnemies.length && arcs < 3; ei++) {
+          const e = activeEnemies[ei];
+          if (!e || !e.isAlive || e.id === p.targetId) continue;
+          const ePos = e.center || e.position;
+          if (ePos.distanceTo(p.point) <= 7.0) {
+            const dir = ePos.clone().sub(p.point).normalize();
+            e.applyDamage(50, ePos, false, dir, { isExplosion: true, knockback: 4 });
+            if (vfxManager && typeof vfxManager.spawnTracer === 'function') {
+              vfxManager.spawnTracer(p.point, ePos, 0xff2a44, 0.045, true);
+            }
+            arcs++;
+          }
+        }
+      }
+    });
+
+    // Front Energy Shield [E] Blocked VFX & Break Callout
+    eventBus.on(EVENTS.GUARD_BLOCKED, (p) => {
+      if (vfxManager && playerController) {
+        const eye = playerController.getEyePosition();
+        const dir = playerController.getLookDirection();
+        const sparkPos = eye.clone().addScaledVector(dir, 1.1);
+        const col = playerController.mods && playerController.mods.frameId === 'bastion' ? 0x22c55e : 0x38bdf8;
+        vfxManager.spawnExplosion(sparkPos, p && p.guardBroken ? 2.4 : 1.0, col);
+      }
+      if (p && p.guardBroken && hudManager && typeof hudManager.showAnnouncement === 'function') {
+        hudManager.showAnnouncement('에너지 방패 파괴!', '2초 후 재충전 시작', 'danger');
+      }
+    });
+
     eventBus.on(EVENTS.ENEMY_KILLED, (p) => {
       if (!playerController) return;
       const tier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
       playerController.onEnemyKill(Boolean(p && p.isHeadshot));
-      // Extra shield absorb bonus from high Style Rank (A/S/SSS)
-      if (tier.shieldMult > 1.0 && playerController.shield < playerController.maxShield) {
-        const bonusShield = Math.round(14 * (tier.shieldMult - 1.0));
-        playerController.shield = Math.min(playerController.maxShield, playerController.shield + bonusShield);
-      }
+      // Item 8: No HP or Shield recovery on kill
       if (p && p.combo > telemetry.maxCombo) {
         telemetry.maxCombo = p.combo;
       }
@@ -1084,7 +1233,7 @@ function bootstrap() {
       if (playerController.mods && playerController.mods.apexOverdrive) {
         const maxD = playerController.mods.dashMax || 3;
         playerController.dashCharges = Math.min(maxD, (playerController.dashCharges || 0) + 1);
-        playerController.dashOverdriveTimer = Math.max(playerController.dashOverdriveTimer || 0, 2.5);
+        playerController.dashOverdriveTimer = Math.max(playerController.dashOverdriveTimer || 0, 3.0);
       }
 
       // Track style points & combat highlight categories
@@ -1102,6 +1251,18 @@ function bootstrap() {
       if (metaState.totalKillsAllTime >= 200) unlockAchievement('kills_200');
       if (telemetry.maxCombo >= 5) unlockAchievement('combo_5');
       if (waveDirector && waveDirector.headshots >= 15) unlockAchievement('hs_15');
+      if (p && p.archetypeId === 'cyber_mech_boss') unlockAchievement('first_clear');
+      if (
+        p &&
+        (p.archetypeId === 'interceptor_drone' ||
+          p.archetypeId === 'shock_breacher' ||
+          p.archetypeId === 'rail_warden' ||
+          p.archetypeId === 'mortar_artillery' ||
+          p.archetypeId === 'vanguard_assassin')
+      ) {
+        telemetry.aegisEliteKills++;
+        if (telemetry.aegisEliteKills >= 10) unlockAchievement('elite_slayer');
+      }
 
       if (isMelee) { pts += 18; tag = '근접 처치!'; telemetry.meleeKills++; if (telemetry.meleeKills >= 5) unlockAchievement('melee_ace'); }
       else if (isAir) { pts += 18; tag = '공중 처치!'; telemetry.airKills++; if (telemetry.airKills >= 5) unlockAchievement('air_ace'); }
@@ -1148,9 +1309,24 @@ function bootstrap() {
         }
       }
 
-      // Rare Card: Mark Contagion (jump T-4 mark to 2 nearest enemies within 10m)
+      // Rare Card: Orbital Overload (Headshot kill triggers 7.5m arc shockwave dealing 65 damage)
       const mods = playerController.mods;
       const deadEnemy = p && p.enemy;
+      if (isHs && mods && mods.orbitalOverload && deadEnemy && waveDirector) {
+        const originPos = deadEnemy.center || deadEnemy.position;
+        if (vfxManager) vfxManager.spawnExplosion(originPos, 5.2, 0x38bdf8);
+        const nearList = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+        for (let ei = 0; ei < nearList.length; ei++) {
+          const e = nearList[ei];
+          if (!e || !e.isAlive || e === deadEnemy) continue;
+          if (e.position.distanceTo(deadEnemy.position) <= 7.5) {
+            e.applyDamage(65, e.center || e.position, false, null, { isExplosion: true, piercing: true });
+          }
+        }
+        addStylePoints(14, '궤도 과부하!');
+      }
+
+      // Rare Card: Mark Contagion (jump T-4 mark to 2 nearest enemies within 10m)
       if (mods && mods.markContagion && deadEnemy && deadEnemy.markedTimer > 0 && waveDirector) {
         const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
         const nearby = [];
@@ -1169,8 +1345,13 @@ function bootstrap() {
     });
 
     eventBus.on(EVENTS.BARREL_EXPLODED, (p) => {
+      if (p && (p.gimmickType === 'emp_pylon' || p.gimmickType === 'shield_relay')) {
+        unlockAchievement('emp_tactician');
+        addStylePoints(18, p.gimmickType === 'emp_pylon' ? 'EMP 과부하!' : '중계기 파괴!');
+      }
       if (vfxManager && p && p.position) {
-        vfxManager.spawnExplosion(p.position, p.radius, 0xff6a00);
+        const vfxHex = p.gimmickType === 'emp_pylon' ? 0xf59e0b : p.gimmickType === 'shield_relay' ? 0x38bdf8 : 0xff6a00;
+        vfxManager.spawnExplosion(p.position, p.radius, vfxHex);
       }
     });
 
@@ -1185,6 +1366,28 @@ function bootstrap() {
       if (!p.isMelee && p.isEnemy && telemetry.lastHitShotSeq !== telemetry.shotSeq) {
         telemetry.lastHitShotSeq = telemetry.shotSeq;
         telemetry.shotsHit++;
+      }
+      // Card: Armor Piercer (+22% bonus piercing damage against shielded / boss foes)
+      if (
+        p.isEnemy &&
+        p.amount > 0 &&
+        !p.killed &&
+        playerController &&
+        playerController.mods &&
+        playerController.mods.armorPiercer &&
+        waveDirector
+      ) {
+        const list = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+        for (let i = 0; i < list.length; i++) {
+          const e = list[i];
+          if (e && e.id === p.targetId && e.isAlive) {
+            if (e.archetype && (e.archetype.hasShield || e.archetype.isBoss)) {
+              const bonus = Math.max(2, Math.round(p.amount * 0.22));
+              e.applyDamage(bonus, p.point || e.center, false, null, { piercing: true });
+            }
+            break;
+          }
+        }
       }
     });
 
@@ -1666,14 +1869,16 @@ function bootstrap() {
     }
 
     // Update Endless Best Wave & Check End-of-Run Achievements
-    const totalReachedWave = (waveDirector && waveDirector.endlessLoop ? waveDirector.endlessLoop * WAVES.length : 0) + Math.max(1, waveHud.wave || 1);
+    const totalReachedWave = Math.max(1, waveHud.wave || 1);
     if (selectedMissionMode === 'endless' && totalReachedWave > metaState.bestEndlessWave) {
       metaState.bestEndlessWave = totalReachedWave;
       saveMetaState();
     }
     if (selectedMissionMode === 'endless' && totalReachedWave >= 8) unlockAchievement('endless_8');
+    if (selectedMissionMode === 'endless' && totalReachedWave >= 12) unlockAchievement('endless_12');
     if (isVictory) {
       unlockAchievement('first_clear');
+      unlockAchievement('citadel_clear');
       if (selectedHeatLevel >= 2) unlockAchievement('heat_clear');
     }
     saveMetaState();
@@ -1943,21 +2148,21 @@ function bootstrap() {
         updateStyleHudUI();
       }
 
-      // BASTION-12 Special: Dash Slam shockwave on dash trigger
+      // BASTION-12 Special: Seismic Dash Slam shockwave (bug-fixed: uses playerController.isDashing!)
       if (playerController && playerController.mods && playerController.mods.dashSlam) {
-        const isDashingNow = (playerController.dashTimer || 0) > 0;
+        const isDashingNow = Boolean(playerController.isDashing);
         if (isDashingNow && !telemetry.wasDashingPrev && waveDirector) {
           const pPos = playerController.position;
           const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
           for (let ei = 0; ei < activeEnemies.length; ei++) {
             const e = activeEnemies[ei];
             if (!e || !e.isAlive) continue;
-            if (e.position.distanceTo(pPos) <= 6.5) {
+            if (e.position.distanceTo(pPos) <= 7.5) {
               const dir = e.position.clone().sub(pPos).normalize();
-              e.applyDamage(45, e.center || e.position, false, dir, { isExplosion: true, knockback: 15 });
+              e.applyDamage(65, e.center || e.position, false, dir, { isExplosion: true, knockback: 18 });
             }
           }
-          if (vfxManager) vfxManager.spawnExplosion(pPos, 4.2, 0x22c55e);
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 5.2, 0x22c55e);
         }
         telemetry.wasDashingPrev = isDashingNow;
       }
@@ -2013,9 +2218,141 @@ function bootstrap() {
       engine.setFov(playerController.currentFov);
       engine.camera.updateMatrixWorld();
 
-      // 1.5. Floor Weapon Swap on [F] / Touch Pickup Button
-      if (input.consumePressed('interact') && interactables) {
-        interactables.trySwapNearbyWeapon(playerController.position, weaponSystem);
+      // 1.4. Sync 1st-person Robot Hands & Frame Visor HUD Style
+      if (weaponSystem && playerController && playerController.mods) {
+        const curFid = playerController.mods.frameId || 'vanguard';
+        if (telemetry._appliedFrameVisual !== curFid) {
+          telemetry._appliedFrameVisual = curFid;
+          if (typeof weaponSystem.setPilotFrameStyle === 'function') {
+            weaponSystem.setPilotFrameStyle(curFid);
+          }
+        }
+      }
+
+      // 1.5. Floor Weapon Auto-Upgrade on proximity (same weapon) OR Swap on [F]
+      if (interactables && weaponSystem && playerController) {
+        const autoNear = interactables.getNearbyWeaponDrop(playerController.position);
+        if (autoNear) {
+          const loNow = weaponSystem.getLoadoutInfo();
+          const dropW = __require("src/config/weapons.js").WEAPONS[autoNear.weaponIndex];
+          const isSecDrop = dropW && dropW.category === 'secondary';
+          const curSlotIdx = isSecDrop ? loNow.secondaryIndex : loNow.primaryIndex;
+          if (curSlotIdx === autoNear.weaponIndex) {
+            const upgraded = interactables.trySwapNearbyWeapon(playerController.position, weaponSystem);
+            if (upgraded) {
+              const ocLv = weaponSystem.weaponOverclock[autoNear.weaponIndex] || 1;
+              if (vfxManager) {
+                const upCol = ocLv >= 3 ? 0xffd700 : ocLv === 2 ? 0xc084fc : 0x38bdf8;
+                vfxManager.spawnExplosion(playerController.position, 2.8, upCol);
+              }
+              if (hudManager && typeof hudManager.showAnnouncement === 'function' && dropW) {
+                hudManager.showAnnouncement(
+                  `${dropW.shortName} 자동 업그레이드!`,
+                  `MK.${ocLv + 1} 강화 완료 · 외형 및 탄환 이펙트 진화`,
+                  'info'
+                );
+              }
+            }
+          }
+        }
+        if (input.consumePressed('interact')) {
+          interactables.trySwapNearbyWeapon(playerController.position, weaponSystem);
+        }
+      }
+
+      // 1.6. Frame Ultimate Activation on [X]
+      if (input.consumePressed('ultimate') && playerController && playerController.ultCharge >= 100) {
+        const fid = (playerController.mods && playerController.mods.frameId) || 'vanguard';
+        playerController.ultCharge = 0;
+        const pPos = playerController.position;
+        const activeEnemies = waveDirector && waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+
+        if (fid === 'vanguard') {
+          // VANGUARD-09: ORBITAL BARRAGE (5 sky-to-ground orbital laser strikes, 180 AoE dmg each)
+          playerController.ultActiveTimer = 2.0;
+          const targets = activeEnemies
+            .filter((e) => e && e.isAlive)
+            .sort((a, b) => a.position.distanceToSquared(pPos) - b.position.distanceToSquared(pPos))
+            .slice(0, 5);
+          for (let ti = 0; ti < Math.max(1, targets.length); ti++) {
+            const tPos = targets[ti] ? targets[ti].position.clone() : pPos.clone().addScaledVector(playerController.getLookDirection(), 14);
+            const skyOrigin = tPos.clone();
+            skyOrigin.y += 38;
+            if (vfxManager) {
+              if (typeof vfxManager.spawnTracer === 'function') vfxManager.spawnTracer(skyOrigin, tPos, 0xf59e0b, 0.28, true);
+              vfxManager.spawnExplosion(tPos, 5.5, 0xf59e0b);
+            }
+            for (let ei = 0; ei < activeEnemies.length; ei++) {
+              const e = activeEnemies[ei];
+              if (!e || !e.isAlive) continue;
+              if (e.position.distanceTo(tPos) <= 7.5) {
+                const dir = e.position.clone().sub(tPos).normalize();
+                e.applyDamage(180, e.center || e.position, false, dir, { isExplosion: true, knockback: 18 });
+              }
+            }
+          }
+          playerController.addScreenShake(0.45);
+          if (hudManager && typeof hudManager.showAnnouncement === 'function') {
+            hudManager.showAnnouncement('궁극기: 궤도 포격!', 'ORBITAL BARRAGE — 5연쇄 궤도 타격 투하', 'info');
+          }
+        } else if (fid === 'strider') {
+          // STRIDER-04: PHASE OVERCLOCK (6s 60% enemy time-dilation + hyper speed + infinite ammo)
+          playerController.timeSlowTimer = 6.0;
+          playerController.ultActiveTimer = 6.0;
+          playerController.dashOverdriveTimer = 6.0;
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 5.0, 0x00f0ff);
+          if (hudManager && typeof hudManager.showAnnouncement === 'function') {
+            hudManager.showAnnouncement('궁극기: 타임 다이레이션!', '6초간 적 시간 60% 감속 · 초고속 무한 사격', 'info');
+          }
+        } else if (fid === 'bastion') {
+          // BASTION-12: AEGIS FORTRESS (7s invulnerability + 12m periodic electric shockwaves + 100% guard refill)
+          playerController.ultInvulnTimer = 7.0;
+          playerController.ultActiveTimer = 7.0;
+          playerController.guardEnergy = playerController.maxGuardEnergy;
+          playerController.guardBreakTimer = 0;
+          telemetry._bastionPulseTimer = 0.05;
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 6.0, 0x22c55e);
+          if (hudManager && typeof hudManager.showAnnouncement === 'function') {
+            hudManager.showAnnouncement('궁극기: 이지스 포트리스!', '7초간 완전 무적 돔 전개 · 주변 12m 전기 충격', 'info');
+          }
+        } else if (fid === 'apex') {
+          // APEX-ZERO: APOCALYPSE NOVA (28m 260 dmg + stagger nova + 5s 1.6x damage overdrive)
+          playerController.ultActiveTimer = 5.0;
+          playerController.ultDamageMult = 1.6;
+          playerController.dashOverdriveTimer = 5.0;
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 9.5, 0xef4444);
+          for (let ei = 0; ei < activeEnemies.length; ei++) {
+            const e = activeEnemies[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 28.0) {
+              const dir = e.position.clone().sub(pPos).normalize();
+              e.applyDamage(260, e.center || e.position, false, dir, { isExplosion: true, knockback: 22 });
+            }
+          }
+          playerController.addScreenShake(0.55);
+          if (hudManager && typeof hudManager.showAnnouncement === 'function') {
+            hudManager.showAnnouncement('궁극기: 아포칼립스 노바!', '전장 초신성 폭발 · 5초간 화력 1.6배 폭주', 'danger');
+          }
+        }
+      }
+
+      // BASTION-12 Ultimate periodic 12m shockwave pulse while Aegis Fortress is active
+      if (playerController && playerController.ultInvulnTimer > 0 && waveDirector) {
+        telemetry._bastionPulseTimer = (telemetry._bastionPulseTimer || 0) - dt;
+        if (telemetry._bastionPulseTimer <= 0) {
+          telemetry._bastionPulseTimer = 0.85;
+          const pPos = playerController.position;
+          const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < activeEnemies.length; ei++) {
+            const e = activeEnemies[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 12.0) {
+              const dir = e.position.clone().sub(pPos).normalize();
+              e.applyDamage(45, e.center || e.position, false, dir, { isExplosion: true, knockback: 10 });
+            }
+          }
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 4.5, 0x22c55e);
+        }
       }
 
       // 2. Weapon inputs, ballistics, thermal pry-blade melee & 1P viewmodel animation
@@ -2026,8 +2363,9 @@ function bootstrap() {
       // 3. Active Sector Environment, Interactables, WaveDirector AI & VFX
       mapManager.update(dt, elapsedTime);
       interactables.update(dt, elapsedTime, playerController, livingEnemies, weaponSystem);
+      const enemyDt = playerController && playerController.timeSlowTimer > 0 ? dt * 0.40 : dt;
       waveDirector.update(
-        dt,
+        enemyDt,
         elapsedTime,
         playerController,
         interactables.getZoneState(),
@@ -2068,6 +2406,7 @@ function bootstrap() {
       }
 
       hudManager.update(dt, hudSnapshot);
+      updateTacticalFrameHudOverlay(hudSnapshot.player, playerController && playerController.mods);
       touchOverlay.syncState(hudSnapshot);
 
       // Safety death transition check

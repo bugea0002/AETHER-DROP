@@ -1497,16 +1497,328 @@ class TextureGenerator {
   }
 
   /**
-   * Procedural 512x512 post-apocalyptic sky dome texture supporting 3 campaign worlds:
+   * 512x512 frosted slate-concrete cryo basin floor with glossy ice-slick melt patches,
+   * expansion joints, and pale-frost steel coolant grates (used by Map 4: Cryo Vault).
+   *
+   * @param {number} [repeatX=14]
+   * @param {number} [repeatY=14]
+   * @returns {{ map: THREE.CanvasTexture, roughnessMap: THREE.CanvasTexture, bumpMap: THREE.CanvasTexture }}
+   */
+  getCryoFloorTextures(repeatX = 14, repeatY = 14) {
+    const cacheKey = `cryo_floor_${repeatX}_${repeatY}`;
+    if (this._cache.has(cacheKey)) {
+      return this._cache.get(cacheKey);
+    }
+
+    const size = 512;
+    const albedo = this._createCanvas(size, size);
+    const rough = this._createCanvas(size, size);
+    const bump = this._createCanvas(size, size);
+    const aCtx = albedo.ctx;
+    const rCtx = rough.ctx;
+    const bCtx = bump.ctx;
+
+    const frostLow = createTileableNoise(6, 2101);
+    const frostMid = createTileableNoise(16, 2111);
+    const grit = createTileableNoise(44, 2129);
+    const crackNoise = createTileableCellCracks(6, 2141);
+
+    const aImg = aCtx.createImageData(size, size);
+    const rImg = rCtx.createImageData(size, size);
+    const bImg = bCtx.createImageData(size, size);
+
+    for (let y = 0; y < size; y++) {
+      const v = y / size;
+      for (let x = 0; x < size; x++) {
+        const u = x / size;
+        const idx = (y * size + x) * 4;
+        const g = grit(u, v);
+        const fField = frostLow(u, v) * 0.65 + frostMid(u, v) * 0.35;
+        const iceSlick = smoothstep(0.55, 0.72, fField);
+        const crack = 1 - smoothstep(0.012, 0.042, crackNoise(u, v));
+
+        let r = 56 + g * 20;
+        let gCol = 66 + g * 22;
+        let b = 78 + g * 24;
+        let rv = 176 + g * 38;
+        let bv = 152 + (g - 0.5) * 38;
+
+        if (iceSlick > 0.01) {
+          r = r * (1 - iceSlick) + (128 + g * 18) * iceSlick;
+          gCol = gCol * (1 - iceSlick) + (148 + g * 20) * iceSlick;
+          b = b * (1 - iceSlick) + (168 + g * 20) * iceSlick;
+          rv = rv * (1 - iceSlick) + (42 + g * 24) * iceSlick;
+          bv = bv * (1 - iceSlick) + 146 * iceSlick;
+        }
+        if (crack > 0.01) {
+          r = r * (1 - crack * 0.6) + 30 * crack;
+          gCol = gCol * (1 - crack * 0.6) + 38 * crack;
+          b = b * (1 - crack * 0.6) + 48 * crack;
+          bv = bv * (1 - crack) + 28 * crack;
+        }
+
+        aImg.data[idx] = clampByte(r);
+        aImg.data[idx + 1] = clampByte(gCol);
+        aImg.data[idx + 2] = clampByte(b);
+        aImg.data[idx + 3] = 255;
+
+        const rb = clampByte(rv);
+        rImg.data[idx] = rb;
+        rImg.data[idx + 1] = rb;
+        rImg.data[idx + 2] = rb;
+        rImg.data[idx + 3] = 255;
+
+        const bb = clampByte(bv);
+        bImg.data[idx] = bb;
+        bImg.data[idx + 1] = bb;
+        bImg.data[idx + 2] = bb;
+        bImg.data[idx + 3] = 255;
+      }
+    }
+
+    aCtx.putImageData(aImg, 0, 0);
+    rCtx.putImageData(rImg, 0, 0);
+    bCtx.putImageData(bImg, 0, 0);
+
+    for (const s of [0, 256, 512]) {
+      aCtx.fillStyle = '#1e2730';
+      aCtx.fillRect(s - 4, 0, 8, size);
+      aCtx.fillRect(0, s - 4, size, 8);
+      bCtx.fillStyle = '#181818';
+      bCtx.fillRect(s - 4, 0, 8, size);
+      bCtx.fillRect(0, s - 4, size, 8);
+    }
+
+    // Subtle frosted amber-orange thermal stencil lanes
+    aCtx.fillStyle = 'rgba(212, 140, 58, 0.32)';
+    aCtx.fillRect(96, 120, 64, 8);
+    aCtx.fillRect(352, 376, 64, 8);
+
+    const result = {
+      map: this._buildTexture(albedo.canvas, { isColor: true, repeatX, repeatY }),
+      roughnessMap: this._buildTexture(rough.canvas, { isColor: false, repeatX, repeatY }),
+      bumpMap: this._buildTexture(bump.canvas, { isColor: false, repeatX, repeatY }),
+    };
+    this._cache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * 512x512 scorched desert sandstone & wind-swept ochre dust floor with heliostat bay markings
+   * (used by Map 5: Helios Graveyard).
+   *
+   * @param {number} [repeatX=14]
+   * @param {number} [repeatY=14]
+   * @returns {{ map: THREE.CanvasTexture, roughnessMap: THREE.CanvasTexture, bumpMap: THREE.CanvasTexture }}
+   */
+  getSolarFloorTextures(repeatX = 14, repeatY = 14) {
+    const cacheKey = `solar_floor_${repeatX}_${repeatY}`;
+    if (this._cache.has(cacheKey)) {
+      return this._cache.get(cacheKey);
+    }
+
+    const size = 512;
+    const albedo = this._createCanvas(size, size);
+    const rough = this._createCanvas(size, size);
+    const bump = this._createCanvas(size, size);
+    const aCtx = albedo.ctx;
+    const rCtx = rough.ctx;
+    const bCtx = bump.ctx;
+
+    const duneLow = createTileableNoise(5, 3701);
+    const duneMid = createTileableNoise(14, 3719);
+    const grain = createTileableNoise(48, 3733);
+    const crackNoise = createTileableCellCracks(7, 3761);
+
+    const aImg = aCtx.createImageData(size, size);
+    const rImg = rCtx.createImageData(size, size);
+    const bImg = bCtx.createImageData(size, size);
+
+    for (let y = 0; y < size; y++) {
+      const v = y / size;
+      for (let x = 0; x < size; x++) {
+        const u = x / size;
+        const idx = (y * size + x) * 4;
+        const g = grain(u, v);
+        const ripple = Math.sin((u * 12 + v * 4 + duneMid(u, v) * 1.5) * Math.PI * 2) * 0.5 + 0.5;
+        const sandMix = smoothstep(0.42, 0.72, duneLow(u, v) * 0.65 + duneMid(u, v) * 0.35 + ripple * 0.1);
+        const crack = 1 - smoothstep(0.01, 0.04, crackNoise(u, v));
+
+        let r = 88 + g * 24;
+        let gCol = 69 + g * 20;
+        let b = 49 + g * 14;
+        let rv = 188 + g * 34;
+        let bv = 154 + (g - 0.5) * 42;
+
+        if (sandMix > 0.01) {
+          r = r * (1 - sandMix) + (168 + ripple * 20 + g * 14) * sandMix;
+          gCol = gCol * (1 - sandMix) + (128 + ripple * 16 + g * 12) * sandMix;
+          b = b * (1 - sandMix) + (82 + ripple * 10 + g * 8) * sandMix;
+          rv = rv * (1 - sandMix) + (226 + g * 20) * sandMix;
+          bv = bv * (1 - sandMix) + (168 + ripple * 18) * sandMix;
+        }
+        if (crack > 0.01) {
+          r = r * (1 - crack * 0.68) + 34 * crack;
+          gCol = gCol * (1 - crack * 0.68) + 26 * crack;
+          b = b * (1 - crack * 0.68) + 18 * crack;
+          bv = bv * (1 - crack) + 26 * crack;
+        }
+
+        aImg.data[idx] = clampByte(r);
+        aImg.data[idx + 1] = clampByte(gCol);
+        aImg.data[idx + 2] = clampByte(b);
+        aImg.data[idx + 3] = 255;
+
+        const rb = clampByte(rv);
+        rImg.data[idx] = rb;
+        rImg.data[idx + 1] = rb;
+        rImg.data[idx + 2] = rb;
+        rImg.data[idx + 3] = 255;
+
+        const bb = clampByte(bv);
+        bImg.data[idx] = bb;
+        bImg.data[idx + 1] = bb;
+        bImg.data[idx + 2] = bb;
+        bImg.data[idx + 3] = 255;
+      }
+    }
+
+    aCtx.putImageData(aImg, 0, 0);
+    rCtx.putImageData(rImg, 0, 0);
+    bCtx.putImageData(bImg, 0, 0);
+
+    for (const s of [0, 256, 512]) {
+      aCtx.fillStyle = 'rgba(42, 30, 20, 0.72)';
+      aCtx.fillRect(s - 3, 0, 6, size);
+      aCtx.fillRect(0, s - 3, size, 6);
+      bCtx.fillStyle = '#222222';
+      bCtx.fillRect(s - 3, 0, 6, size);
+      bCtx.fillRect(0, s - 3, size, 6);
+    }
+
+    aCtx.fillStyle = 'rgba(232, 168, 56, 0.36)';
+    aCtx.fillRect(64, 240, 128, 8);
+    aCtx.fillRect(320, 494, 128, 8);
+
+    const result = {
+      map: this._buildTexture(albedo.canvas, { isColor: true, repeatX, repeatY }),
+      roughnessMap: this._buildTexture(rough.canvas, { isColor: false, repeatX, repeatY }),
+      bumpMap: this._buildTexture(bump.canvas, { isColor: false, repeatX, repeatY }),
+    };
+    this._cache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * 512x512 charcoal gunmetal orbital drydock hull deck plates with riveted armor seams,
+   * keel tie-down rail slots, and tungsten-amber bay markings (used by Map 6: Aegis Drydock).
+   *
+   * @param {number} [repeatX=14]
+   * @param {number} [repeatY=14]
+   * @returns {{ map: THREE.CanvasTexture, roughnessMap: THREE.CanvasTexture, bumpMap: THREE.CanvasTexture }}
+   */
+  getDrydockFloorTextures(repeatX = 14, repeatY = 14) {
+    const cacheKey = `drydock_floor_${repeatX}_${repeatY}`;
+    if (this._cache.has(cacheKey)) {
+      return this._cache.get(cacheKey);
+    }
+
+    const size = 512;
+    const albedo = this._createCanvas(size, size);
+    const rough = this._createCanvas(size, size);
+    const bump = this._createCanvas(size, size);
+    const aCtx = albedo.ctx;
+    const rCtx = rough.ctx;
+    const bCtx = bump.ctx;
+
+    const plateNoise = createTileableNoise(12, 9901);
+    const micro = createTileableNoise(46, 9923);
+
+    const aImg = aCtx.createImageData(size, size);
+    const rImg = rCtx.createImageData(size, size);
+    const bImg = bCtx.createImageData(size, size);
+
+    for (let y = 0; y < size; y++) {
+      const v = y / size;
+      for (let x = 0; x < size; x++) {
+        const u = x / size;
+        const idx = (y * size + x) * 4;
+        const n = plateNoise(u, v) * 0.55 + micro(u, v) * 0.45;
+        const scuff = smoothstep(0.56, 0.78, n);
+
+        const r = 40 + n * 22 + scuff * 14;
+        const g = 43 + n * 22 + scuff * 12;
+        const b = 50 + n * 24 + scuff * 10;
+
+        aImg.data[idx] = clampByte(r);
+        aImg.data[idx + 1] = clampByte(g);
+        aImg.data[idx + 2] = clampByte(b);
+        aImg.data[idx + 3] = 255;
+
+        const rv = clampByte(112 + (1 - scuff) * 34 + micro(u, v) * 36);
+        rImg.data[idx] = rv;
+        rImg.data[idx + 1] = rv;
+        rImg.data[idx + 2] = rv;
+        rImg.data[idx + 3] = 255;
+
+        const bv = clampByte(148 + (micro(u, v) - 0.5) * 32);
+        bImg.data[idx] = bv;
+        bImg.data[idx + 1] = bv;
+        bImg.data[idx + 2] = bv;
+        bImg.data[idx + 3] = 255;
+      }
+    }
+
+    aCtx.putImageData(aImg, 0, 0);
+    rCtx.putImageData(rImg, 0, 0);
+    bCtx.putImageData(bImg, 0, 0);
+
+    for (const s of [0, 128, 256, 384, 512]) {
+      aCtx.fillStyle = '#171920';
+      aCtx.fillRect(s - 2.5, 0, 5, size);
+      aCtx.fillRect(0, s - 2.5, size, 5);
+      bCtx.fillStyle = '#202020';
+      bCtx.fillRect(s - 2.5, 0, 5, size);
+      bCtx.fillRect(0, s - 2.5, size, 5);
+    }
+
+    // Recessed hangar tie-down slots + subtle amber dock bay stencil dashes
+    for (let y = 64; y < size; y += 128) {
+      for (let x = 64; x < size; x += 128) {
+        aCtx.fillStyle = '#14161b';
+        aCtx.fillRect(x - 14, y - 4, 28, 8);
+        bCtx.fillStyle = '#121212';
+        bCtx.fillRect(x - 14, y - 4, 28, 8);
+      }
+    }
+    aCtx.fillStyle = 'rgba(224, 146, 48, 0.36)';
+    aCtx.fillRect(28, 118, 72, 6);
+    aCtx.fillRect(284, 374, 72, 6);
+
+    const result = {
+      map: this._buildTexture(albedo.canvas, { isColor: true, repeatX, repeatY }),
+      roughnessMap: this._buildTexture(rough.canvas, { isColor: false, repeatX, repeatY }),
+      bumpMap: this._buildTexture(bump.canvas, { isColor: false, repeatX, repeatY }),
+    };
+    this._cache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Procedural 512x512 post-apocalyptic sky dome texture supporting 6 sector worlds:
    * - 'metropolis': golden-ash sunset sky + AETHER-1 orbital carrier + drop-pod streaks
    * - 'refinery': heavy toxic-amber industrial smog sky + distant furnace haze
    * - 'citadel': crimson-ember dusk sky + colossal shattered orbital elevator ring arc
+   * - 'cryo': frigid nuclear-winter overcast slate sky + cold sun veil
+   * - 'solar': scorching ochre desert glare horizon + heat-haze dust bands
+   * - 'drydock': high-altitude steel-charcoal twilight + derelict orbital shipyard arc
    *
-   * @param {'metropolis'|'refinery'|'citadel'} [variant='metropolis']
+   * @param {'metropolis'|'refinery'|'citadel'|'cryo'|'solar'|'drydock'} [variant='metropolis']
    * @returns {THREE.CanvasTexture}
    */
   getSkyDomeTexture(variant = 'metropolis') {
-    const key = variant === 'refinery' || variant === 'citadel' ? variant : 'metropolis';
+    const allowed = ['metropolis', 'refinery', 'citadel', 'cryo', 'solar', 'drydock'];
+    const key = allowed.includes(variant) ? variant : 'metropolis';
     const cacheKey = `sky_dome_${key}`;
     if (this._cache.has(cacheKey)) {
       return this._cache.get(cacheKey);
@@ -1514,7 +1826,15 @@ class TextureGenerator {
 
     const size = 512;
     const { canvas, ctx } = this._createCanvas(size, size);
-    const rng = createRng(key === 'metropolis' ? 55123 : key === 'refinery' ? 66234 : 77345);
+    const seedMap = {
+      metropolis: 55123,
+      refinery: 66234,
+      citadel: 77345,
+      cryo: 88456,
+      solar: 99567,
+      drydock: 11678,
+    };
+    const rng = createRng(seedMap[key] || 55123);
 
     const drawPeriodic = (fn) => {
       fn(0);
@@ -1701,7 +2021,7 @@ class TextureGenerator {
       ctx.lineTo(size, 330);
       ctx.closePath();
       ctx.fill();
-    } else {
+    } else if (key === 'citadel') {
       // 'citadel': crimson-ember dusk sky + colossal shattered orbital elevator ring arc
       const grad = ctx.createLinearGradient(0, 0, 0, size);
       grad.addColorStop(0.0, '#140f13');
@@ -1785,6 +2105,122 @@ class TextureGenerator {
         });
       }
       ctx.restore();
+    } else if (key === 'cryo') {
+      // Frigid nuclear-winter slate-blue overcast sky + pale winter sun veil
+      const grad = ctx.createLinearGradient(0, 0, 0, size);
+      grad.addColorStop(0.0, '#121a24');
+      grad.addColorStop(0.28, '#233242');
+      grad.addColorStop(0.5, '#465c70');
+      grad.addColorStop(0.62, '#62798d');
+      grad.addColorStop(0.76, '#364656');
+      grad.addColorStop(1.0, '#18212b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      drawPeriodicRadialGlow(180, 278, 170, [
+        [0, 'rgba(220, 236, 248, 0.72)'],
+        [0.32, 'rgba(148, 182, 206, 0.36)'],
+        [1, 'rgba(64, 86, 106, 0.0)'],
+      ]);
+
+      for (let i = 0; i < 30; i++) {
+        const cx = rng() * size;
+        const cy = 75 + rng() * 210;
+        const w = 75 + rng() * 145;
+        const h = 12 + rng() * 22;
+        const col = i % 2 === 0 ? 'rgba(176, 198, 218, 0.14)' : 'rgba(24, 34, 46, 0.24)';
+        drawPeriodicEllipse(cx, cy, w, h, col);
+      }
+
+      ctx.fillStyle = 'rgba(26, 36, 46, 0.42)';
+      ctx.beginPath();
+      ctx.moveTo(0, 326);
+      for (let x = 0; x <= size; x += 8) {
+        const u = x / size;
+        const hOff = Math.sin(u * Math.PI * 2) * 9 + Math.cos(u * Math.PI * 6 + 0.4) * 5;
+        ctx.lineTo(x, 290 + hOff);
+      }
+      ctx.lineTo(size, 326);
+      ctx.closePath();
+      ctx.fill();
+    } else if (key === 'solar') {
+      // Scorching desert-ochre glare horizon + dusty atmospheric mirage bands
+      const grad = ctx.createLinearGradient(0, 0, 0, size);
+      grad.addColorStop(0.0, '#2e241b');
+      grad.addColorStop(0.24, '#5e4730');
+      grad.addColorStop(0.46, '#a47744');
+      grad.addColorStop(0.58, '#dfb062');
+      grad.addColorStop(0.72, '#8a6034');
+      grad.addColorStop(1.0, '#3a2919');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      drawPeriodicRadialGlow(256, 282, 185, [
+        [0, 'rgba(255, 245, 212, 0.92)'],
+        [0.24, 'rgba(248, 194, 108, 0.56)'],
+        [0.62, 'rgba(186, 122, 54, 0.22)'],
+        [1, 'rgba(92, 62, 34, 0.0)'],
+      ]);
+
+      for (let i = 0; i < 26; i++) {
+        const cx = rng() * size;
+        const cy = 110 + rng() * 170;
+        const w = 80 + rng() * 135;
+        const h = 8 + rng() * 16;
+        const col = i % 2 === 0 ? 'rgba(236, 182, 106, 0.16)' : 'rgba(68, 48, 28, 0.2)';
+        drawPeriodicEllipse(cx, cy, w, h, col);
+      }
+
+      ctx.fillStyle = 'rgba(54, 38, 22, 0.36)';
+      ctx.beginPath();
+      ctx.moveTo(0, 326);
+      for (let x = 0; x <= size; x += 8) {
+        const u = x / size;
+        const hOff = Math.cos(u * Math.PI * 2 + 1.0) * 7 + Math.sin(u * Math.PI * 4) * 5;
+        ctx.lineTo(x, 294 + hOff);
+      }
+      ctx.lineTo(size, 326);
+      ctx.closePath();
+      ctx.fill();
+    } else if (key === 'drydock') {
+      // High-altitude charcoal-steel twilight + orbital drydock gantry horizon
+      const grad = ctx.createLinearGradient(0, 0, 0, size);
+      grad.addColorStop(0.0, '#0d1016');
+      grad.addColorStop(0.28, '#1b202b');
+      grad.addColorStop(0.48, '#383d4a');
+      grad.addColorStop(0.6, '#645952');
+      grad.addColorStop(0.75, '#2b2d36');
+      grad.addColorStop(1.0, '#13151c');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      drawPeriodicRadialGlow(340, 294, 165, [
+        [0, 'rgba(246, 178, 92, 0.52)'],
+        [0.35, 'rgba(148, 106, 68, 0.24)'],
+        [1, 'rgba(30, 32, 42, 0.0)'],
+      ]);
+
+      for (let i = 0; i < 65; i++) {
+        const sx = rng() * size;
+        const sy = 18 + rng() * 165;
+        const r = 0.6 + rng() * 1.1;
+        ctx.fillStyle = `rgba(218, 224, 236, ${0.22 + rng() * 0.45})`;
+        drawPeriodic((ox) => {
+          const px = sx + ox;
+          if (px + r < 0 || px - r > size) return;
+          ctx.beginPath();
+          ctx.arc(px, sy, r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      for (let i = 0; i < 20; i++) {
+        const cx = rng() * size;
+        const cy = 120 + rng() * 160;
+        const w = 70 + rng() * 130;
+        const h = 10 + rng() * 18;
+        drawPeriodicEllipse(cx, cy, w, h, 'rgba(22, 24, 32, 0.28)');
+      }
     }
 
     const tex = this._buildTexture(canvas, {

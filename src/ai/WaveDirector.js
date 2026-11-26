@@ -15,6 +15,12 @@ const POOL_CAPACITIES = Object.freeze({
   heavy_enforcer: 4,
   sniper_stalker: 4,
   cyber_mech_boss: 1,
+  interceptor_drone: 6,
+  shock_breacher: 5,
+  rail_warden: 4,
+  mortar_artillery: 4,
+  vanguard_assassin: 5,
+  aegis_overlord_boss: 1,
 });
 
 const PROJECTILE_COLORS = Object.freeze({
@@ -23,6 +29,12 @@ const PROJECTILE_COLORS = Object.freeze({
   heavy_enforcer: 0xff2200,
   sniper_stalker: 0xe63946,
   cyber_mech_boss: 0xff2200,
+  interceptor_drone: 0xf59e0b,
+  shock_breacher: 0xff5a1f,
+  rail_warden: 0xff6b1a,
+  mortar_artillery: 0xfbbf24,
+  vanguard_assassin: 0xff3b14,
+  aegis_overlord_boss: 0x0ea5e9,
 });
 
 const FALLBACK_SPAWNS = [
@@ -110,6 +122,12 @@ class WaveDirector {
       heavy_enforcer: [],
       sniper_stalker: [],
       cyber_mech_boss: [],
+      interceptor_drone: [],
+      shock_breacher: [],
+      rail_warden: [],
+      mortar_artillery: [],
+      vanguard_assassin: [],
+      aegis_overlord_boss: [],
     };
     this._prewarmed = false;
 
@@ -119,9 +137,10 @@ class WaveDirector {
     this._livingTargets = [];
     this._nextEnemyId = 1;
 
-    // Wave progression, 3-map campaign transition & spawning state
+    // Wave progression, 6-map campaign transition & spawning state
     this._active = false;
     this._currentWaveIndex = -1;
+    this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
     this._awaitingMapTransition = false;
     this._spawnQueue = [];
@@ -131,6 +150,7 @@ class WaveDirector {
     this._draftPaused = false;
     this._killsSinceWeaponDrop = 0;
     this._bossMissileTimer = 4.5;
+    this._bossSpecialCycle = 0;
     this._victory = false;
     this._bossEntity = null;
 
@@ -396,6 +416,7 @@ class WaveDirector {
 
     this._active = false;
     this._currentWaveIndex = -1;
+    this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
     this._awaitingMapTransition = false;
     this._spawnQueue.length = 0;
@@ -405,6 +426,7 @@ class WaveDirector {
     this._draftPaused = false;
     this._killsSinceWeaponDrop = 0;
     this._bossMissileTimer = 4.5;
+    this._bossSpecialCycle = 0;
     this._victory = false;
 
     this._waveZoneBonusAwarded = false;
@@ -464,7 +486,7 @@ class WaveDirector {
     const nextWaveIndex = this._currentWaveIndex + 1;
     const fallbackMapIdx =
       nextWaveIndex >= 0 && nextWaveIndex < WAVES.length
-        ? WAVES[nextWaveIndex].mapIndex ?? 0
+        ? this._getEffectiveMapIndex(WAVES[nextWaveIndex])
         : this._currentMapIndex;
 
     this._currentMapIndex =
@@ -480,6 +502,14 @@ class WaveDirector {
   }
 
   /**
+   * Resolve map index for a wave (10-wave campaign natively traverses all 6 sectors 0..5).
+   * @private
+   */
+  _getEffectiveMapIndex(wave) {
+    return wave && typeof wave.mapIndex === 'number' ? wave.mapIndex : this._currentMapIndex;
+  }
+
+  /**
    * Initialize and announce a specific wave index (0..WAVES.length-1).
    * @private
    */
@@ -487,7 +517,7 @@ class WaveDirector {
     if (index < 0 || index >= WAVES.length) return;
     const wave = WAVES[index];
     this._currentWaveIndex = index;
-    this._currentMapIndex = wave.mapIndex ?? this._currentMapIndex;
+    this._currentMapIndex = this._getEffectiveMapIndex(wave);
     this._awaitingMapTransition = false;
     this._inIntermission = false;
     this._intermissionTimer = 0;
@@ -499,7 +529,7 @@ class WaveDirector {
     this._fallbackZoneProgress = 0;
     this._emptyZoneClearTimer = 0;
 
-    // Reset and configure Terra-Beacon control zone cleanly for this wave
+    // Reset and configure Terra-Beacon control zone & Stage 6-10 tactical gimmicks cleanly for this wave
     if (this._interactables) {
       if (typeof this._interactables.resetZone === 'function') {
         this._interactables.resetZone();
@@ -510,15 +540,18 @@ class WaveDirector {
       if (typeof this._interactables.setCaptureSpeedMultiplier === 'function') {
         this._interactables.setCaptureSpeedMultiplier(1.0);
       }
+      if (typeof this._interactables.setWaveGimmicks === 'function') {
+        this._interactables.setWaveGimmicks(wave.gimmick || null);
+      }
     }
 
-    // Build wave spawn queue (boss spawns first on Wave 5; regular units interleaved for variety)
+    // Build wave spawn queue (boss spawns first on Wave 5 & Wave 10; regular units interleaved for variety)
     this._spawnQueue.length = 0;
     const regularPool = [];
     for (let i = 0; i < wave.enemies.length; i++) {
       const entry = wave.enemies[i];
       for (let c = 0; c < entry.count; c++) {
-        if (entry.type === 'cyber_mech_boss') {
+        if (entry.type === 'cyber_mech_boss' || entry.type === 'aegis_overlord_boss') {
           this._spawnQueue.push(entry.type);
         } else {
           regularPool.push(entry.type);
@@ -536,6 +569,7 @@ class WaveDirector {
     for (let i = 0; i < regularPool.length; i++) {
       this._spawnQueue.push(regularPool[i]);
     }
+    this._currentWaveTotalEnemies = this._spawnQueue.length;
 
     // Spawn initial contact immediately on next update tick
     this._spawnTimer = 0.25;
@@ -600,24 +634,94 @@ class WaveDirector {
       this.headshots++;
     }
 
+    const wasBoss = enemy === this._bossEntity || Boolean(enemy.archetype && enemy.archetype.isBoss);
     if (enemy === this._bossEntity) {
       this._bossEntity = null;
+    }
+    if (wasBoss) {
+      // Clear any remaining queued escorts so no minions spawn after boss defeat
+      this._spawnQueue.length = 0;
+      // Immediately terminate all remaining living minions with chain-explosion VFX
+      for (let i = 0; i < this._activeEnemies.length; i++) {
+        const minion = this._activeEnemies[i];
+        if (!minion || minion === enemy || !minion.isAlive) continue;
+        minion.hp = 0;
+        minion._killProcessed = true;
+        minion.die();
+        this.totalKills++;
+        if (this.vfxManager) {
+          const mPos = minion.center;
+          if (typeof this.vfxManager.spawnEnemyDeath === 'function') {
+            this.vfxManager.spawnEnemyDeath(mPos, minion.archetype.color, false);
+          } else if (typeof this.vfxManager.spawnExplosion === 'function') {
+            this.vfxManager.spawnExplosion(mPos, 1.0, minion.archetype.color);
+          }
+        }
+        if (this.eventBus) {
+          this.eventBus.emit(EVENTS.ENEMY_KILLED, {
+            id: minion.id,
+            enemy: minion,
+            archetype: minion.archetype,
+            archetypeId: minion.archetype.id,
+            name: minion.archetype.name,
+            isBoss: false,
+            isHeadshot: false,
+            isMelee: false,
+            position: minion.position.clone(),
+            headPosition: minion.headPosition.clone(),
+            hitPoint: minion.center.clone(),
+            score: minion.archetype.score,
+            totalScore: this.score,
+            combo: this.combo,
+            kills: this.totalKills,
+            headshots: this.headshots,
+          });
+        }
+      }
+      // Clear lingering enemy projectiles for a clean boss finish
+      for (let p = 0; p < this._projectiles.length; p++) {
+        const proj = this._projectiles[p];
+        if (proj && proj.active) {
+          proj.active = false;
+          if (proj.mesh) proj.mesh.visible = false;
+        }
+      }
     }
 
     // Step 2: Gold Drop + Low-Chance Weapon Drop (with pity for locked BR-12 / HV-7)
     if (this._interactables) {
+      const aid = enemy.archetype.id;
+      const isElite =
+        aid === 'heavy_enforcer' ||
+        aid === 'sniper_stalker' ||
+        aid === 'rail_warden' ||
+        aid === 'mortar_artillery' ||
+        aid === 'vanguard_assassin' ||
+        aid === 'shock_breacher';
+
       if (typeof this._interactables.spawnGoldDrop === 'function') {
         const goldAmt = enemy.archetype.isBoss
-          ? 150
-          : enemy.archetype.id === 'heavy_enforcer'
+          ? (aid === 'aegis_overlord_boss' ? 260 : 150)
+          : aid === 'rail_warden'
+          ? 36
+          : aid === 'mortar_artillery'
+          ? 32
+          : aid === 'heavy_enforcer'
           ? 30
-          : enemy.archetype.id === 'sniper_stalker'
+          : aid === 'vanguard_assassin'
+          ? 26
+          : aid === 'sniper_stalker'
           ? 24
+          : aid === 'shock_breacher'
+          ? 22
+          : aid === 'interceptor_drone'
+          ? 18
           : 14;
         this._interactables.spawnGoldDrop(enemy.position, goldAmt);
         if (enemy.archetype.isBoss) {
-          this._interactables.spawnGoldDrop(enemy.position, 60);
-          this._interactables.spawnGoldDrop(enemy.position, 60);
+          const bonusDrop = aid === 'aegis_overlord_boss' ? 90 : 60;
+          this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
+          this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
         }
       }
       if (typeof this._interactables.spawnItemDrop === 'function') {
@@ -625,7 +729,6 @@ class WaveDirector {
           this._interactables.spawnItemDrop(enemy.position, 'health', 35);
           this._interactables.spawnItemDrop(enemy.position, 'shield', 35);
         } else {
-          const isElite = enemy.archetype.id === 'heavy_enforcer' || enemy.archetype.id === 'sniper_stalker';
           const dropChance = isElite ? 0.45 : 0.26;
           if (Math.random() < dropChance) {
             const dropType = Math.random() < 0.62 ? 'health' : 'shield';
@@ -635,7 +738,6 @@ class WaveDirector {
       }
       if (typeof this._interactables.spawnWeaponDrop === 'function' && !enemy.archetype.isBoss) {
         this._killsSinceWeaponDrop++;
-        const isElite = enemy.archetype.id === 'heavy_enforcer' || enemy.archetype.id === 'sniper_stalker';
         const baseChance = isElite ? 0.24 : 0.14;
         const pity = this._killsSinceWeaponDrop >= 7 ? 0.45 : 0;
         if (Math.random() < baseChance + pity) {
@@ -760,7 +862,7 @@ class WaveDirector {
         const nextWaveIndex = this._currentWaveIndex + 1;
         if (nextWaveIndex < WAVES.length) {
           const nextWave = WAVES[nextWaveIndex];
-          const nextMapIndex = nextWave.mapIndex ?? this._currentMapIndex;
+          const nextMapIndex = this._getEffectiveMapIndex(nextWave);
           if (nextMapIndex !== this._currentMapIndex) {
             this._inIntermission = false;
             this._intermissionTimer = 0;
@@ -820,7 +922,7 @@ class WaveDirector {
         if (
           this._currentWaveIndex >= 1 &&
           !this._supplyDroneSpawnedThisWave &&
-          this._spawnQueue.length <= Math.max(2, Math.floor(wave.totalEnemies * 0.5))
+          this._spawnQueue.length <= Math.max(2, Math.floor((this._currentWaveTotalEnemies || 8) * 0.5))
         ) {
           this._supplyDroneSpawnedThisWave = true;
           const drone = this._spawnEnemy('rusher_drone', playerController, wave);
@@ -927,7 +1029,7 @@ class WaveDirector {
       }
     }
 
-    // 4.5. Step 2: Boss Shoulder Missile Pod Salvo Pattern (telegraphed floor explosions)
+    // 4.5. Diversified Boss Arena Hazard Patterns (Carpet Salvo / Cross-Ring Strike / Seismic Shockwave)
     if (
       this._bossEntity &&
       this._bossEntity.isAlive &&
@@ -937,19 +1039,63 @@ class WaveDirector {
       this._bossMissileTimer -= clampedDt;
       if (this._bossMissileTimer <= 0) {
         const phase = this._bossEntity.currentPhase || 1;
-        this._bossMissileTimer = phase >= 3 ? 3.8 : phase === 2 ? 4.8 : 5.8;
-        const salvoCount = phase >= 3 ? 4 : 3;
-        for (let m = 0; m < salvoCount; m++) {
-          const lead = m === 0 ? 0 : 2.8 + m * 1.4;
-          const ang = (m / salvoCount) * Math.PI * 2 + Math.random() * 0.8;
-          const tx = Math.max(-28, Math.min(28, playerPos.x + Math.cos(ang) * lead));
-          const tz = Math.max(-28, Math.min(28, playerPos.z + Math.sin(ang) * lead));
-          activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+        const isOverlord = this._bossEntity.archetype.id === 'aegis_overlord_boss';
+        const cycle = this._bossSpecialCycle++ % 3;
+        this._bossMissileTimer = phase >= 3 ? 3.6 : phase === 2 ? 4.6 : 5.6;
+
+        if (cycle === 0) {
+          // Pattern A: Targeted Carpet-Bombing Line across player path
+          const dirX = playerPos.x - this._bossEntity.position.x;
+          const dirZ = playerPos.z - this._bossEntity.position.z;
+          const dLen = Math.hypot(dirX, dirZ) || 1;
+          const nx = dirX / dLen;
+          const nz = dirZ / dLen;
+          const count = phase >= 3 ? 5 : 4;
+          for (let m = 0; m < count; m++) {
+            const offset = (m - 1.5) * 3.4;
+            const tx = Math.max(-28, Math.min(28, playerPos.x + nx * offset));
+            const tz = Math.max(-28, Math.min(28, playerPos.z + nz * offset));
+            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+          }
+        } else if (cycle === 1) {
+          // Pattern B: Cross / Orbital X-Formation Strike around player
+          const offsets = isOverlord || phase >= 3
+            ? [[0, 0], [4.2, 4.2], [-4.2, 4.2], [4.2, -4.2], [-4.2, -4.2]]
+            : [[0, 0], [4.5, 0], [-4.5, 0], [0, 4.5]];
+          for (let m = 0; m < offsets.length; m++) {
+            const tx = Math.max(-28, Math.min(28, playerPos.x + offsets[m][0]));
+            const tz = Math.max(-28, Math.min(28, playerPos.z + offsets[m][1]));
+            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+          }
+        } else {
+          // Pattern C: Seismic Ground Shockwave Ring (jump to evade!) + flanking missile strikes
+          if (typeof activeInteractables.spawnBossShockwave === 'function') {
+            activeInteractables.spawnBossShockwave(this._bossEntity.position);
+          }
+          const flankCount = phase >= 2 ? 3 : 2;
+          for (let m = 0; m < flankCount; m++) {
+            const ang = (m / flankCount) * Math.PI * 2 + Math.random() * 0.6;
+            const tx = Math.max(-28, Math.min(28, playerPos.x + Math.cos(ang) * 4.0));
+            const tz = Math.max(-28, Math.min(28, playerPos.z + Math.sin(ang) * 4.0));
+            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+          }
         }
       }
     }
 
-    // 4.8. [실드링크] Elite Aura: sustains nearby living allies (+6 HP/s within 10m)
+    // 4.8. [실드링크] Elite Aura & Stage 8-10 Aegis Shield Relays sustain living allies
+    const activeRelays =
+      activeInteractables && typeof activeInteractables.getActiveShieldRelayCount === 'function'
+        ? activeInteractables.getActiveShieldRelayCount()
+        : 0;
+    if (activeRelays > 0) {
+      const relayHeal = 5 * activeRelays * clampedDt;
+      for (let i = 0; i < this._livingTargets.length; i++) {
+        const enemy = this._livingTargets[i];
+        if (!enemy || !enemy.isAlive || enemy.hp >= enemy.maxHp) continue;
+        enemy.hp = Math.min(enemy.maxHp, enemy.hp + relayHeal);
+      }
+    }
     for (let i = 0; i < this._livingTargets.length; i++) {
       const linker = this._livingTargets[i];
       if (!linker || !linker.isAlive || linker.eliteAffix !== 'shield_link') continue;
@@ -1172,7 +1318,7 @@ class WaveDirector {
       }
 
       // Archetype elevation preferences
-      if (archetype.id === 'sniper_stalker') {
+      if (archetype.id === 'sniper_stalker' || archetype.id === 'mortar_artillery') {
         score += sp.elevated ? 72 : -18;
         if (dist >= 18 && dist <= 40) score += 22;
       } else if (archetype.isBoss) {
@@ -1189,7 +1335,7 @@ class WaveDirector {
         ) {
           score -= 140;
         }
-      } else if (archetype.id === 'heavy_enforcer') {
+      } else if (archetype.id === 'heavy_enforcer' || archetype.id === 'rail_warden' || archetype.id === 'shock_breacher') {
         score += sp.elevated ? -90 : 22;
       } else if (!archetype.isFlying) {
         score += sp.elevated ? -12 : 12;
@@ -1264,11 +1410,15 @@ class WaveDirector {
     // Distinct glowing silhouette per archetype
     const length = isSniperBeam
       ? 2.4
-      : archetypeId === 'cyber_mech_boss'
+      : archetypeId === 'aegis_overlord_boss'
+      ? 1.48
+      : archetypeId === 'cyber_mech_boss' || archetypeId === 'rail_warden'
       ? 1.35
-      : archetypeId === 'heavy_enforcer'
-      ? 0.72
-      : 0.92;
+      : archetypeId === 'mortar_artillery' || archetypeId === 'vanguard_assassin'
+      ? 0.98
+      : archetypeId === 'heavy_enforcer' || archetypeId === 'shock_breacher'
+      ? 0.70
+      : 0.90;
     const visualRadius = isSniperBeam ? 0.065 : radius * 0.85;
 
     const boltColor = PROJECTILE_COLORS[archetypeId] || 0xff4422;

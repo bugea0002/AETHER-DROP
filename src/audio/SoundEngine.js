@@ -1053,16 +1053,46 @@ class SoundEngine {
           this._playTone(dest, 'sine', now, 0.055, 165 * jitter, 54, 0.26, 0.001);
           this._playNoiseBurst(dest, now, 0.048, 0.24, 'bandpass', 1900 * jitter, 760, 1.6, false);
           break;
+        case 'interceptor_drone':
+          // Twin tilt-rotor burst snap
+          this._playTone(dest, 'triangle', now, 0.065, 220 * jitter, 72, 0.28, 0.001, 1400);
+          this._playNoiseBurst(dest, now, 0.052, 0.26, 'bandpass', 2200 * jitter, 820, 1.5, false);
+          break;
+        case 'shock_breacher':
+          // Heavy close-quarters scatter blast
+          this._playTone(dest, 'sine', now, 0.16, 138 * jitter, 38, 0.48, 0.002);
+          this._playNoiseBurst(dest, now, 0.14, 0.44, 'lowpass', 1750, 240, 1.1, true);
+          break;
+        case 'vanguard_assassin':
+          // Crisp high-velocity pulse rifle burst
+          this._playTone(dest, 'triangle', now, 0.06, 260 * jitter, 82, 0.30, 0.001, 1650);
+          this._playNoiseBurst(dest, now, 0.045, 0.28, 'bandpass', 2400 * jitter, 920, 1.4, false);
+          break;
         case 'heavy_enforcer':
           // Heavy autocannon low-end thump
           this._playTone(dest, 'sine', now, 0.22, 130 * jitter, 34, 0.54, 0.002);
           this._playNoiseBurst(dest, now, 0.18, 0.44, 'lowpass', 1450, 190, 1.0, true);
+          break;
+        case 'rail_warden':
+          // Magnetic twin rail-lance discharge
+          this._playTone(dest, 'sine', now, 0.20, 155 * jitter, 36, 0.52, 0.001);
+          this._playNoiseBurst(dest, now, 0.055, 0.46, 'bandpass', 2500 * jitter, 880, 1.2, false);
+          break;
+        case 'mortar_artillery':
+          // Deep siege mortar tube launch thump
+          this._playTone(dest, 'sine', now, 0.26, 96 * jitter, 24, 0.58, 0.003);
+          this._playNoiseBurst(dest, now, 0.22, 0.42, 'lowpass', 1100, 140, 0.9, true);
           break;
         case 'sniper_stalker':
           // High-velocity anti-materiel sniper crack (dry ballistic snap, no 2900Hz laser)
           this._playTone(dest, 'sine', now, 0.18, 145 * jitter, 32, 0.52, 0.001);
           this._playNoiseBurst(dest, now, 0.032, 0.52, 'bandpass', 2600 * jitter, 900, 1.2, false);
           this._playNoiseBurst(dest, now + 0.01, 0.16, 0.38, 'lowpass', 1600, 220, 0.9, true);
+          break;
+        case 'aegis_overlord_boss':
+          // Supreme dreadnought dual rail siege boom
+          this._playTone(dest, 'sine', now, 0.28, 95 * jitter, 20, 0.68, 0.002);
+          this._playNoiseBurst(dest, now, 0.22, 0.52, 'lowpass', 1550, 150, 1.0, true);
           break;
         case 'cyber_mech_boss':
           // Colossal twin rotary cannon boom

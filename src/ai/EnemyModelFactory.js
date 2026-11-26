@@ -502,75 +502,138 @@ class EnemyModelFactory {
   _createPalette(archetype) {
     const { armorWear, armorBump, armorRoughness, visorGrid } = this._textures;
 
-    const primaryArmor = new THREE.MeshStandardMaterial({
-      color: 0xa8b4c0, // High-contrast weathered ceramic-steel silhouette against warm brown/ochre ruins
-      map: armorWear,
-      metalness: 0.52,
-      roughness: 0.48,
-      bumpMap: armorBump,
-      bumpScale: 0.042,
-      roughnessMap: armorRoughness,
-      emissive: new THREE.Color(0x161e26),
-      emissiveIntensity: 0.22,
-    });
+    const isAegisOrbital =
+      archetype.id === 'interceptor_drone' ||
+      archetype.id === 'shock_breacher' ||
+      archetype.id === 'rail_warden' ||
+      archetype.id === 'mortar_artillery' ||
+      archetype.id === 'vanguard_assassin' ||
+      archetype.id === 'aegis_overlord_boss';
 
-    const coloredPlate = new THREE.MeshStandardMaterial({
-      color: archetype.color,
-      map: armorWear,
-      metalness: 0.42,
-      roughness: 0.48,
-      bumpMap: armorBump,
-      bumpScale: 0.036,
-      roughnessMap: armorRoughness,
-      emissive: new THREE.Color(archetype.color),
-      emissiveIntensity: 0.28,
-    });
+    const primaryArmor = isAegisOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: archetype.id === 'vanguard_assassin' ? 0x1e1b2e : 0xeaf2fb,
+          metalness: 0.78,
+          roughness: 0.20,
+          emissive: new THREE.Color(archetype.id === 'vanguard_assassin' ? 0x1f0a28 : 0x0c243e),
+          emissiveIntensity: 0.28,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0xa8b4c0,
+          map: armorWear,
+          metalness: 0.52,
+          roughness: 0.48,
+          bumpMap: armorBump,
+          bumpScale: 0.042,
+          roughnessMap: armorRoughness,
+          emissive: new THREE.Color(0x161e26),
+          emissiveIntensity: 0.22,
+        });
 
-    const darkFrame = new THREE.MeshStandardMaterial({
-      color: 0x201b18, // Soot-blackened structural iron
-      metalness: 0.78,
-      roughness: 0.58,
-      bumpMap: armorBump,
-      bumpScale: 0.024,
-      roughnessMap: armorRoughness,
-      emissive: new THREE.Color(0x000000),
-      emissiveIntensity: 0.0,
-    });
+    const coloredPlate = isAegisOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: archetype.color,
+          metalness: 0.74,
+          roughness: 0.22,
+          emissive: new THREE.Color(archetype.color),
+          emissiveIntensity: 0.52,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: archetype.color,
+          map: armorWear,
+          metalness: 0.42,
+          roughness: 0.48,
+          bumpMap: armorBump,
+          bumpScale: 0.036,
+          roughnessMap: armorRoughness,
+          emissive: new THREE.Color(archetype.color),
+          emissiveIntensity: 0.28,
+        });
+
+    const darkFrame = isAegisOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: 0x0b1222,
+          metalness: 0.88,
+          roughness: 0.26,
+          emissive: new THREE.Color(0x06101f),
+          emissiveIntensity: 0.15,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x201b18,
+          metalness: 0.78,
+          roughness: 0.58,
+          bumpMap: armorBump,
+          bumpScale: 0.024,
+          roughnessMap: armorRoughness,
+          emissive: new THREE.Color(0x000000),
+          emissiveIntensity: 0.0,
+        });
 
     const pistonSteel = new THREE.MeshStandardMaterial({
-      color: 0xcbd5e1, // High-contrast machined steel joints
-      metalness: 0.88,
-      roughness: 0.28,
-      emissive: new THREE.Color(0x000000),
-      emissiveIntensity: 0.0,
+      color: archetype.id === 'aegis_overlord_boss' ? 0xf59e0b : isAegisOrbital ? 0xf1f5f9 : 0xcbd5e1,
+      metalness: 0.92,
+      roughness: 0.20,
+      emissive: new THREE.Color(archetype.id === 'aegis_overlord_boss' ? 0x4a2a00 : 0x000000),
+      emissiveIntensity: archetype.id === 'aegis_overlord_boss' ? 0.35 : 0.0,
     });
 
-    const cableMat = new THREE.MeshStandardMaterial({
-      color: 0x2b231f, // Greased fuel hoses & tangled insulation
-      metalness: 0.22,
-      roughness: 0.78,
-      emissive: new THREE.Color(0x000000),
-      emissiveIntensity: 0.0,
-    });
+    const cableMat = isAegisOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: 0x164e63,
+          metalness: 0.55,
+          roughness: 0.35,
+          emissive: new THREE.Color(archetype.accentColor),
+          emissiveIntensity: 0.45,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x2b231f,
+          metalness: 0.22,
+          roughness: 0.78,
+          emissive: new THREE.Color(0x000000),
+          emissiveIntensity: 0.0,
+        });
 
     const accentGlow = new THREE.MeshStandardMaterial({
       color: archetype.accentColor,
       emissive: new THREE.Color(archetype.accentColor),
-      emissiveIntensity: 2.2,
+      emissiveIntensity: isAegisOrbital ? 3.1 : 2.2,
       metalness: 0.15,
-      roughness: 0.24,
+      roughness: 0.20,
       fog: false,
     });
 
-    // Fog-piercing furnace-red optical weakpoint for instant headshot readability
-    const opticColor = archetype.id === 'tactical_trooper' ? 0xff3b14 : 0xff220c;
+    const opticColor = isAegisOrbital
+      ? archetype.id === 'vanguard_assassin'
+        ? 0xf43f5e
+        : archetype.id === 'mortar_artillery'
+        ? 0xe879f9
+        : archetype.id === 'aegis_overlord_boss'
+        ? 0xfbbf24
+        : 0x00f0ff
+      : archetype.id === 'tactical_trooper'
+      ? 0xff3b14
+      : 0xff220c;
+
     const weakpointGlow = new THREE.MeshStandardMaterial({
-      color: 0xffe4d6,
+      color: isAegisOrbital ? 0xffffff : 0xffe4d6,
       map: visorGrid,
       emissive: new THREE.Color(opticColor),
-      emissiveIntensity: 3.8,
+      emissiveIntensity: 4.0,
       metalness: 0.1,
-      roughness: 0.16,
+      roughness: 0.14,
+      fog: false,
+    });
+
+    const holoEnergy = new THREE.MeshStandardMaterial({
+      color: archetype.accentColor,
+      emissive: new THREE.Color(archetype.accentColor),
+      emissiveIntensity: 2.6,
+      metalness: 0.1,
+      roughness: 0.15,
+      transparent: true,
+      opacity: 0.52,
+      side: THREE.DoubleSide,
+      depthWrite: false,
       fog: false,
     });
 
@@ -582,6 +645,7 @@ class EnemyModelFactory {
       cableMat,
       accentGlow,
       weakpointGlow,
+      holoEnergy,
     ];
 
     return {
@@ -592,6 +656,7 @@ class EnemyModelFactory {
       cableMat,
       accentGlow,
       weakpointGlow,
+      holoEnergy,
       flashMaterials,
     };
   }
@@ -601,7 +666,11 @@ class EnemyModelFactory {
    * @private
    */
   _createHealthBar(archetype, ownedMaterials) {
-    const barWidth = archetype.isBoss ? 2.2 : archetype.id === 'heavy_enforcer' ? 1.15 : 0.86;
+    const isHeavy =
+      archetype.id === 'heavy_enforcer' ||
+      archetype.id === 'rail_warden' ||
+      archetype.id === 'mortar_artillery';
+    const barWidth = archetype.isBoss ? 2.25 : isHeavy ? 1.15 : 0.86;
     const barHeight = archetype.isBoss ? 0.16 : 0.085;
 
     const bgGeo = this._getGeo(`hp_bg_${archetype.id}`, () => {
@@ -621,7 +690,7 @@ class EnemyModelFactory {
       side: THREE.DoubleSide,
     });
 
-    const fillHex = archetype.id === 'heavy_enforcer' ? archetype.accentColor : archetype.color;
+    const fillHex = isHeavy ? archetype.accentColor : archetype.color;
     const fillMat = new THREE.MeshBasicMaterial({
       color: fillHex,
       transparent: true,
@@ -749,6 +818,93 @@ class EnemyModelFactory {
         leftWeaponMuzzle = bossExtras.leftWeaponMuzzle;
         break;
       }
+      case 'interceptor_drone':
+        leftWeaponMuzzle = this._buildInterceptorDrone(
+          palette,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          weaponMuzzle,
+          rotors
+        );
+        break;
+      case 'shock_breacher':
+        this._buildShockBreacher(
+          palette,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'rail_warden':
+        shieldMesh = this._buildRailWarden(
+          palette,
+          ownedMaterials,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'mortar_artillery':
+        laserLine = this._buildMortarArtillery(
+          palette,
+          ownedMaterials,
+          ownedGeometries,
+          root,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'vanguard_assassin':
+        leftWeaponMuzzle = this._buildVanguardAssassin(
+          palette,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'aegis_overlord_boss': {
+        const overlordExtras = this._buildAegisOverlordBoss(
+          palette,
+          ownedMaterials,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle,
+          rotors,
+          coreRings
+        );
+        shieldMesh = overlordExtras.shieldMesh;
+        leftWeaponMuzzle = overlordExtras.leftWeaponMuzzle;
+        break;
+      }
       default:
         this._buildTacticalTrooper(
           palette,
@@ -772,10 +928,16 @@ class EnemyModelFactory {
         return g;
       });
       const shadowRadius = archetype.isBoss
-        ? 2.35
-        : archetype.id === 'heavy_enforcer'
+        ? archetype.id === 'aegis_overlord_boss'
+          ? 2.55
+          : 2.35
+        : archetype.id === 'heavy_enforcer' || archetype.id === 'rail_warden'
         ? 1.18
-        : archetype.id === 'sniper_stalker'
+        : archetype.id === 'mortar_artillery'
+        ? 1.14
+        : archetype.id === 'shock_breacher'
+        ? 0.92
+        : archetype.id === 'sniper_stalker' || archetype.id === 'vanguard_assassin'
         ? 0.72
         : 0.78;
       const shadowDisc = new THREE.Mesh(shadowGeo, this._contactShadowMat);
@@ -2100,9 +2262,9 @@ class EnemyModelFactory {
     });
 
     const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0xff8c2b,
+      color: 0x00f0ff,
       map: this._textures.blastShield,
-      emissive: new THREE.Color(0xd9480f),
+      emissive: new THREE.Color(0x0284c7),
       emissiveMap: this._textures.blastShield,
       emissiveIntensity: 1.45,
       transparent: true,
@@ -3092,6 +3254,1671 @@ class EnemyModelFactory {
 
     const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
     shieldMesh.position.set(0, 2.15, 0.04);
+    shieldMesh.visible = false;
+    shieldMesh.renderOrder = 7;
+    bodyGroup.add(shieldMesh);
+
+    // --- Orbital Sovereign Remodel: 6 Towering Seraphim Plasma Wings, Solar Crown Halo & Sovereign Shield ---
+    if (shieldMesh && shieldMesh.material) {
+      shieldMesh.material.color.setHex(0x38bdf8);
+      shieldMesh.material.emissive.setHex(0x0284c7);
+      if (shieldMesh.material.userData) {
+        shieldMesh.material.userData.baseColor = shieldMesh.material.color.clone();
+        shieldMesh.material.userData.baseEmissive = shieldMesh.material.emissive.clone();
+      }
+    }
+    const seraphWingGeo = this._getGeo('overlord_seraph_wing', () => new THREE.BoxGeometry(0.18, 2.35, 0.52));
+    const seraphGlowGeo = this._getGeo('overlord_seraph_glow', () => new THREE.PlaneGeometry(0.65, 2.45));
+    for (const side of [-1, 1]) {
+      for (let f = 0; f < 3; f++) {
+        const angleZ = side * (-0.38 - f * 0.34);
+        const wingSpine = new THREE.Mesh(seraphWingGeo, p.primaryArmor);
+        wingSpine.position.set(side * (1.25 + f * 0.58), 3.35 + (1 - f) * 0.45, -0.88 - f * 0.18);
+        wingSpine.rotation.set(-0.22, side * 0.16, angleZ);
+        bodyGroup.add(wingSpine);
+
+        const wingAura = new THREE.Mesh(seraphGlowGeo, p.holoEnergy);
+        wingAura.position.set(side * (1.42 + f * 0.65), 3.45 + (1 - f) * 0.45, -0.94 - f * 0.18);
+        wingAura.rotation.set(-0.22, side * 0.16, angleZ);
+        bodyGroup.add(wingAura);
+      }
+    }
+    const crownHalo = new THREE.Mesh(
+      this._getGeo('overlord_crown_halo', () => new THREE.TorusGeometry(0.95, 0.065, 10, 32)),
+      p.accentGlow
+    );
+    crownHalo.position.set(0, 4.35, -0.25);
+    crownHalo.rotation.x = 0.25;
+    bodyGroup.add(crownHalo);
+    coreRings.push(crownHalo);
+
+    const sovereignRing = new THREE.Mesh(
+      this._getGeo('overlord_sovereign_ring', () => new THREE.TorusGeometry(2.35, 0.075, 10, 40)),
+      p.holoEnergy
+    );
+    sovereignRing.position.set(0, 2.85, -0.65);
+    sovereignRing.rotation.set(0.35, 0.2, 0);
+    bodyGroup.add(sovereignRing);
+    coreRings.push(sovereignRing);
+
+    return { shieldMesh, leftWeaponMuzzle };
+  }
+
+  /**
+   * Shared helper to create a clipped telegraph lock-on laser beam mesh.
+   * @private
+   */
+  _createLaserBeam(ownedMaterials, ownedGeometries, root, outerColorHex, innerColorHex) {
+    const outerBeamGeo = new THREE.CylinderGeometry(0.018, 0.018, 1.0, 8, 1, true);
+    outerBeamGeo.rotateX(Math.PI * 0.5);
+    outerBeamGeo.translate(0, 0, 0.5);
+    ownedGeometries.push(outerBeamGeo);
+
+    const innerBeamGeo = new THREE.CylinderGeometry(0.006, 0.006, 1.0, 6, 1, true);
+    innerBeamGeo.rotateX(Math.PI * 0.5);
+    innerBeamGeo.translate(0, 0, 0.5);
+    ownedGeometries.push(innerBeamGeo);
+
+    const outerLaserMat = new THREE.MeshBasicMaterial({
+      color: outerColorHex,
+      transparent: true,
+      opacity: 0.82,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const innerLaserMat = new THREE.MeshBasicMaterial({
+      color: innerColorHex,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    ownedMaterials.push(outerLaserMat, innerLaserMat);
+
+    const laserLine = new THREE.Mesh(outerBeamGeo, outerLaserMat);
+    const innerCore = new THREE.Mesh(innerBeamGeo, innerLaserMat);
+    laserLine.add(innerCore);
+    laserLine.visible = false;
+    laserLine.frustumCulled = false;
+    laserLine.renderOrder = 8;
+    root.add(laserLine);
+    return laserLine;
+  }
+
+  // ===========================================================================
+  // 6. AEGIS INTERCEPTOR (Swept-Wing Twin Tilt-Rotor Gunship + Twin Blasters)
+  // ===========================================================================
+  _buildInterceptorDrone(
+    p,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    weaponMuzzle,
+    rotors
+  ) {
+    bodyGroup.position.set(0, 0.62, 0);
+
+    // Swept angular gunship fuselage
+    const hullGeo = this._makeExtrudedPoly(
+      'interceptor_hull',
+      [
+        [0.0, 0.44],
+        [0.24, 0.14],
+        [0.30, -0.26],
+        [0.14, -0.46],
+        [-0.14, -0.46],
+        [-0.30, -0.26],
+        [-0.24, 0.14],
+      ],
+      0.20,
+      0.026,
+      0.022,
+      2
+    );
+    const hull = new THREE.Mesh(hullGeo, p.primaryArmor);
+    hull.rotation.x = Math.PI * 0.5;
+    hull.position.set(0, 0.04, 0);
+    bodyGroup.add(hull);
+
+    // Armored dorsal spine crest
+    const spineGeo = this._makeExtrudedPoly(
+      'interceptor_spine',
+      [
+        [0.0, 0.28],
+        [0.12, -0.34],
+        [-0.12, -0.34],
+      ],
+      0.11,
+      0.018,
+      0.015,
+      1
+    );
+    const spine = new THREE.Mesh(spineGeo, p.coloredPlate);
+    spine.rotation.x = Math.PI * 0.5;
+    spine.position.set(0, 0.18, -0.05);
+    bodyGroup.add(spine);
+
+    // Swept Delta Thruster Wings + Twin Tilt-Rotor Nacelles
+    const wingGeo = this._makeExtrudedPoly(
+      'interceptor_wing',
+      [
+        [0.0, 0.16],
+        [0.54, -0.10],
+        [0.62, -0.30],
+        [0.14, -0.22],
+      ],
+      0.045,
+      0.012,
+      0.01,
+      1
+    );
+    const shroudGeo = this._makeLathe(
+      'interceptor_rotor_shroud',
+      [
+        [0.17, -0.10],
+        [0.23, -0.07],
+        [0.24, 0.02],
+        [0.21, 0.10],
+        [0.16, 0.10],
+        [0.15, -0.06],
+        [0.17, -0.10],
+      ],
+      16
+    );
+    const bladeGeo = this._getGeo('interceptor_rotor_blade', () => new THREE.BoxGeometry(0.28, 0.016, 0.048));
+    const hubGeo = this._getGeo('interceptor_rotor_hub', () => new THREE.CylinderGeometry(0.038, 0.044, 0.10, 8));
+    const ringGeo = this._getGeo('interceptor_heat_ring', () => new THREE.TorusGeometry(0.165, 0.014, 6, 16));
+
+    for (let side = -1; side <= 1; side += 2) {
+      const wing = new THREE.Mesh(wingGeo, p.coloredPlate);
+      wing.rotation.x = Math.PI * 0.5;
+      wing.scale.x = side;
+      wing.position.set(side * 0.18, 0.08, -0.04);
+      bodyGroup.add(wing);
+
+      const nacelle = new THREE.Group();
+      nacelle.position.set(side * 0.72, 0.12, -0.16);
+      nacelle.rotation.z = -side * 0.22;
+      nacelle.rotation.x = 0.24;
+      nacelle.add(new THREE.Mesh(shroudGeo, p.darkFrame));
+
+      const ring = new THREE.Mesh(ringGeo, p.accentGlow);
+      ring.rotation.x = Math.PI * 0.5;
+      ring.position.y = -0.06;
+      nacelle.add(ring);
+
+      const rotorPivot = new THREE.Group();
+      rotorPivot.add(new THREE.Mesh(hubGeo, p.pistonSteel));
+      for (let b = 0; b < 3; b++) {
+        const blade = new THREE.Mesh(bladeGeo, p.pistonSteel);
+        blade.rotation.y = (b / 3) * Math.PI;
+        rotorPivot.add(blade);
+      }
+      nacelle.add(rotorPivot);
+      rotors.push(rotorPivot);
+      bodyGroup.add(nacelle);
+
+      // Rear coolant feed tube
+      bodyGroup.add(
+        new THREE.Mesh(
+          this._makeTube(
+            `interceptor_hose_${side}`,
+            [
+              [side * 0.14, 0.08, -0.24],
+              [side * 0.42, 0.15, -0.32],
+              [side * 0.64, 0.12, -0.20],
+            ],
+            0.016,
+            8,
+            6
+          ),
+          p.cableMat
+        )
+      );
+    }
+
+    // Rear jet exhaust thruster
+    const exhaust = new THREE.Mesh(
+      this._getGeo('interceptor_exhaust', () => new THREE.CylinderGeometry(0.11, 0.15, 0.24, 10)),
+      p.darkFrame
+    );
+    exhaust.rotation.x = Math.PI * 0.5;
+    exhaust.position.set(0, 0.04, -0.48);
+    bodyGroup.add(exhaust);
+
+    const thrusterGlow = new THREE.Mesh(
+      this._getGeo('interceptor_thruster_core', () => new THREE.CylinderGeometry(0.08, 0.08, 0.06, 10)),
+      p.accentGlow
+    );
+    thrusterGlow.rotation.x = Math.PI * 0.5;
+    thrusterGlow.position.set(0, 0.04, -0.58);
+    bodyGroup.add(thrusterGlow);
+
+    // Armored Sensor Pod Nose (headGroup / headAnchor)
+    headGroup.position.set(0, 0.02, 0.38);
+    bodyGroup.add(headGroup);
+
+    const noseCowl = new THREE.Mesh(
+      this._makeExtrudedPoly(
+        'interceptor_nose_cowl',
+        [
+          [-0.18, 0.08],
+          [0.18, 0.08],
+          [0.12, -0.09],
+          [-0.12, -0.09],
+        ],
+        0.18,
+        0.018,
+        0.015,
+        1
+      ),
+      p.darkFrame
+    );
+    headGroup.add(noseCowl);
+
+    const opticEye = new THREE.Mesh(
+      this._getGeo('interceptor_optic_core', () => new THREE.BoxGeometry(0.24, 0.085, 0.10)),
+      p.weakpointGlow
+    );
+    opticEye.position.set(0, 0, 0.08);
+    headGroup.add(opticEye);
+
+    headAnchor.position.set(0, 0, 0.08);
+    headGroup.add(headAnchor);
+
+    // Twin Wingtip Repeater Pods (rightArm -> weaponMuzzle, leftArm -> leftWeaponMuzzle)
+    const podHousingGeo = this._getGeo('interceptor_pod_box', () => new THREE.BoxGeometry(0.11, 0.10, 0.36));
+    const podBarrelGeo = this._getGeo('interceptor_pod_barrel', () => new THREE.CylinderGeometry(0.024, 0.028, 0.32, 8));
+    const leftWeaponMuzzle = new THREE.Object3D();
+
+    const mountPod = (armGroup, sideX, muzzleObj) => {
+      armGroup.position.set(sideX, -0.09, 0.14);
+      armGroup.add(new THREE.Mesh(podHousingGeo, p.darkFrame));
+      const barrel = new THREE.Mesh(podBarrelGeo, p.pistonSteel);
+      barrel.rotation.x = Math.PI * 0.5;
+      barrel.position.set(0, -0.01, 0.24);
+      armGroup.add(barrel);
+      const collar = new THREE.Mesh(
+        this._getGeo('interceptor_pod_collar', () => new THREE.CylinderGeometry(0.034, 0.034, 0.06, 8)),
+        p.accentGlow
+      );
+      collar.rotation.x = Math.PI * 0.5;
+      collar.position.set(0, -0.01, 0.34);
+      armGroup.add(collar);
+      muzzleObj.position.set(0, -0.01, 0.42);
+      armGroup.add(muzzleObj);
+      bodyGroup.add(armGroup);
+    };
+
+    mountPod(rightArm, -0.46, weaponMuzzle);
+    mountPod(leftArm, 0.46, leftWeaponMuzzle);
+
+    // --- Orbital Remodel: Swept-Forward Stealth Delta Wings, Plasma Halo Thrusters & Dorsal Holo Fin ---
+    const deltaWingGeo = this._getGeo('interceptor_delta_wing', () => new THREE.BoxGeometry(0.68, 0.04, 0.42));
+    const haloRingGeo = this._getGeo('interceptor_plasma_halo', () => new THREE.TorusGeometry(0.32, 0.032, 8, 22));
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Mesh(deltaWingGeo, p.primaryArmor);
+      wing.position.set(side * 0.72, 0.06, 0.16);
+      wing.rotation.set(0.08, side * -0.45, side * 0.18);
+      bodyGroup.add(wing);
+
+      const wingEdge = new THREE.Mesh(
+        this._getGeo('interceptor_wing_holo', () => new THREE.PlaneGeometry(0.55, 0.18)),
+        p.holoEnergy
+      );
+      wingEdge.position.set(side * 0.88, 0.06, 0.02);
+      wingEdge.rotation.set(Math.PI * 0.5, 0, side * -0.45);
+      bodyGroup.add(wingEdge);
+
+      const halo = new THREE.Mesh(haloRingGeo, p.accentGlow);
+      halo.position.set(side * 0.66, 0.08, -0.05);
+      halo.rotation.x = Math.PI * 0.5;
+      bodyGroup.add(halo);
+      rotors.push(halo);
+    }
+    const dorsalFin = new THREE.Mesh(
+      this._getGeo('interceptor_dorsal_fin', () => new THREE.ConeGeometry(0.14, 0.52, 4)),
+      p.holoEnergy
+    );
+    dorsalFin.position.set(0, 0.44, -0.18);
+    dorsalFin.rotation.x = -0.55;
+    bodyGroup.add(dorsalFin);
+
+    return leftWeaponMuzzle;
+  }
+
+  // ===========================================================================
+  // 7. SHOCK BREACHER (Hunched Pneumatic Close-Assault Shotgunner + Ram Claw)
+  // ===========================================================================
+  _buildShockBreacher(
+    p,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    // Wide Digitigrade Pneumatic Breacher Legs (hip pivot at y = 0.96)
+    const thighGeo = this._makeExtrudedPoly(
+      'breacher_thigh',
+      [
+        [-0.13, 0.05],
+        [0.13, 0.05],
+        [0.16, -0.22],
+        [0.11, -0.44],
+        [-0.11, -0.44],
+        [-0.16, -0.22],
+      ],
+      0.22,
+      0.025,
+      0.02,
+      2
+    );
+    const shinGeo = this._makeExtrudedPoly(
+      'breacher_shin',
+      [
+        [-0.12, 0.02],
+        [0.12, 0.02],
+        [0.14, -0.42],
+        [0.10, -0.50],
+        [-0.10, -0.50],
+        [-0.14, -0.42],
+      ],
+      0.21,
+      0.024,
+      0.02,
+      2
+    );
+    const footGeo = this._getGeo('breacher_foot', () => new THREE.BoxGeometry(0.24, 0.11, 0.38));
+
+    const buildLeg = (legGroup, sideX) => {
+      legGroup.position.set(sideX, 0.96, 0);
+      const thigh = new THREE.Mesh(thighGeo, p.primaryArmor);
+      thigh.rotation.x = -0.18;
+      legGroup.add(thigh);
+      const shin = new THREE.Mesh(shinGeo, p.darkFrame);
+      shin.position.set(0, -0.42, 0.06);
+      shin.rotation.x = 0.12;
+      legGroup.add(shin);
+      const piston = new THREE.Mesh(
+        this._getGeo('breacher_piston', () => new THREE.CylinderGeometry(0.036, 0.036, 0.44, 8)),
+        p.pistonSteel
+      );
+      piston.position.set(0, -0.62, -0.08);
+      legGroup.add(piston);
+      const foot = new THREE.Mesh(footGeo, p.coloredPlate);
+      foot.position.set(0, -0.905, 0.07);
+      legGroup.add(foot);
+      bodyGroup.add(legGroup);
+    };
+    buildLeg(leftLeg, 0.24);
+    buildLeg(rightLeg, -0.24);
+
+    // Forward-Hunched Broad Siege Torso
+    const pelvis = new THREE.Mesh(
+      this._getGeo('breacher_pelvis', () => new THREE.BoxGeometry(0.56, 0.24, 0.34)),
+      p.darkFrame
+    );
+    pelvis.position.set(0, 1.0, 0);
+    bodyGroup.add(pelvis);
+
+    const torsoGeo = this._makeExtrudedPoly(
+      'breacher_torso',
+      [
+        [-0.46, 0.34],
+        [0.46, 0.34],
+        [0.36, -0.28],
+        [-0.36, -0.28],
+      ],
+      0.44,
+      0.04,
+      0.032,
+      2
+    );
+    const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
+    torso.position.set(0, 1.42, 0.06);
+    torso.rotation.x = 0.14;
+    bodyGroup.add(torso);
+
+    const breastPlate = new THREE.Mesh(
+      this._getGeo('breacher_chest_plate', () => new THREE.BoxGeometry(0.68, 0.42, 0.14)),
+      p.coloredPlate
+    );
+    breastPlate.position.set(0, 1.46, 0.28);
+    breastPlate.rotation.x = -0.12;
+    bodyGroup.add(breastPlate);
+
+    // Dorsal Pressurized Plasma Canisters
+    const tankGeo = this._getGeo('breacher_tank', () => new THREE.CylinderGeometry(0.11, 0.11, 0.56, 10));
+    for (let side = -1; side <= 1; side += 2) {
+      const tank = new THREE.Mesh(tankGeo, p.darkFrame);
+      tank.position.set(side * 0.20, 1.54, -0.24);
+      tank.rotation.x = -0.18;
+      bodyGroup.add(tank);
+
+      const band = new THREE.Mesh(
+        this._getGeo('breacher_tank_glow', () => new THREE.CylinderGeometry(0.118, 0.118, 0.10, 10)),
+        p.accentGlow
+      );
+      band.position.set(side * 0.20, 1.62, -0.25);
+      band.rotation.x = -0.18;
+      bodyGroup.add(band);
+    }
+
+    // Horned Jaw-Cage Helm (headHeight = 1.72)
+    headGroup.position.set(0, 1.72, 0.16);
+    bodyGroup.add(headGroup);
+
+    const helmGeo = this._makeExtrudedPoly(
+      'breacher_helm',
+      [
+        [-0.17, -0.11],
+        [0.17, -0.11],
+        [0.20, 0.08],
+        [0.12, 0.20],
+        [-0.12, 0.20],
+        [-0.20, 0.08],
+      ],
+      0.26,
+      0.025,
+      0.02,
+      2
+    );
+    headGroup.add(new THREE.Mesh(helmGeo, p.darkFrame));
+
+    const twinVisor = new THREE.Mesh(
+      this._getGeo('breacher_visor', () => new THREE.BoxGeometry(0.29, 0.085, 0.08)),
+      p.weakpointGlow
+    );
+    twinVisor.position.set(0, 0.02, 0.13);
+    headGroup.add(twinVisor);
+
+    const hornGeo = this._getGeo('breacher_horn', () => new THREE.ConeGeometry(0.055, 0.22, 6));
+    for (let side = -1; side <= 1; side += 2) {
+      const horn = new THREE.Mesh(hornGeo, p.coloredPlate);
+      horn.position.set(side * 0.16, 0.17, 0.02);
+      horn.rotation.z = -side * 0.36;
+      horn.rotation.x = 0.24;
+      headGroup.add(horn);
+    }
+    headAnchor.position.set(0, 0.02, 0.06);
+    headGroup.add(headAnchor);
+
+    // Right Arm — Triple-Barrel Heavy Plasma Scattergun
+    const pauldronGeo = this._getGeo('breacher_pauldron', () => new THREE.BoxGeometry(0.28, 0.26, 0.34));
+    rightArm.position.set(-0.52, 1.56, 0.08);
+    rightArm.add(new THREE.Mesh(pauldronGeo, p.coloredPlate));
+
+    const shotgunGroup = new THREE.Group();
+    shotgunGroup.position.set(-0.02, -0.32, 0.30);
+    shotgunGroup.add(
+      new THREE.Mesh(
+        this._getGeo('breacher_shotgun_body', () => new THREE.BoxGeometry(0.18, 0.20, 0.56)),
+        p.primaryArmor
+      )
+    );
+    const barrelGeo = this._getGeo('breacher_shotgun_barrel', () => new THREE.CylinderGeometry(0.032, 0.032, 0.42, 8));
+    for (let b = -1; b <= 1; b++) {
+      const bar = new THREE.Mesh(barrelGeo, p.pistonSteel);
+      bar.rotation.x = Math.PI * 0.5;
+      bar.position.set(b * 0.052, 0.02, 0.36);
+      shotgunGroup.add(bar);
+    }
+    const muzzleShroud = new THREE.Mesh(
+      this._getGeo('breacher_muzzle_glow', () => new THREE.BoxGeometry(0.19, 0.06, 0.12)),
+      p.accentGlow
+    );
+    muzzleShroud.position.set(0, 0.10, 0.44);
+    shotgunGroup.add(muzzleShroud);
+    weaponMuzzle.position.set(0, 0.02, 0.60);
+    shotgunGroup.add(weaponMuzzle);
+    rightArm.add(shotgunGroup);
+    bodyGroup.add(rightArm);
+
+    // Left Arm — Pneumatic Pile-Bunker Ram Gauntlet
+    leftArm.position.set(0.52, 1.56, 0.08);
+    leftArm.add(new THREE.Mesh(pauldronGeo, p.coloredPlate));
+    const gauntlet = new THREE.Mesh(
+      this._getGeo('breacher_ram_gauntlet', () => new THREE.BoxGeometry(0.22, 0.24, 0.44)),
+      p.darkFrame
+    );
+    gauntlet.position.set(0.02, -0.30, 0.22);
+    leftArm.add(gauntlet);
+    const spike = new THREE.Mesh(
+      this._getGeo('breacher_ram_spike', () => new THREE.ConeGeometry(0.085, 0.28, 6)),
+      p.accentGlow
+    );
+    spike.rotation.x = Math.PI * 0.5;
+    spike.position.set(0.02, -0.30, 0.52);
+    leftArm.add(spike);
+    bodyGroup.add(leftArm);
+
+    // --- Orbital Remodel: Twin Cryo-Arc Gauntlet Rings, Dorsal Capacitor Spines & Energy Crest ---
+    const arcRingGeo = this._getGeo('breacher_arc_ring', () => new THREE.TorusGeometry(0.19, 0.026, 8, 18));
+    for (const arm of [leftArm, rightArm]) {
+      const ring1 = new THREE.Mesh(arcRingGeo, p.accentGlow);
+      ring1.position.set(0, -0.28, 0.34);
+      arm.add(ring1);
+      const shieldBlade = new THREE.Mesh(
+        this._getGeo('breacher_holo_bracer', () => new THREE.BoxGeometry(0.06, 0.34, 0.46)),
+        p.holoEnergy
+      );
+      shieldBlade.position.set(arm === leftArm ? 0.14 : -0.14, -0.26, 0.24);
+      arm.add(shieldBlade);
+    }
+    const spineFinGeo = this._getGeo('breacher_spine_fin', () => new THREE.BoxGeometry(0.08, 0.38, 0.16));
+    for (let s = -1; s <= 1; s++) {
+      const fin = new THREE.Mesh(spineFinGeo, s === 0 ? p.accentGlow : p.primaryArmor);
+      fin.position.set(s * 0.22, 1.56 - Math.abs(s) * 0.08, -0.34);
+      fin.rotation.x = -0.38;
+      fin.rotation.z = s * -0.22;
+      bodyGroup.add(fin);
+    }
+    const helmCrest = new THREE.Mesh(
+      this._getGeo('breacher_helm_crest', () => new THREE.BoxGeometry(0.06, 0.22, 0.34)),
+      p.accentGlow
+    );
+    helmCrest.position.set(0, 0.22, -0.02);
+    headGroup.add(helmCrest);
+  }
+
+  // ===========================================================================
+  // 8. AEGIS PHALANX / RAIL WARDEN (2.4m Shielded Orbital Phalanx + Rail Lance)
+  // ===========================================================================
+  _buildRailWarden(
+    p,
+    ownedMaterials,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    // Heavy Orbital Armored Legs (hip pivot at y = 1.12)
+    const thighGeo = this._makeExtrudedPoly(
+      'warden_thigh',
+      [
+        [-0.14, 0.06],
+        [0.14, 0.06],
+        [0.17, -0.24],
+        [0.12, -0.50],
+        [-0.12, -0.50],
+        [-0.17, -0.24],
+      ],
+      0.26,
+      0.03,
+      0.024,
+      2
+    );
+    const shinGeo = this._makeExtrudedPoly(
+      'warden_shin',
+      [
+        [-0.13, 0.02],
+        [0.13, 0.02],
+        [0.16, -0.48],
+        [0.12, -0.56],
+        [-0.12, -0.56],
+        [-0.16, -0.48],
+      ],
+      0.24,
+      0.028,
+      0.022,
+      2
+    );
+    const footGeo = this._getGeo('warden_foot', () => new THREE.BoxGeometry(0.28, 0.13, 0.42));
+
+    const buildLeg = (legGroup, sideX) => {
+      legGroup.position.set(sideX, 1.12, 0);
+      legGroup.add(new THREE.Mesh(thighGeo, p.primaryArmor));
+      const knee = new THREE.Mesh(
+        this._getGeo('warden_knee', () => new THREE.BoxGeometry(0.22, 0.18, 0.12)),
+        p.coloredPlate
+      );
+      knee.position.set(0, -0.48, 0.14);
+      legGroup.add(knee);
+      const shin = new THREE.Mesh(shinGeo, p.darkFrame);
+      shin.position.set(0, -0.50, 0);
+      legGroup.add(shin);
+      const foot = new THREE.Mesh(footGeo, p.primaryArmor);
+      foot.position.set(0, -1.055, 0.07);
+      legGroup.add(foot);
+      bodyGroup.add(legGroup);
+    };
+    buildLeg(leftLeg, 0.27);
+    buildLeg(rightLeg, -0.27);
+
+    // Tall Orbital Phalanx Chassis
+    const pelvis = new THREE.Mesh(
+      this._getGeo('warden_pelvis', () => new THREE.BoxGeometry(0.66, 0.28, 0.38)),
+      p.darkFrame
+    );
+    pelvis.position.set(0, 1.15, 0);
+    bodyGroup.add(pelvis);
+
+    const torsoGeo = this._makeExtrudedPoly(
+      'warden_torso',
+      [
+        [-0.50, 0.44],
+        [-0.28, 0.56],
+        [0.28, 0.56],
+        [0.50, 0.44],
+        [0.42, -0.22],
+        [0.28, -0.36],
+        [-0.28, -0.36],
+        [-0.42, -0.22],
+      ],
+      0.46,
+      0.045,
+      0.036,
+      2
+    );
+    const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
+    torso.position.set(0, 1.66, 0.02);
+    bodyGroup.add(torso);
+
+    const sternum = new THREE.Mesh(
+      this._getGeo('warden_sternum', () => new THREE.BoxGeometry(0.56, 0.52, 0.14)),
+      p.coloredPlate
+    );
+    sternum.position.set(0, 1.70, 0.26);
+    bodyGroup.add(sternum);
+
+    // Dorsal Capacitor Backpack + Twin Cooling Fins
+    const backpack = new THREE.Mesh(
+      this._getGeo('warden_backpack', () => new THREE.BoxGeometry(0.52, 0.62, 0.28)),
+      p.darkFrame
+    );
+    backpack.position.set(0, 1.72, -0.32);
+    bodyGroup.add(backpack);
+
+    const packCore = new THREE.Mesh(
+      this._getGeo('warden_pack_glow', () => new THREE.BoxGeometry(0.32, 0.36, 0.06)),
+      p.accentGlow
+    );
+    packCore.position.set(0, 1.74, -0.46);
+    bodyGroup.add(packCore);
+
+    // Crested Orbital Helm (headHeight = 2.08)
+    headGroup.position.set(0, 2.08, 0.06);
+    bodyGroup.add(headGroup);
+
+    const helmGeo = this._makeExtrudedPoly(
+      'warden_helm',
+      [
+        [-0.17, -0.12],
+        [0.17, -0.12],
+        [0.19, 0.10],
+        [0.10, 0.24],
+        [-0.10, 0.24],
+        [-0.19, 0.10],
+      ],
+      0.27,
+      0.028,
+      0.022,
+      2
+    );
+    headGroup.add(new THREE.Mesh(helmGeo, p.primaryArmor));
+
+    const crestVisor = new THREE.Mesh(
+      this._getGeo('warden_visor', () => new THREE.BoxGeometry(0.28, 0.095, 0.08)),
+      p.weakpointGlow
+    );
+    crestVisor.position.set(0, 0.02, 0.14);
+    headGroup.add(crestVisor);
+
+    const headFin = new THREE.Mesh(
+      this._getGeo('warden_crest_fin', () => new THREE.BoxGeometry(0.06, 0.20, 0.28)),
+      p.coloredPlate
+    );
+    headFin.position.set(0, 0.22, -0.02);
+    headGroup.add(headFin);
+
+    headAnchor.position.set(0, 0.03, 0.04);
+    headGroup.add(headAnchor);
+
+    // Massive Flanged Shoulder Pauldrons
+    const pauldronGeo = this._makeExtrudedPoly(
+      'warden_pauldron',
+      [
+        [-0.22, 0.24],
+        [0.18, 0.20],
+        [0.24, -0.16],
+        [-0.18, -0.16],
+      ],
+      0.38,
+      0.034,
+      0.028,
+      2
+    );
+
+    // Right Arm — Long Twin-Rail Magnetic Accelerator Lance
+    rightArm.position.set(-0.58, 1.88, 0.04);
+    rightArm.add(new THREE.Mesh(pauldronGeo, p.coloredPlate));
+
+    const railLance = new THREE.Group();
+    railLance.position.set(-0.04, -0.34, 0.36);
+    railLance.add(
+      new THREE.Mesh(
+        this._getGeo('warden_lance_breech', () => new THREE.BoxGeometry(0.18, 0.22, 0.54)),
+        p.darkFrame
+      )
+    );
+    const railBarGeo = this._getGeo('warden_rail_bar', () => new THREE.BoxGeometry(0.055, 0.055, 0.88));
+    for (const ry of [-0.055, 0.055]) {
+      const rail = new THREE.Mesh(railBarGeo, p.pistonSteel);
+      rail.position.set(0, ry, 0.56);
+      railLance.add(rail);
+    }
+    const coreSlot = new THREE.Mesh(
+      this._getGeo('warden_rail_core', () => new THREE.BoxGeometry(0.042, 0.038, 0.78)),
+      p.accentGlow
+    );
+    coreSlot.position.set(0, 0, 0.54);
+    railLance.add(coreSlot);
+
+    weaponMuzzle.position.set(0, 0, 1.04);
+    railLance.add(weaponMuzzle);
+    rightArm.add(railLance);
+    bodyGroup.add(rightArm);
+
+    // Left Arm — Tall Slotted Aegis Siege Tower Shield (shieldMesh)
+    leftArm.position.set(0.58, 1.88, 0.06);
+    const lPauldron = new THREE.Mesh(pauldronGeo, p.coloredPlate);
+    lPauldron.scale.x = -1;
+    leftArm.add(lPauldron);
+
+    const shieldPivot = new THREE.Group();
+    shieldPivot.position.set(-0.20, -0.52, 0.64);
+    shieldPivot.rotation.y = -0.18;
+
+    const frameBarGeo = this._getGeo('warden_shield_bar', () => new THREE.BoxGeometry(0.92, 0.11, 0.10));
+    const topBar = new THREE.Mesh(frameBarGeo, p.primaryArmor);
+    topBar.position.set(0, 0.72, -0.02);
+    shieldPivot.add(topBar);
+    const botBar = new THREE.Mesh(frameBarGeo, p.primaryArmor);
+    botBar.position.set(0, -0.72, -0.02);
+    shieldPivot.add(botBar);
+
+    const sidePostGeo = this._getGeo('warden_shield_post', () => new THREE.BoxGeometry(0.09, 1.44, 0.09));
+    for (let s = -1; s <= 1; s += 2) {
+      const post = new THREE.Mesh(sidePostGeo, p.darkFrame);
+      post.position.set(s * 0.46, 0, -0.02);
+      shieldPivot.add(post);
+    }
+
+    const curvedShieldGeo = this._getGeo('warden_blast_shield', () => {
+      const geo = new THREE.CylinderGeometry(1.18, 1.18, 1.42, 18, 1, true, -0.44, 0.88);
+      geo.translate(0, 0, -1.08);
+      return geo;
+    });
+    const shieldMat = new THREE.MeshStandardMaterial({
+      color: 0xff8c2b,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0xd9480f),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 1.45,
+      transparent: true,
+      opacity: 0.88,
+      roughness: 0.4,
+      metalness: 0.58,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    shieldMat.userData.baseColor = shieldMat.color.clone();
+    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
+    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
+    shieldMat.userData.baseOpacity = 0.88;
+    ownedMaterials.push(shieldMat);
+
+    const shieldMesh = new THREE.Mesh(curvedShieldGeo, shieldMat);
+    shieldMesh.renderOrder = 6;
+    shieldPivot.add(shieldMesh);
+
+    leftArm.add(shieldPivot);
+    bodyGroup.add(leftArm);
+
+    // --- Orbital Remodel: Twin Sweeping Cathedral Capacitor Wing-Pylons & Halo Crest ---
+    const pylonGeo = this._getGeo('warden_wing_pylon', () => new THREE.BoxGeometry(0.12, 1.15, 0.28));
+    const holoWingGeo = this._getGeo('warden_holo_wing', () => new THREE.PlaneGeometry(0.55, 1.05));
+    for (const side of [-1, 1]) {
+      const pylon = new THREE.Mesh(pylonGeo, p.primaryArmor);
+      pylon.position.set(side * 0.62, 2.02, -0.32);
+      pylon.rotation.set(-0.24, side * 0.18, side * -0.46);
+      bodyGroup.add(pylon);
+
+      const hWing = new THREE.Mesh(holoWingGeo, p.holoEnergy);
+      hWing.position.set(side * 0.92, 2.18, -0.42);
+      hWing.rotation.set(-0.2, side * 0.25, side * -0.46);
+      bodyGroup.add(hWing);
+    }
+    const wardenHalo = new THREE.Mesh(
+      this._getGeo('warden_head_halo', () => new THREE.TorusGeometry(0.28, 0.024, 8, 20)),
+      p.accentGlow
+    );
+    wardenHalo.position.set(0, 0.24, -0.10);
+    headGroup.add(wardenHalo);
+
+    return shieldMesh;
+  }
+
+  // ===========================================================================
+  // 9. SIEGE MORTAR (Wide-Stanced Bombardment Walker + Elevated Dorsal Cannon + Laser)
+  // ===========================================================================
+  _buildMortarArtillery(
+    p,
+    ownedMaterials,
+    ownedGeometries,
+    root,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    // Squat Heavy Stabilizer Legs (hip pivot at y = 0.88)
+    const legStrutGeo = this._makeExtrudedPoly(
+      'mortar_leg_strut',
+      [
+        [-0.14, 0.08],
+        [0.14, 0.08],
+        [0.24, -0.46],
+        [0.20, -0.84],
+        [-0.12, -0.84],
+        [-0.18, -0.42],
+      ],
+      0.26,
+      0.03,
+      0.025,
+      2
+    );
+    const padGeo = this._getGeo('mortar_foot_pad', () => new THREE.BoxGeometry(0.38, 0.14, 0.56));
+
+    const buildStabilizer = (legGroup, sideX) => {
+      legGroup.position.set(sideX, 0.88, 0);
+      const strut = new THREE.Mesh(legStrutGeo, p.darkFrame);
+      strut.position.set(sideX > 0 ? 0.08 : -0.08, 0, 0);
+      strut.scale.x = sideX > 0 ? 1 : -1;
+      legGroup.add(strut);
+
+      const armorPlate = new THREE.Mesh(
+        this._getGeo('mortar_leg_plate', () => new THREE.BoxGeometry(0.24, 0.44, 0.34)),
+        p.primaryArmor
+      );
+      armorPlate.position.set(sideX > 0 ? 0.12 : -0.12, -0.34, 0.06);
+      legGroup.add(armorPlate);
+
+      const pad = new THREE.Mesh(padGeo, p.coloredPlate);
+      pad.position.set(sideX > 0 ? 0.14 : -0.14, -0.81, 0.04);
+      legGroup.add(pad);
+      bodyGroup.add(legGroup);
+    };
+    buildStabilizer(leftLeg, 0.42);
+    buildStabilizer(rightLeg, -0.42);
+
+    // Wide Rotating Cylindrical Artillery Turret Hull
+    const waistDrum = new THREE.Mesh(
+      this._getGeo('mortar_waist_drum', () => new THREE.CylinderGeometry(0.46, 0.54, 0.42, 12)),
+      p.darkFrame
+    );
+    waistDrum.position.set(0, 1.04, 0);
+    bodyGroup.add(waistDrum);
+
+    const turretHullGeo = this._makeExtrudedPoly(
+      'mortar_turret_hull',
+      [
+        [-0.56, 0.28],
+        [0.56, 0.28],
+        [0.48, -0.26],
+        [-0.48, -0.26],
+      ],
+      0.64,
+      0.045,
+      0.036,
+      2
+    );
+    const turretHull = new THREE.Mesh(turretHullGeo, p.primaryArmor);
+    turretHull.position.set(0, 1.46, 0);
+    bodyGroup.add(turretHull);
+
+    const glacisShield = new THREE.Mesh(
+      this._getGeo('mortar_glacis', () => new THREE.BoxGeometry(0.84, 0.36, 0.18)),
+      p.coloredPlate
+    );
+    glacisShield.position.set(0, 1.44, 0.36);
+    glacisShield.rotation.x = -0.24;
+    bodyGroup.add(glacisShield);
+
+    // Front Optical Targeting Cyclops Turret (headHeight = 1.56)
+    headGroup.position.set(0, 1.56, 0.38);
+    bodyGroup.add(headGroup);
+
+    const sensorPod = new THREE.Mesh(
+      this._getGeo('mortar_sensor_pod', () => new THREE.CylinderGeometry(0.18, 0.20, 0.22, 12)),
+      p.darkFrame
+    );
+    sensorPod.rotation.x = Math.PI * 0.5;
+    headGroup.add(sensorPod);
+
+    const eyeLens = new THREE.Mesh(
+      this._getGeo('mortar_eye_lens', () => new THREE.SphereGeometry(0.135, 14, 10)),
+      p.weakpointGlow
+    );
+    eyeLens.scale.set(1.0, 1.0, 0.65);
+    eyeLens.position.set(0, 0, 0.09);
+    headGroup.add(eyeLens);
+
+    headAnchor.position.set(0, 0, 0.08);
+    headGroup.add(headAnchor);
+
+    // Right Arm — Elevated Dorsal Heavy Plasma Mortar Barrel
+    rightArm.position.set(-0.18, 1.84, -0.02);
+    const breech = new THREE.Mesh(
+      this._getGeo('mortar_breech', () => new THREE.BoxGeometry(0.36, 0.34, 0.62)),
+      p.darkFrame
+    );
+    breech.rotation.x = -0.22;
+    rightArm.add(breech);
+
+    const mortarTubeGeo = this._makeLathe(
+      'mortar_cannon_tube',
+      [
+        [0.14, 0.0],
+        [0.15, 0.22],
+        [0.125, 0.26],
+        [0.125, 0.78],
+        [0.165, 0.84],
+        [0.165, 0.96],
+        [0.11, 0.96],
+      ],
+      16
+    );
+    const mortarTube = new THREE.Mesh(mortarTubeGeo, p.pistonSteel);
+    mortarTube.rotation.x = Math.PI * 0.5 - 0.22;
+    mortarTube.position.set(0, 0.06, 0.22);
+    rightArm.add(mortarTube);
+
+    const heatCollar = new THREE.Mesh(
+      this._getGeo('mortar_heat_collar', () => new THREE.TorusGeometry(0.155, 0.024, 8, 16)),
+      p.accentGlow
+    );
+    heatCollar.rotation.x = -0.22;
+    heatCollar.position.set(0, 0.22, 0.88);
+    rightArm.add(heatCollar);
+
+    weaponMuzzle.position.set(0, 0.26, 1.14);
+    rightArm.add(weaponMuzzle);
+    bodyGroup.add(rightArm);
+
+    // Left Arm — Heavy Rotary Ammunition Drum Pod
+    leftArm.position.set(0.62, 1.48, -0.04);
+    const ammoDrum = new THREE.Mesh(
+      this._getGeo('mortar_ammo_drum', () => new THREE.CylinderGeometry(0.24, 0.24, 0.44, 12)),
+      p.coloredPlate
+    );
+    ammoDrum.rotation.z = Math.PI * 0.5;
+    leftArm.add(ammoDrum);
+    leftArm.add(
+      new THREE.Mesh(
+        this._makeTube(
+          'mortar_feed_chute',
+          [
+            [-0.12, 0.14, 0.0],
+            [-0.44, 0.34, -0.04],
+            [-0.72, 0.38, -0.04],
+          ],
+          0.045,
+          8,
+          6
+        ),
+        p.cableMat
+      )
+    );
+    bodyGroup.add(leftArm);
+
+    // --- Orbital Remodel: Hovering Anti-Gravity Base Ring, Plasma Mortar Coils & Dorsal Radar Dish ---
+    const hoverRing = new THREE.Mesh(
+      this._getGeo('mortar_hover_ring', () => new THREE.TorusGeometry(0.86, 0.055, 10, 28)),
+      p.accentGlow
+    );
+    hoverRing.rotation.x = Math.PI * 0.5;
+    hoverRing.position.set(0, 0.26, 0);
+    bodyGroup.add(hoverRing);
+
+    const hoverField = new THREE.Mesh(
+      this._getGeo('mortar_hover_field', () => new THREE.CircleGeometry(0.82, 24)),
+      p.holoEnergy
+    );
+    hoverField.rotation.x = -Math.PI * 0.5;
+    hoverField.position.set(0, 0.24, 0);
+    bodyGroup.add(hoverField);
+
+    const coilGeo = this._getGeo('mortar_plasma_coil', () => new THREE.TorusGeometry(0.24, 0.03, 8, 18));
+    for (let c = 0; c < 3; c++) {
+      const coil = new THREE.Mesh(coilGeo, p.accentGlow);
+      coil.position.set(0, 2.08 + c * 0.22, -0.18 - c * 0.14);
+      coil.rotation.x = 0.55;
+      bodyGroup.add(coil);
+    }
+    const radarDish = new THREE.Mesh(
+      this._getGeo('mortar_radar_dish', () => new THREE.ConeGeometry(0.42, 0.18, 12, 1, true)),
+      p.holoEnergy
+    );
+    radarDish.position.set(-0.48, 2.15, -0.35);
+    radarDish.rotation.set(-0.65, 0.35, 0);
+    bodyGroup.add(radarDish);
+
+    // Neon-violet orbital target lock telegraph laser
+    return this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xa855f7, 0xf0abfc);
+  }
+
+  // ===========================================================================
+  // 10. PHANTOM STALKER / VANGUARD ASSASSIN (Sleek Reverse-Jointed Cyber Flanker)
+  // ===========================================================================
+  _buildVanguardAssassin(
+    p,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    // Sleek Reverse-Jointed Sprint Legs (hip pivot at y = 0.98)
+    const thighGeo = this._makeExtrudedPoly(
+      'assassin_thigh',
+      [
+        [-0.07, 0.03],
+        [0.07, 0.03],
+        [0.09, -0.22],
+        [0.055, -0.44],
+        [-0.055, -0.44],
+        [-0.08, -0.22],
+      ],
+      0.13,
+      0.016,
+      0.014,
+      2
+    );
+    const shinGeo = this._makeExtrudedPoly(
+      'assassin_shin',
+      [
+        [-0.055, 0.02],
+        [0.055, 0.02],
+        [0.045, -0.46],
+        [0.028, -0.54],
+        [-0.028, -0.54],
+        [-0.055, -0.24],
+      ],
+      0.11,
+      0.012,
+      0.01,
+      1
+    );
+    const footGeo = this._getGeo('assassin_foot', () => new THREE.BoxGeometry(0.11, 0.07, 0.28));
+
+    const buildLeg = (legGroup, sideX) => {
+      legGroup.position.set(sideX, 0.98, 0);
+      const thigh = new THREE.Mesh(thighGeo, p.primaryArmor);
+      thigh.rotation.x = -0.20;
+      legGroup.add(thigh);
+      const shin = new THREE.Mesh(shinGeo, p.darkFrame);
+      shin.position.set(0, -0.42, 0.06);
+      shin.rotation.x = 0.16;
+      legGroup.add(shin);
+      const foot = new THREE.Mesh(footGeo, p.coloredPlate);
+      foot.position.set(0, -0.945, 0.08);
+      legGroup.add(foot);
+      bodyGroup.add(legGroup);
+    };
+    buildLeg(leftLeg, 0.16);
+    buildLeg(rightLeg, -0.16);
+
+    // Tapered Aero-Hunter Torso + Twin Swept Dorsal Thruster Fins
+    const torsoGeo = this._makeExtrudedPoly(
+      'assassin_torso',
+      [
+        [-0.24, 0.28],
+        [0.24, 0.28],
+        [0.16, -0.06],
+        [0.10, -0.28],
+        [-0.10, -0.28],
+        [-0.16, -0.06],
+      ],
+      0.22,
+      0.024,
+      0.02,
+      2
+    );
+    const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
+    torso.position.set(0, 1.32, 0.02);
+    bodyGroup.add(torso);
+
+    const finGeo = this._makeExtrudedPoly(
+      'assassin_aero_fin',
+      [
+        [0.0, 0.0],
+        [0.34, 0.36],
+        [0.42, 0.18],
+        [0.12, -0.16],
+      ],
+      0.036,
+      0.009,
+      0.008,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const fin = new THREE.Mesh(finGeo, p.coloredPlate);
+      fin.scale.x = side;
+      fin.position.set(side * 0.12, 1.48, -0.12);
+      fin.rotation.y = side * 0.32;
+      fin.rotation.x = -0.18;
+      bodyGroup.add(fin);
+    }
+
+    const spineCore = new THREE.Mesh(
+      this._getGeo('assassin_spine_glow', () => new THREE.BoxGeometry(0.05, 0.38, 0.04)),
+      p.accentGlow
+    );
+    spineCore.position.set(0, 1.34, -0.13);
+    bodyGroup.add(spineCore);
+
+    // Angular Predator Cowl Helm (headHeight = 1.66)
+    headGroup.position.set(0, 1.66, 0.08);
+    bodyGroup.add(headGroup);
+
+    const helmGeo = this._makeExtrudedPoly(
+      'assassin_helm',
+      [
+        [-0.13, -0.09],
+        [0.13, -0.09],
+        [0.15, 0.07],
+        [0.0, 0.19],
+        [-0.15, 0.07],
+      ],
+      0.26,
+      0.018,
+      0.015,
+      1
+    );
+    headGroup.add(new THREE.Mesh(helmGeo, p.darkFrame));
+
+    const predatorVisor = new THREE.Mesh(
+      this._getGeo('assassin_visor', () => new THREE.BoxGeometry(0.22, 0.065, 0.09)),
+      p.weakpointGlow
+    );
+    predatorVisor.position.set(0, 0.02, 0.13);
+    headGroup.add(predatorVisor);
+
+    headAnchor.position.set(0, 0.02, 0.06);
+    headGroup.add(headAnchor);
+
+    // Right Arm — Suppressed Rapid Pulse Carbine
+    const pauldronGeo = this._getGeo('assassin_pauldron', () => new THREE.BoxGeometry(0.16, 0.14, 0.22));
+    rightArm.position.set(-0.28, 1.48, 0.02);
+    rightArm.add(new THREE.Mesh(pauldronGeo, p.coloredPlate));
+    const rArm = new THREE.Mesh(
+      this._getGeo('assassin_arm_strut', () => new THREE.CylinderGeometry(0.045, 0.04, 0.34, 8)),
+      p.pistonSteel
+    );
+    rArm.position.set(-0.02, -0.18, 0.08);
+    rArm.rotation.x = -0.5;
+    rightArm.add(rArm);
+
+    const carbine = new THREE.Group();
+    carbine.position.set(-0.02, -0.28, 0.28);
+    carbine.add(
+      new THREE.Mesh(
+        this._getGeo('assassin_carbine_body', () => new THREE.BoxGeometry(0.08, 0.11, 0.44)),
+        p.darkFrame
+      )
+    );
+    const suppressor = new THREE.Mesh(
+      this._getGeo('assassin_suppressor', () => new THREE.CylinderGeometry(0.028, 0.028, 0.28, 8)),
+      p.pistonSteel
+    );
+    suppressor.rotation.x = Math.PI * 0.5;
+    suppressor.position.set(0, 0.01, 0.34);
+    carbine.add(suppressor);
+    weaponMuzzle.position.set(0, 0.01, 0.50);
+    carbine.add(weaponMuzzle);
+    rightArm.add(carbine);
+    bodyGroup.add(rightArm);
+
+    // Left Arm — Long Thermal Wrist-Blade + Forearm Pulse Emitter
+    leftArm.position.set(0.28, 1.48, 0.02);
+    leftArm.add(new THREE.Mesh(pauldronGeo, p.coloredPlate));
+    const lArm = new THREE.Mesh(
+      this._getGeo('assassin_arm_strut', () => new THREE.CylinderGeometry(0.045, 0.04, 0.34, 8)),
+      p.pistonSteel
+    );
+    lArm.position.set(0.02, -0.18, 0.08);
+    lArm.rotation.x = -0.5;
+    leftArm.add(lArm);
+
+    const bladeGeo = this._makeExtrudedPoly(
+      'assassin_wrist_blade',
+      [
+        [0.0, 0.03],
+        [0.54, 0.0],
+        [0.06, -0.06],
+      ],
+      0.024,
+      0.005,
+      0.005,
+      1
+    );
+    const blade = new THREE.Mesh(bladeGeo, p.accentGlow);
+    blade.rotation.y = -Math.PI * 0.5;
+    blade.position.set(0.05, -0.28, 0.16);
+    leftArm.add(blade);
+
+    const leftWeaponMuzzle = new THREE.Object3D();
+    leftWeaponMuzzle.position.set(0.02, -0.28, 0.44);
+    leftArm.add(leftWeaponMuzzle);
+    bodyGroup.add(leftArm);
+
+    // --- Orbital Remodel: 4 Sweeping Holographic Wing-Blades, Forearm Plasma Katanas & Cyber Horns ---
+    const wingBladeGeo = this._getGeo('assassin_holo_wing', () => new THREE.PlaneGeometry(0.22, 1.25));
+    for (const side of [-1, 1]) {
+      for (let w = 0; w < 2; w++) {
+        const blade = new THREE.Mesh(wingBladeGeo, p.holoEnergy);
+        blade.position.set(side * (0.42 + w * 0.28), 1.62 + w * 0.18, -0.34 - w * 0.12);
+        blade.rotation.set(-0.35 - w * 0.15, side * 0.25, side * (-0.52 - w * 0.28));
+        bodyGroup.add(blade);
+      }
+      const horn = new THREE.Mesh(
+        this._getGeo('assassin_cyber_horn', () => new THREE.ConeGeometry(0.035, 0.28, 5)),
+        p.accentGlow
+      );
+      horn.position.set(side * 0.12, 0.24, -0.04);
+      horn.rotation.set(-0.45, 0, side * -0.28);
+      headGroup.add(horn);
+    }
+    const katanaGeo = this._getGeo('assassin_plasma_katana', () => new THREE.BoxGeometry(0.03, 0.08, 0.78));
+    for (const arm of [leftArm, rightArm]) {
+      const katana = new THREE.Mesh(katanaGeo, p.holoEnergy);
+      katana.position.set(0, -0.24, 0.56);
+      arm.add(katana);
+    }
+
+    return leftWeaponMuzzle;
+  }
+
+  // ===========================================================================
+  // 11. AEGIS-IX // ORBITAL OVERLORD (4.5m Stage-10 Final Boss Dreadnought)
+  // ===========================================================================
+  _buildAegisOverlordBoss(
+    p,
+    ownedMaterials,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle,
+    rotors,
+    coreRings
+  ) {
+    // Colossal Dreadnought Walker Legs (hip pivot at y = 2.08)
+    const thighGeo = this._makeExtrudedPoly(
+      'overlord_thigh',
+      [
+        [-0.28, 0.16],
+        [0.28, 0.16],
+        [0.34, -0.38],
+        [0.26, -0.92],
+        [-0.26, -0.92],
+        [-0.34, -0.38],
+      ],
+      0.56,
+      0.055,
+      0.048,
+      2
+    );
+    const shinGeo = this._makeExtrudedPoly(
+      'overlord_shin',
+      [
+        [-0.26, 0.04],
+        [0.26, 0.04],
+        [0.32, -0.82],
+        [0.24, -1.04],
+        [-0.24, -1.04],
+        [-0.32, -0.82],
+      ],
+      0.50,
+      0.05,
+      0.042,
+      2
+    );
+    const clawToeGeo = this._makeExtrudedPoly(
+      'overlord_toe',
+      [
+        [-0.13, -0.04],
+        [0.13, -0.04],
+        [0.10, 0.48],
+        [-0.10, 0.48],
+      ],
+      0.24,
+      0.025,
+      0.02,
+      1
+    );
+
+    const buildBossLeg = (legGroup, sideX) => {
+      legGroup.position.set(sideX, 2.08, 0);
+      const thigh = new THREE.Mesh(thighGeo, p.primaryArmor);
+      thigh.rotation.x = -0.2;
+      legGroup.add(thigh);
+
+      const kneeRing = new THREE.Mesh(
+        this._getGeo('overlord_knee_ring', () => new THREE.TorusGeometry(0.26, 0.036, 8, 16)),
+        p.accentGlow
+      );
+      kneeRing.rotation.y = Math.PI * 0.5;
+      kneeRing.position.set(sideX > 0 ? 0.28 : -0.28, -0.90, 0.16);
+      legGroup.add(kneeRing);
+
+      const shin = new THREE.Mesh(shinGeo, p.coloredPlate);
+      shin.position.set(0, -0.94, 0.12);
+      shin.rotation.x = 0.12;
+      legGroup.add(shin);
+
+      const footHub = new THREE.Mesh(
+        this._getGeo('overlord_foot_hub', () => new THREE.CylinderGeometry(0.34, 0.42, 0.24, 8)),
+        p.darkFrame
+      );
+      footHub.position.set(0, -1.96, 0.02);
+      legGroup.add(footHub);
+
+      for (const ang of [-0.55, 0.0, 0.55]) {
+        const toe = new THREE.Mesh(clawToeGeo, p.primaryArmor);
+        toe.rotation.x = Math.PI * 0.5;
+        toe.rotation.z = -ang;
+        toe.position.set(Math.sin(ang) * 0.30, -1.96, 0.16 + Math.cos(ang) * 0.12);
+        legGroup.add(toe);
+      }
+      bodyGroup.add(legGroup);
+    };
+    buildBossLeg(leftLeg, 0.68);
+    buildBossLeg(rightLeg, -0.68);
+
+    // Armored Pelvis & Tiered Orbital Dreadnought Torso
+    const pelvis = new THREE.Mesh(
+      this._getGeo('overlord_pelvis', () => new THREE.BoxGeometry(1.48, 0.58, 0.78)),
+      p.darkFrame
+    );
+    pelvis.position.set(0, 2.16, 0);
+    bodyGroup.add(pelvis);
+
+    const torsoGeo = this._makeExtrudedPoly(
+      'overlord_torso',
+      [
+        [-1.08, 0.66],
+        [-0.70, 0.90],
+        [0.70, 0.90],
+        [1.08, 0.66],
+        [0.92, -0.28],
+        [0.60, -0.66],
+        [-0.60, -0.66],
+        [-0.92, -0.28],
+      ],
+      1.0,
+      0.09,
+      0.075,
+      2
+    );
+    const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
+    torso.position.set(0, 3.12, 0.04);
+    bodyGroup.add(torso);
+
+    // Chest Orbital Core Turbine + Armored Ribs
+    const coreDisc = new THREE.Mesh(
+      this._getGeo('overlord_chest_core', () => new THREE.CylinderGeometry(0.34, 0.34, 0.24, 16)),
+      p.accentGlow
+    );
+    coreDisc.rotation.x = Math.PI * 0.5;
+    coreDisc.position.set(0, 3.12, 0.56);
+    bodyGroup.add(coreDisc);
+
+    const grillGeo = this._getGeo('overlord_chest_rib', () => new THREE.BoxGeometry(0.76, 0.05, 0.06));
+    for (let g = -2; g <= 2; g++) {
+      const bar = new THREE.Mesh(grillGeo, p.darkFrame);
+      bar.position.set(0, 3.12 + g * 0.11, 0.69);
+      bodyGroup.add(bar);
+    }
+
+    // Twin Swept Dreadnought Wing-Thruster Pylons + Dorsal Exhaust Chimneys
+    const wingPylonGeo = this._makeExtrudedPoly(
+      'overlord_wing_pylon',
+      [
+        [0.0, 0.0],
+        [0.86, 0.78],
+        [1.12, 0.34],
+        [0.24, -0.44],
+      ],
+      0.16,
+      0.026,
+      0.022,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const wing = new THREE.Mesh(wingPylonGeo, p.coloredPlate);
+      wing.scale.x = side;
+      wing.position.set(side * 0.68, 3.46, -0.44);
+      wing.rotation.y = side * 0.28;
+      bodyGroup.add(wing);
+
+      const thruster = new THREE.Mesh(
+        this._getGeo('overlord_wing_thruster', () => new THREE.CylinderGeometry(0.18, 0.24, 0.85, 10)),
+        p.darkFrame
+      );
+      thruster.position.set(side * 0.52, 3.72, -0.66);
+      thruster.rotation.x = -0.22;
+      bodyGroup.add(thruster);
+    }
+
+    // Winged Crown Helm housing Furnace Sensor Core Weakpoint (headHeight = 3.85)
+    headGroup.position.set(0, 3.85, 0.18);
+    bodyGroup.add(headGroup);
+
+    const cranialCore = new THREE.Mesh(
+      this._getGeo('overlord_cranial_core', () => new THREE.SphereGeometry(0.42, 16, 12)),
+      p.weakpointGlow
+    );
+    headGroup.add(cranialCore);
+
+    const hornGeo = this._makeExtrudedPoly(
+      'overlord_crown_horn',
+      [
+        [-0.08, -0.24],
+        [0.12, -0.18],
+        [0.28, 0.54],
+        [0.04, 0.64],
+        [-0.08, 0.22],
+      ],
+      0.16,
+      0.022,
+      0.018,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const horn = new THREE.Mesh(hornGeo, p.coloredPlate);
+      horn.position.set(side * 0.44, 0.14, -0.02);
+      horn.scale.x = side;
+      horn.rotation.y = side * 0.24;
+      headGroup.add(horn);
+    }
+
+    const crownRing = new THREE.Mesh(
+      this._getGeo('overlord_crown_ring', () => new THREE.TorusGeometry(0.48, 0.048, 10, 22)),
+      p.darkFrame
+    );
+    crownRing.rotation.x = Math.PI * 0.5;
+    crownRing.position.set(0, 0.04, 0);
+    headGroup.add(crownRing);
+
+    headAnchor.position.set(0, 0.06, 0.08);
+    headGroup.add(headAnchor);
+
+    // Twin Heavy Dual-Rail Siege Cannons (weaponMuzzle & leftWeaponMuzzle)
+    const pauldronGeo = this._makeExtrudedPoly(
+      'overlord_pauldron',
+      [
+        [-0.40, 0.36],
+        [0.34, 0.30],
+        [0.46, -0.26],
+        [0.14, -0.44],
+        [-0.36, -0.20],
+      ],
+      0.74,
+      0.055,
+      0.046,
+      2
+    );
+    const cannonHousingGeo = this._getGeo('overlord_gun_housing', () => new THREE.BoxGeometry(0.54, 0.48, 0.96));
+    const railBarrelGeo = this._getGeo('overlord_rail_barrel', () => new THREE.BoxGeometry(0.11, 0.11, 1.12));
+    const clampDiskGeo = this._getGeo('overlord_rotor_clamp', () => new THREE.CylinderGeometry(0.22, 0.22, 0.08, 10));
+
+    const leftWeaponMuzzle = new THREE.Object3D();
+
+    const buildOverlordArm = (armGroup, side, muzzleObj) => {
+      armGroup.position.set(side * 1.36, 3.42, 0.08);
+      const pauldron = new THREE.Mesh(pauldronGeo, p.coloredPlate);
+      pauldron.position.set(side * 0.14, 0.14, 0);
+      pauldron.scale.x = -side;
+      armGroup.add(pauldron);
+
+      const upper = new THREE.Mesh(
+        this._getGeo('overlord_upper_arm', () => new THREE.CylinderGeometry(0.20, 0.18, 0.78, 10)),
+        p.pistonSteel
+      );
+      upper.position.set(side * 0.12, -0.40, 0.08);
+      upper.rotation.x = -0.26;
+      armGroup.add(upper);
+
+      const pod = new THREE.Group();
+      pod.position.set(side * 0.14, -0.72, 0.58);
+      pod.add(new THREE.Mesh(cannonHousingGeo, p.primaryArmor));
+
+      // Twin heavy magnetic siege rails
+      for (const rx of [-0.14, 0.14]) {
+        const rail = new THREE.Mesh(railBarrelGeo, p.darkFrame);
+        rail.position.set(rx, 0.02, 0.88);
+        pod.add(rail);
+      }
+
+      // Central spinning internal accelerator core (rotors)
+      const rotorCluster = new THREE.Group();
+      rotorCluster.position.set(0, 0.02, 0.55);
+      const disc = new THREE.Mesh(clampDiskGeo, p.accentGlow);
+      disc.rotation.x = Math.PI * 0.5;
+      disc.position.z = 0.62;
+      rotorCluster.add(disc);
+      const coreRod = new THREE.Mesh(
+        this._getGeo('overlord_rotor_rod', () => new THREE.CylinderGeometry(0.06, 0.06, 1.05, 8)),
+        p.pistonSteel
+      );
+      coreRod.rotation.x = Math.PI * 0.5;
+      coreRod.position.z = 0.32;
+      rotorCluster.add(coreRod);
+      pod.add(rotorCluster);
+      rotors.push(rotorCluster);
+
+      muzzleObj.position.set(0, 0.02, 1.56);
+      pod.add(muzzleObj);
+      armGroup.add(pod);
+      bodyGroup.add(armGroup);
+    };
+
+    buildOverlordArm(rightArm, -1, weaponMuzzle);
+    buildOverlordArm(leftArm, 1, leftWeaponMuzzle);
+
+    // 4 Rotating Gyroscopic Orbital Armor & Furnace Rings (coreRings)
+    const ringConfigs = [
+      { r: 1.85, tube: 0.055, tiltX: 0.42, tiltZ: 0.30, y: 3.12, color: 0x5c4b42, emissive: 0xf09d38 },
+      { r: 2.12, tube: 0.050, tiltX: -0.55, tiltZ: 0.62, y: 3.14, color: 0x7c2d12, emissive: 0xff3b1f },
+      { r: 2.36, tube: 0.044, tiltX: 0.78, tiltZ: -0.45, y: 3.10, color: 0x4f443d, emissive: 0xff6b1a },
+      { r: 2.60, tube: 0.038, tiltX: -0.28, tiltZ: -0.72, y: 3.12, color: 0x3b404c, emissive: 0xe8923a },
+    ];
+    const finGeo = this._getGeo('overlord_ring_fin', () => new THREE.BoxGeometry(0.20, 0.14, 0.18));
+    for (let i = 0; i < ringConfigs.length; i++) {
+      const cfg = ringConfigs[i];
+      const ringGroup = new THREE.Group();
+      ringGroup.position.set(0, cfg.y, 0.04);
+      ringGroup.rotation.set(cfg.tiltX, i * 0.95, cfg.tiltZ);
+      ringGroup.userData.baseRotation = new THREE.Euler(cfg.tiltX, i * 0.95, cfg.tiltZ);
+
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        emissive: new THREE.Color(cfg.emissive),
+        emissiveIntensity: 1.6,
+        roughness: 0.36,
+        metalness: 0.74,
+      });
+      ringMat.userData.baseColor = ringMat.color.clone();
+      ringMat.userData.baseEmissive = ringMat.emissive.clone();
+      ringMat.userData.baseEmissiveIntensity = ringMat.emissiveIntensity;
+      ownedMaterials.push(ringMat);
+
+      const ringGeo = this._getGeo(`overlord_orbit_ring_${i}`, () => {
+        return new THREE.TorusGeometry(cfg.r, cfg.tube, 8, 36);
+      });
+      ringGroup.add(new THREE.Mesh(ringGeo, ringMat));
+
+      for (let n = 0; n < 6; n++) {
+        const ang = (n / 6) * Math.PI * 2;
+        const fin = new THREE.Mesh(finGeo, n % 2 === 0 ? p.darkFrame : ringMat);
+        fin.position.set(Math.cos(ang) * cfg.r, Math.sin(ang) * cfg.r, 0);
+        fin.rotation.z = ang;
+        ringGroup.add(fin);
+      }
+
+      ringGroup.userData.ringMaterial = ringMat;
+      bodyGroup.add(ringGroup);
+      coreRings.push(ringGroup);
+    }
+
+    // Phase-Surge Heated Orbital Blast Shield Barrier
+    const bossShieldGeo = this._getGeo('overlord_phase_shield', () => {
+      return new THREE.CylinderGeometry(1.94, 2.02, 2.5, 24, 1, true);
+    });
+    const bossShieldMat = new THREE.MeshStandardMaterial({
+      color: 0xff8c2b,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0xe63916),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 2.0,
+      transparent: true,
+      opacity: 0.0,
+      roughness: 0.38,
+      metalness: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    bossShieldMat.userData.baseColor = bossShieldMat.color.clone();
+    bossShieldMat.userData.baseEmissive = bossShieldMat.emissive.clone();
+    bossShieldMat.userData.baseEmissiveIntensity = bossShieldMat.emissiveIntensity;
+    bossShieldMat.userData.baseOpacity = 0.72;
+    ownedMaterials.push(bossShieldMat);
+
+    const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
+    shieldMesh.position.set(0, 2.28, 0.04);
     shieldMesh.visible = false;
     shieldMesh.renderOrder = 7;
     bodyGroup.add(shieldMesh);

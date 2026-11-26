@@ -139,6 +139,9 @@ class Interactables {
     this._jumpRingMats = [];
     this._barrels = [];
     this._activeBarrels = [];
+    this._gimmickPylons = [];
+    this._activeGimmickConfig = { empPylons: false, orbitalSweep: false, shieldRelays: false };
+    this._orbitalSweepTimer = 5.5;
     this._shockwaves = [];
     this._pickups = [];
 
@@ -212,9 +215,10 @@ class Interactables {
       captureSpeedMultiplier: 1.0,
     };
 
-    // Build all interactive systems + Step 2 Dynamic Drops & Boss Hazard Pools
+    // Build all interactive systems + Step 2 Dynamic Drops & Boss Hazard Pools + Stage 6-10 Gimmick Pylons
     this._buildJumpPads();
     this._buildBarrels();
+    this._buildGimmickPylons();
     this._buildShockwavePool();
     this._buildPickups();
     this._buildControlZone();
@@ -565,6 +569,259 @@ class Interactables {
   }
 
   /**
+   * Stage 6-10 Aegis Citadel Tactical Gimmick Pylons:
+   * - EMP Overload Pylons: 14m piercing shockwave, strips shields, staggers foes, +10% Beacon upload
+   * - Aegis Shield Relays: sustain hostiles while intact; shattering breaks boss barriers & drops shield cell
+   * @private
+   */
+  _buildGimmickPylons() {
+    const mapIdx = typeof this.arenaData.mapIndex === 'number' ? this.arenaData.mapIndex : 0;
+    if (mapIdx < 3) return;
+
+    const layoutByMap = {
+      3: {
+        emp: [{ x: -12.5, y: 0, z: -4.5 }, { x: 12.5, y: 0, z: -4.5 }],
+        relay: [{ x: -12.5, y: 0, z: 5.5 }, { x: 12.5, y: 0, z: 5.5 }],
+      },
+      4: {
+        emp: [{ x: -8.5, y: 0, z: -10.5 }, { x: 8.5, y: 0, z: -10.5 }],
+        relay: [{ x: -8.5, y: 0, z: 10.5 }, { x: 8.5, y: 0, z: 10.5 }],
+      },
+      5: {
+        emp: [{ x: -13.5, y: 0, z: -5.0 }, { x: 13.5, y: 0, z: -5.0 }],
+        relay: [{ x: -13.5, y: 0, z: 5.0 }, { x: 13.5, y: 0, z: 5.0 }],
+      },
+    };
+    const cfg = layoutByMap[mapIdx] || layoutByMap[3];
+
+    const baseGeo = this._trackGeo(new THREE.CylinderGeometry(0.54, 0.68, 0.38, 8));
+    const stemGeo = this._trackGeo(new THREE.CylinderGeometry(0.18, 0.28, 1.55, 8));
+    const coreGeo = this._trackGeo(new THREE.OctahedronGeometry(0.36, 0));
+    const haloGeo = this._trackGeo(new THREE.TorusGeometry(0.52, 0.045, 6, 20));
+    haloGeo.rotateX(Math.PI * 0.5);
+    const finGeo = this._trackGeo(new THREE.BoxGeometry(0.08, 0.92, 0.22));
+
+    const steelMat = this._trackMat(
+      new THREE.MeshStandardMaterial({ color: 0x3f434a, metalness: 0.78, roughness: 0.44 })
+    );
+    const darkArmorMat = this._trackMat(
+      new THREE.MeshStandardMaterial({ color: 0x22262e, metalness: 0.65, roughness: 0.58 })
+    );
+
+    const self = this;
+    const makePylon = (sp, gimmickKind, idx) => {
+      const isEmp = gimmickKind === 'emp_pylon';
+      const coreColorHex = isEmp ? 0xfbbf24 : 0x38bdf8;
+      const emissiveHex = isEmp ? 0xf59e0b : 0x0284c7;
+      const maxHp = isEmp ? 95 : 125;
+
+      const coreMat = this._trackMat(
+        new THREE.MeshStandardMaterial({
+          color: coreColorHex,
+          emissive: new THREE.Color(emissiveHex),
+          emissiveIntensity: 1.85,
+          roughness: 0.22,
+          metalness: 0.28,
+        })
+      );
+      const haloMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: coreColorHex,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+
+      const group = new THREE.Group();
+      const groundY = this.collisionWorld
+        ? this.collisionWorld.getGroundHeightAt(sp.x, sp.z, (sp.y || 0) + 1.5)
+        : sp.y || 0;
+      group.position.set(sp.x, groundY, sp.z);
+      group.visible = false;
+
+      const base = new THREE.Mesh(baseGeo, darkArmorMat);
+      base.position.y = 0.19;
+      base.castShadow = true;
+      base.receiveShadow = true;
+      group.add(base);
+
+      const stem = new THREE.Mesh(stemGeo, steelMat);
+      stem.position.y = 0.96;
+      stem.castShadow = true;
+      group.add(stem);
+
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.y = 1.92;
+      group.add(core);
+
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      halo.position.y = 1.92;
+      group.add(halo);
+
+      for (let f = 0; f < 3; f++) {
+        const a = (f * Math.PI * 2) / 3;
+        const fin = new THREE.Mesh(finGeo, darkArmorMat);
+        fin.position.set(Math.cos(a) * 0.42, 1.08, Math.sin(a) * 0.42);
+        fin.rotation.y = -a;
+        group.add(fin);
+      }
+
+      this.root.add(group);
+
+      const position = new THREE.Vector3(sp.x, groundY, sp.z);
+      const center = new THREE.Vector3(sp.x, groundY + 1.55, sp.z);
+      const head = new THREE.Vector3(sp.x, groundY + 1.92, sp.z);
+      const hitSphere = {
+        center: new THREE.Vector3(sp.x, groundY + 1.55, sp.z),
+        radius: 0.82,
+        isHead: false,
+      };
+      const hitSpheres = [hitSphere];
+      const radius = isEmp ? 14.0 : 16.0;
+      const damage = isEmp ? 110 : 140;
+
+      const pylon = {
+        id: `${gimmickKind}_${idx}`,
+        gimmickKind,
+        enabled: false,
+        isAlive: false,
+        isEnemy: false,
+        hp: maxHp,
+        maxHp,
+        position,
+        center,
+        aimPoint: head,
+        group,
+        core,
+        halo,
+        coreMat,
+        haloMat,
+        respawnTimer: 0,
+        hitFlashTimer: 0,
+        spawnPopTimer: 0,
+        phase: idx * 1.3 + (isEmp ? 0 : 0.7),
+        _hitSphere: hitSphere,
+        _hitSpheres: hitSpheres,
+        _explodePayload: {
+          position: center,
+          radius,
+          damage,
+          barrelId: `${gimmickKind}_${idx}`,
+          gimmickType: gimmickKind,
+        },
+        getCenterPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(center);
+        },
+        getHeadPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(head);
+        },
+        getHitSpheres() {
+          return hitSpheres;
+        },
+        applyDamage(amount) {
+          if (!pylon.enabled || !pylon.isAlive || !Number.isFinite(amount) || amount <= 0) {
+            return { dealt: 0, killed: false, blockedByShield: false };
+          }
+          const dealt = Math.min(pylon.hp, amount);
+          pylon.hp -= dealt;
+          pylon.hitFlashTimer = 0.14;
+          if (pylon.hp <= 0) {
+            pylon.hp = 0;
+            pylon.isAlive = false;
+            self._triggerGimmickDetonation(pylon);
+            return { dealt, killed: true, blockedByShield: false };
+          }
+          return { dealt, killed: false, blockedByShield: false };
+        },
+      };
+
+      this._gimmickPylons.push(pylon);
+    };
+
+    for (let i = 0; i < cfg.emp.length; i++) {
+      makePylon(cfg.emp[i], 'emp_pylon', i);
+    }
+    for (let i = 0; i < cfg.relay.length; i++) {
+      makePylon(cfg.relay[i], 'shield_relay', i);
+    }
+  }
+
+  /**
+   * Trigger Stage 6-10 EMP Overload Pylon or Aegis Shield Relay tactical detonation.
+   * @private
+   */
+  _triggerGimmickDetonation(pylon) {
+    const isEmp = pylon.gimmickKind === 'emp_pylon';
+    const radius = isEmp ? 14.0 : 16.0;
+    const damage = isEmp ? 110 : 140;
+    const enemies = this._lastEnemies;
+    const blastPos = pylon.center;
+
+    pylon.isAlive = false;
+    pylon.hp = 0;
+    pylon.group.visible = false;
+    pylon.respawnTimer = 20.0;
+
+    this._spawnShockwave(blastPos);
+
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.BARREL_EXPLODED, pylon._explodePayload);
+      this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+        kicker: isEmp ? 'EMP 파일런 과부하' : '이지스 쉴드 중계기 파괴',
+        title: isEmp ? '전자기 충격파 발동!' : '적 방어 재생 차단!',
+        subtitle: isEmp
+          ? '주변 적 방어막 붕괴 및 0.75초 감전 경직'
+          : '모든 보스/적 방어막 해제 및 아군 실드 셀 보급',
+        duration: 2.4,
+      });
+    }
+
+    if (enemies && enemies.length > 0) {
+      for (let i = 0; i < enemies.length; i++) {
+        const enemy = enemies[i];
+        if (!enemy || enemy.isAlive === false || enemy.alive === false) continue;
+
+        if (!isEmp && enemy._phaseShieldTimer > 0) {
+          enemy._phaseShieldTimer = 0;
+        }
+
+        this._getEntityCenter(enemy, this._tmpVecA);
+        const dist = blastPos.distanceTo(this._tmpVecA);
+        if (dist > radius) continue;
+
+        enemy._phaseShieldTimer = 0;
+        if (typeof enemy.applyDamage === 'function') {
+          this._tmpKnockback.subVectors(this._tmpVecA, blastPos);
+          if (this._tmpKnockback.lengthSq() > 1e-4) this._tmpKnockback.normalize();
+          else this._tmpKnockback.set(0, 1, 0);
+
+          const falloff = Math.max(0.45, 1 - (dist / radius) * 0.55);
+          enemy.applyDamage(damage * falloff, this._tmpVecA, false, this._tmpKnockback, {
+            source: pylon.gimmickKind,
+            piercing: true,
+            isExplosion: true,
+          });
+        }
+        if (isEmp && enemy.isAlive && !enemy.archetype?.isBoss) {
+          enemy.state = 'stagger';
+          enemy._staggerTimer = Math.max(enemy._staggerTimer || 0, 0.75);
+        }
+      }
+    }
+
+    if (isEmp) {
+      if (this._zone.active && !this._zone.captured) {
+        this.addZoneProgress(0.10);
+      }
+    } else {
+      this.spawnItemDrop(pylon.position, 'shield', 30);
+      this.spawnGoldDrop(pylon.position, 25);
+    }
+  }
+
+  /**
    * Pre-allocated expanding thermite fireball shockwave pool.
    * @private
    */
@@ -573,7 +830,7 @@ class Interactables {
     const ringGeo = this._trackGeo(new THREE.TorusGeometry(1, 0.12, 8, 28));
     ringGeo.rotateX(Math.PI * 0.5);
 
-    const poolSize = Math.max(4, this._barrels.length);
+    const poolSize = Math.max(6, this._barrels.length + this._gimmickPylons.length);
     for (let i = 0; i < poolSize; i++) {
       const sphereMat = this._trackMat(
         new THREE.MeshBasicMaterial({
@@ -1135,6 +1392,7 @@ class Interactables {
 
     this._updateJumpPads(t);
     this._updateBarrels(safeDt, t);
+    this._updateGimmicks(safeDt, t, playerController, enemies);
     this._updateShockwaves(safeDt);
     this._updatePickups(safeDt, t, playerController, weaponSystem);
     this._updateControlZone(safeDt, t, playerController, enemies);
@@ -1327,13 +1585,13 @@ class Interactables {
       });
     }
 
-    // Boss Missile Telegraph Strikes (floor ring + expanding fill -> explosion)
+    // Boss Missile & Orbital Sweep Telegraph Strikes (floor ring + expanding fill -> explosion)
     this._bossMissiles = [];
     const mOuterGeo = this._trackGeo(new THREE.RingGeometry(2.9, 3.25, 28));
     mOuterGeo.rotateX(-Math.PI * 0.5);
     const mFillGeo = this._trackGeo(new THREE.CircleGeometry(3.15, 28));
     mFillGeo.rotateX(-Math.PI * 0.5);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       const group = new THREE.Group();
       group.visible = false;
       const outerMat = this._trackMat(
@@ -1365,6 +1623,8 @@ class Interactables {
         fuse: 1.25,
         radius: 3.3,
         damage: 26,
+        hitEnemies: false,
+        enemyDamage: 0,
         pos: new THREE.Vector3(),
         group,
         fill,
@@ -1560,7 +1820,7 @@ class Interactables {
     return true;
   }
 
-  spawnBossMissile(targetPos) {
+  spawnBossMissile(targetPos, opts = null) {
     if (!this._bossMissiles) return;
     for (let i = 0; i < this._bossMissiles.length; i++) {
       const m = this._bossMissiles[i];
@@ -1570,6 +1830,10 @@ class Interactables {
           : 0;
         m.active = true;
         m.age = 0;
+        m.fuse = opts && Number.isFinite(opts.fuse) ? opts.fuse : 1.25;
+        m.damage = opts && Number.isFinite(opts.damage) ? opts.damage : 26;
+        m.hitEnemies = Boolean(opts && opts.hitEnemies);
+        m.enemyDamage = opts && Number.isFinite(opts.enemyDamage) ? opts.enemyDamage : 0;
         m.pos.set(targetPos.x, floorY + 0.08, targetPos.z);
         m.group.position.copy(m.pos);
         m.fill.scale.setScalar(0.05);
@@ -1729,8 +1993,9 @@ class Interactables {
       }
     }
 
-    // 3. Boss Missile Telegraph Strikes
+    // 3. Boss Missile & Orbital Sweep Telegraph Strikes
     if (this._bossMissiles) {
+      const enemies = this._lastEnemies;
       for (let i = 0; i < this._bossMissiles.length; i++) {
         const m = this._bossMissiles[i];
         if (!m.active) continue;
@@ -1751,6 +2016,21 @@ class Interactables {
             const dy = Math.abs(playerController.position.y - m.pos.y);
             if (dx * dx + dz * dz <= m.radius * m.radius && dy < 2.6) {
               playerController.applyDamage(m.damage, m.pos);
+            }
+          }
+          if (m.hitEnemies && m.enemyDamage > 0 && enemies && enemies.length > 0) {
+            const rSq = m.radius * m.radius;
+            for (let ei = 0; ei < enemies.length; ei++) {
+              const e = enemies[ei];
+              if (!e || !e.isAlive || typeof e.applyDamage !== 'function') continue;
+              const edx = e.position.x - m.pos.x;
+              const edz = e.position.z - m.pos.z;
+              if (edx * edx + edz * edz <= rSq) {
+                e.applyDamage(m.enemyDamage, e.center || e.position, false, null, {
+                  source: 'orbital_sweep',
+                  isExplosion: true,
+                });
+              }
             }
           }
         }
@@ -1840,6 +2120,72 @@ class Interactables {
           b.spawnPopTimer = 0.3;
           b.group.scale.setScalar(0.2);
           b.group.visible = true;
+        }
+      }
+    }
+  }
+
+  /**
+   * Update Stage 6-10 EMP Pylons, Shield Relays, and periodic Orbital Sweep Strikes.
+   * @private
+   */
+  _updateGimmicks(dt, t, playerController, enemies) {
+    for (let i = 0; i < this._gimmickPylons.length; i++) {
+      const p = this._gimmickPylons[i];
+      if (!p.enabled) continue;
+
+      if (p.isAlive) {
+        p.core.rotation.y += dt * 1.9;
+        p.core.position.y = 1.92 + Math.sin(t * 3.2 + p.phase) * 0.08;
+        p.halo.rotation.z += dt * 1.35;
+
+        if (p.hitFlashTimer > 0) {
+          p.hitFlashTimer = Math.max(0, p.hitFlashTimer - dt);
+          const f = p.hitFlashTimer / 0.14;
+          p.coreMat.emissiveIntensity = 1.9 + f * 3.0;
+        } else {
+          p.coreMat.emissiveIntensity = 1.7 + 0.38 * Math.sin(t * 4.6 + p.phase);
+        }
+
+        if (p.spawnPopTimer > 0) {
+          p.spawnPopTimer = Math.max(0, p.spawnPopTimer - dt);
+          const prog = 1 - p.spawnPopTimer / 0.35;
+          p.group.scale.setScalar(0.2 + 0.8 * (1 - (1 - prog) * (1 - prog)));
+        }
+      } else {
+        p.respawnTimer -= dt;
+        if (p.respawnTimer <= 0) {
+          p.hp = p.maxHp;
+          p.isAlive = true;
+          p.hitFlashTimer = 0;
+          p.spawnPopTimer = 0.35;
+          p.group.scale.setScalar(0.2);
+          p.group.visible = true;
+        }
+      }
+    }
+
+    // Periodic Orbital Sweep Barrage (lures enemies into telegraphed strike zones too!)
+    if (this._activeGimmickConfig.orbitalSweep && playerController && playerController.isAlive) {
+      this._orbitalSweepTimer -= dt;
+      if (this._orbitalSweepTimer <= 0) {
+        this._orbitalSweepTimer = 7.2;
+        const pPos = playerController.position;
+        this.spawnBossMissile(
+          { x: pPos.x + (Math.random() - 0.5) * 3.2, y: pPos.y, z: pPos.z + (Math.random() - 0.5) * 3.2 },
+          { fuse: 1.55, damage: 24, hitEnemies: true, enemyDamage: 115 }
+        );
+        if (enemies && enemies.length > 0) {
+          let extra = 0;
+          for (let ei = 0; ei < enemies.length && extra < 2; ei++) {
+            const e = enemies[ei];
+            if (!e || !e.isAlive) continue;
+            this.spawnBossMissile(
+              { x: e.position.x, y: e.position.y, z: e.position.z },
+              { fuse: 1.55, damage: 24, hitEnemies: true, enemyDamage: 115 }
+            );
+            extra++;
+          }
         }
       }
     }
@@ -2137,13 +2483,60 @@ class Interactables {
   // ---------------------------------------------------------------------------
 
   /**
-   * Return a zero-allocation array of all currently alive destructible barrel targets.
+   * Configure Stage 6-10 wave gimmicks (EMP Pylons, Shield Relays, Orbital Sweeps).
+   * @param {{ empPylons?: boolean, orbitalSweep?: boolean, shieldRelays?: boolean }|null} gimmick
+   */
+  setWaveGimmicks(gimmick) {
+    const cfg = gimmick || {};
+    this._activeGimmickConfig.empPylons = Boolean(cfg.empPylons);
+    this._activeGimmickConfig.orbitalSweep = Boolean(cfg.orbitalSweep);
+    this._activeGimmickConfig.shieldRelays = Boolean(cfg.shieldRelays);
+    this._orbitalSweepTimer = 5.2;
+
+    for (let i = 0; i < this._gimmickPylons.length; i++) {
+      const p = this._gimmickPylons[i];
+      const shouldEnable =
+        (p.gimmickKind === 'emp_pylon' && this._activeGimmickConfig.empPylons) ||
+        (p.gimmickKind === 'shield_relay' && this._activeGimmickConfig.shieldRelays);
+      p.enabled = shouldEnable;
+      p.isAlive = shouldEnable;
+      p.hp = p.maxHp;
+      p.respawnTimer = 0;
+      p.hitFlashTimer = 0;
+      p.spawnPopTimer = shouldEnable ? 0.35 : 0;
+      p.group.scale.setScalar(shouldEnable ? 0.2 : 1);
+      p.group.visible = shouldEnable;
+    }
+  }
+
+  /**
+   * Return the number of intact Aegis Shield Relays sustaining enemy defenses.
+   */
+  getActiveShieldRelayCount() {
+    let count = 0;
+    for (let i = 0; i < this._gimmickPylons.length; i++) {
+      const p = this._gimmickPylons[i];
+      if (p.enabled && p.isAlive && p.gimmickKind === 'shield_relay') {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Return a zero-allocation array of all currently alive destructible targets (barrels + Stage 6-10 pylons).
    */
   getDestructibleTargets() {
     this._activeBarrels.length = 0;
     for (let i = 0; i < this._barrels.length; i++) {
       if (this._barrels[i].isAlive) {
         this._activeBarrels.push(this._barrels[i]);
+      }
+    }
+    for (let i = 0; i < this._gimmickPylons.length; i++) {
+      const p = this._gimmickPylons[i];
+      if (p.enabled && p.isAlive) {
+        this._activeBarrels.push(p);
       }
     }
     return this._activeBarrels;
@@ -2297,6 +2690,8 @@ class Interactables {
       }
     }
 
+    this.setWaveGimmicks(null);
+
     for (let i = 0; i < this._pickups.length; i++) {
       const p = this._pickups[i];
       p.active = true;
@@ -2347,6 +2742,7 @@ class Interactables {
     this._jumpRingMats.length = 0;
     this._barrels.length = 0;
     this._activeBarrels.length = 0;
+    this._gimmickPylons.length = 0;
     this._shockwaves.length = 0;
     this._pickups.length = 0;
     this._detonationQueue.length = 0;

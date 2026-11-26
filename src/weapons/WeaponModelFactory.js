@@ -533,6 +533,35 @@ class WeaponModelFactory {
     };
 
     // Ceramic-white orbital armor plating (VANGUARD-09 hands, HV-7 Rail Lance shroud)
+    this._pilotHandGroups = [];
+    this._matPilotHandArmor = reg(
+      new THREE.MeshStandardMaterial({
+        color: 0xdce4ee,
+        metalness: 0.58,
+        roughness: 0.34,
+        emissive: new THREE.Color(0x000000),
+        emissiveIntensity: 0.15,
+      })
+    );
+    this._matPilotHandAccent = reg(
+      new THREE.MeshStandardMaterial({
+        color: 0x4d5b44,
+        metalness: 0.62,
+        roughness: 0.38,
+        emissive: new THREE.Color(0x000000),
+        emissiveIntensity: 0.15,
+      })
+    );
+    this._matPilotHandGlow = reg(
+      new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        emissive: new THREE.Color(0xf59e0b),
+        emissiveIntensity: 2.8,
+        roughness: 0.2,
+        metalness: 0.1,
+      })
+    );
+
     this._matCeramicWhite = reg(new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: this._texCeramicColor,
@@ -926,9 +955,37 @@ class WeaponModelFactory {
    * @param {'pistol'|'forend'|'fist'} [gripStyle='pistol']
    * @private
    */
+  setPilotFrameStyle(frameId) {
+    const styles = {
+      vanguard: { armor: 0xdce4ee, accent: 0x4d5b44, glow: 0xf59e0b, em: 0x101010, scale: [1.0, 1.0, 1.0] },
+      strider:  { armor: 0x93c5fd, accent: 0x0c4a6e, glow: 0x00f0ff, em: 0x062a42, scale: [0.84, 0.88, 1.08] },
+      bastion:  { armor: 0x334155, accent: 0x16a34a, glow: 0x22c55e, em: 0x072614, scale: [1.26, 1.24, 1.08] },
+      apex:     { armor: 0x181822, accent: 0xb91c1c, glow: 0xff2a44, em: 0x2b060c, scale: [1.06, 1.06, 1.14] },
+    };
+    const st = styles[frameId] || styles.vanguard;
+    if (this._matPilotHandArmor) {
+      this._matPilotHandArmor.color.setHex(st.armor);
+      this._matPilotHandArmor.emissive.setHex(st.em);
+    }
+    if (this._matPilotHandAccent) {
+      this._matPilotHandAccent.color.setHex(st.accent);
+      this._matPilotHandAccent.emissive.setHex(st.em);
+    }
+    if (this._matPilotHandGlow) {
+      this._matPilotHandGlow.color.setHex(st.glow);
+      this._matPilotHandGlow.emissive.setHex(st.glow);
+    }
+    if (this._pilotHandGroups) {
+      for (let i = 0; i < this._pilotHandGroups.length; i++) {
+        this._pilotHandGroups[i].scale.set(st.scale[0], st.scale[1], st.scale[2]);
+      }
+    }
+  }
+
   _buildRobotHand(side, geoList, matList, statusEmissiveMat, gripStyle = 'pistol') {
     const s = side === 'right' ? 1 : -1;
     const handGroup = new THREE.Group();
+    if (this._pilotHandGroups) this._pilotHandGroups.push(handGroup);
 
     // 1. Exposed Titanium-Steel Mechanical Palm Chassis
     const palmCoreGeo = this._extrudeCross(
@@ -958,14 +1015,14 @@ class WeaponModelFactory {
       0.056,
       0.003
     );
-    this._addMesh(handGroup, dorsalShieldGeo, this._matCeramicWhite, s * 0.004, 0.003, 0.004, 0.08, 0, -s * 0.14);
+    this._addMesh(handGroup, dorsalShieldGeo, this._matPilotHandArmor, s * 0.004, 0.003, 0.004, 0.08, 0, -s * 0.14);
 
     const sideGuardGeo = this._box(geoList, 0.010, 0.026, 0.050);
-    this._addMesh(handGroup, sideGuardGeo, this._matOliveArmor, s * 0.028, 0.004, 0.012);
+    this._addMesh(handGroup, sideGuardGeo, this._matPilotHandAccent, s * 0.028, 0.004, 0.012);
 
     // Recessed Tactical Amber Status Pip on Dorsal Hand Plate
     const handStatusGeo = this._box(geoList, 0.026, 0.0035, 0.005);
-    this._addMesh(handGroup, handStatusGeo, statusEmissiveMat, s * 0.004, 0.031, 0.016);
+    this._addMesh(handGroup, handStatusGeo, this._matPilotHandGlow, s * 0.004, 0.031, 0.016);
 
     // 3. Exposed Hex Joint Bolts along Knuckle Bridge & Wrist Gimbal
     const hexBoltGeo = this._cyl(geoList, 0.0042, 0.0042, 0.006, 6);
@@ -991,10 +1048,10 @@ class WeaponModelFactory {
         this._addMesh(handGroup, servoPinGeo, this._matChrome, s * 0.022, yOff, -0.022);
         if (isTriggerFinger) {
           this._addMesh(handGroup, proxGeo, this._matTitaniumSteel, s * 0.018, yOff + 0.004, -0.044, 0.06, s * 0.18, 0);
-          this._addMesh(handGroup, distGeo, this._matCeramicWhite, s * 0.006, yOff + 0.002, -0.064, 0.04, s * 0.58, 0);
+          this._addMesh(handGroup, distGeo, this._matPilotHandArmor, s * 0.006, yOff + 0.002, -0.064, 0.04, s * 0.58, 0);
         } else {
           this._addMesh(handGroup, proxGeo, this._matTitaniumSteel, s * 0.004, yOff, -0.036, 0, s * 1.12, 0);
-          this._addMesh(handGroup, distGeo, this._matCeramicWhite, -s * 0.016, yOff, -0.032, 0, s * 1.85, 0);
+          this._addMesh(handGroup, distGeo, this._matPilotHandArmor, -s * 0.016, yOff, -0.032, 0, s * 1.85, 0);
           this._addMesh(handGroup, padGeo, this._matGrip, -s * 0.020, yOff, -0.026, 0, s * 1.85, 0);
         }
       } else if (gripStyle === 'fist') {
@@ -1002,13 +1059,13 @@ class WeaponModelFactory {
         const xOff = fingerOffsets[i] * 0.55;
         this._addMesh(handGroup, servoPinGeo, this._matChrome, xOff, 0.010, -0.022, 0, 0, Math.PI * 0.5);
         this._addMesh(handGroup, proxGeo, this._matTitaniumSteel, xOff, -0.008, -0.034, 1.05, 0, 0);
-        this._addMesh(handGroup, distGeo, this._matCeramicWhite, xOff, -0.022, -0.020, 2.15, 0, 0);
+        this._addMesh(handGroup, distGeo, this._matPilotHandArmor, xOff, -0.022, -0.020, 2.15, 0, 0);
       } else {
         // Left-hand forend / pump cradle: mechanical claws wrap up around handguard
         const xOff = fingerOffsets[i] * 0.35;
         this._addMesh(handGroup, servoPinGeo, this._matChrome, -s * 0.020, -0.008, fz - 0.012);
         this._addMesh(handGroup, proxGeo, this._matTitaniumSteel, -s * 0.028, 0.010, fz - 0.016, -0.55, s * 0.25, -s * 0.45);
-        this._addMesh(handGroup, distGeo, this._matCeramicWhite, -s * 0.020 + xOff, 0.032, fz - 0.018, -0.15, s * 0.1, s * 0.35);
+        this._addMesh(handGroup, distGeo, this._matPilotHandArmor, -s * 0.020 + xOff, 0.032, fz - 0.018, -0.15, s * 0.1, s * 0.35);
       }
     }
 
@@ -1018,15 +1075,15 @@ class WeaponModelFactory {
     if (gripStyle === 'pistol') {
       this._addMesh(handGroup, servoPinGeo, this._matChrome, -s * 0.025, 0.014, -0.004);
       this._addMesh(handGroup, thumbProx, this._matTitaniumSteel, -s * 0.022, 0.018, -0.014, -0.25, -s * 0.42, 0);
-      this._addMesh(handGroup, thumbDist, this._matCeramicWhite, -s * 0.014, 0.024, -0.036, -0.1, -s * 0.75, 0);
+      this._addMesh(handGroup, thumbDist, this._matPilotHandArmor, -s * 0.014, 0.024, -0.036, -0.1, -s * 0.75, 0);
     } else if (gripStyle === 'fist') {
       this._addMesh(handGroup, servoPinGeo, this._matChrome, s * 0.022, 0.008, -0.008);
       this._addMesh(handGroup, thumbProx, this._matTitaniumSteel, s * 0.018, -0.002, -0.026, 0.35, s * 0.65, 0);
-      this._addMesh(handGroup, thumbDist, this._matCeramicWhite, -s * 0.002, -0.010, -0.036, 0.25, s * 1.15, 0);
+      this._addMesh(handGroup, thumbDist, this._matPilotHandArmor, -s * 0.002, -0.010, -0.036, 0.25, s * 1.15, 0);
     } else {
       this._addMesh(handGroup, servoPinGeo, this._matChrome, s * 0.026, 0.012, -0.004);
       this._addMesh(handGroup, thumbProx, this._matTitaniumSteel, s * 0.024, 0.016, -0.010, 0.2, s * 0.48, 0);
-      this._addMesh(handGroup, thumbDist, this._matCeramicWhite, s * 0.016, 0.028, -0.030, 0.15, s * 0.85, 0);
+      this._addMesh(handGroup, thumbDist, this._matPilotHandArmor, s * 0.016, 0.028, -0.030, 0.15, s * 0.85, 0);
     }
 
     // 6. Robotic Wrist Gimbal + Tactical Amber Status Bar
@@ -1056,13 +1113,13 @@ class WeaponModelFactory {
       0.044,
       0.004
     );
-    this._addMesh(handGroup, wristCollarGeo, this._matCeramicWhite, s * 0.006, -0.004, 0.074);
+    this._addMesh(handGroup, wristCollarGeo, this._matPilotHandArmor, s * 0.006, -0.004, 0.074);
 
     // Recessed Tactical Amber Wrist Status Bar (in dark gunmetal bezel)
     const wristBarBezel = this._box(geoList, 0.056, 0.009, 0.016);
     this._addMesh(handGroup, wristBarBezel, this._matBarrelSteel, s * 0.006, 0.029, 0.074);
     const wristBarAmber = this._box(geoList, 0.046, 0.0045, 0.008);
-    this._addMesh(handGroup, wristBarAmber, statusEmissiveMat, s * 0.006, 0.032, 0.074);
+    this._addMesh(handGroup, wristBarAmber, this._matPilotHandGlow, s * 0.006, 0.032, 0.074);
 
     // 7. Exposed Titanium-Steel Structural Forearm Core (visible behind armor cowling)
     const forearmCoreGeo = this._latheZ(
@@ -1090,7 +1147,7 @@ class WeaponModelFactory {
       0.068,
       0.0045
     );
-    this._addMesh(handGroup, ceramicCowlingGeo, this._matCeramicWhite, s * 0.018, 0.002, 0.0, 0, 0, -s * 0.16);
+    this._addMesh(handGroup, ceramicCowlingGeo, this._matPilotHandArmor, s * 0.018, 0.002, 0.0, 0, 0, -s * 0.16);
 
     const oliveCowlingGeo = this._extrudeSide(
       geoList,
@@ -1104,7 +1161,7 @@ class WeaponModelFactory {
       0.074,
       0.0035
     );
-    this._addMesh(handGroup, oliveCowlingGeo, this._matOliveArmor, s * 0.014, -0.006, 0.0, 0, 0, -s * 0.14);
+    this._addMesh(handGroup, oliveCowlingGeo, this._matPilotHandAccent, s * 0.014, -0.006, 0.0, 0, 0, -s * 0.14);
 
     // 9. Exposed Chrome Hydraulic Piston Rods & Gunmetal Actuator Sleeves
     const sleeveGeo = this._cyl(geoList, 0.0072, 0.0072, 0.095, 8);

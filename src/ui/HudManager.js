@@ -105,6 +105,8 @@ class HudManager {
       firstKill: false,
       firstBeacon: false,
       firstHeavy: false,
+      firstMortar: false,
+      firstOverlord: false,
     };
     this._waypointVec = new THREE.Vector3();
 
@@ -325,7 +327,25 @@ class HudManager {
     on(EVENTS.WAVE_STARTED, (p) => this._onWaveStarted(p));
     on(EVENTS.WAVE_CLEARED, (p) => this._onWaveCleared(p));
     on(EVENTS.BOSS_PHASE, (p) => this._onBossPhase(p));
-    on(EVENTS.BARREL_EXPLODED, () => this._pushKillfeed('THERMITE DRUM DETONATED', 'headshot'));
+    on(EVENTS.BARREL_EXPLODED, (p) => {
+      const label =
+        p && p.gimmickType === 'emp_pylon'
+          ? 'EMP PYLON OVERLOADED'
+          : p && p.gimmickType === 'shield_relay'
+          ? 'SHIELD RELAY SHATTERED'
+          : 'THERMITE DRUM DETONATED';
+      this._pushKillfeed(label, p && p.gimmickType ? 'boss' : 'headshot');
+    });
+    on(EVENTS.ANNOUNCEMENT, (p) => {
+      if (!p) return;
+      this.showAnnouncement(
+        p.kicker || '',
+        p.title || '',
+        p.subtitle || '',
+        p.themeClass || '',
+        p.duration || 2.8
+      );
+    });
     on(EVENTS.PICKUP_COLLECTED, (p) => this._onPickupCollected(p));
     on(EVENTS.GOLD_COLLECTED, (p) => {
       if (p && p.amount) this._pushKillfeed(`+${p.amount} G 획득`, 'pickup');
@@ -625,9 +645,11 @@ class HudManager {
   _onWaveStarted(payload) {
     if (!payload) return;
     this._zoneCapturedNotified = false;
+    const wPad = String(payload.wave || 1).padStart(2, '0');
+    const tPad = String(payload.totalWaves || 10).padStart(2, '0');
     const kicker = payload.isBossWave
       ? '최종 보스 출현'
-      : `WAVE 0${payload.wave} / 0${payload.totalWaves || 5}`;
+      : `WAVE ${wPad} / ${tPad}`;
     this.showAnnouncement(
       kicker,
       payload.name || `WAVE ${payload.wave}`,
@@ -638,6 +660,10 @@ class HudManager {
 
     if (payload.wave === 1) {
       this.showOnboardingTip('적을 처치하면 쉴드가 회복됩니다 — 이동하며 교전하세요', 4.5);
+    } else if (payload.wave === 6) {
+      this.showOnboardingTip('전술 기믹: 노란 EMP 파일런을 사격하면 주변 적 방어막을 붕괴시킵니다', 4.8);
+    } else if (payload.wave === 8) {
+      this.showOnboardingTip('이지스 쉴드 중계기가 적 체력을 회복시킵니다 — 최우선 파괴하세요', 4.8);
     } else if (payload.controlZoneActive && !this._onboardingFlags.firstBeacon) {
       this._onboardingFlags.firstBeacon = true;
       this.showOnboardingTip('노란 마커(테라비콘)를 점령하거나 적을 섬멸하세요', 4.5);
@@ -656,8 +682,9 @@ class HudManager {
         2.6
       );
     } else {
+      const wPad = String(payload.wave || 1).padStart(2, '0');
       this.showAnnouncement(
-        `WAVE 0${payload.wave} COMPLETE`,
+        `WAVE ${wPad} COMPLETE`,
         'SECTOR CLEARED',
         `+${payload.scoreBonus || 0} BONUS // PREPARING NEXT DROP`,
         'clear-alert',
@@ -683,7 +710,7 @@ class HudManager {
     if (!payload) return;
     this.showAnnouncement(
       `PHASE ${payload.phase} // ${payload.name || 'FURNACE OVERDRIVE'}`,
-      'COLOSSUS-IV // ASH TITAN',
+      payload.bossName || 'COLOSSUS-IV // ASH TITAN',
       payload.callout || 'ESCORTS DEPLOYED — EVADE SLAG BARRAGE',
       'boss-alert',
       3.4
@@ -963,7 +990,7 @@ class HudManager {
       if (c.wave !== wave.wave) {
         c.wave = wave.wave;
         if (this._waveBadge) {
-          this._waveBadge.textContent = wave.totalWaves === 0 ? `ENDLESS // W${Math.max(1, wave.wave)}` : `WAVE ${Math.max(1, wave.wave)} / ${wave.totalWaves || 5}`;
+          this._waveBadge.textContent = wave.totalWaves === 0 ? `ENDLESS // W${Math.max(1, wave.wave)}` : `WAVE ${Math.max(1, wave.wave)} / ${wave.totalWaves || 10}`;
         }
       }
       if (c.waveName !== wave.waveName) {
@@ -1425,10 +1452,26 @@ class HudManager {
         if (
           !this._onboardingFlags.firstHeavy &&
           e.archetype &&
-          e.archetype.id === 'heavy_enforcer'
+          (e.archetype.id === 'heavy_enforcer' || e.archetype.id === 'rail_warden')
         ) {
           this._onboardingFlags.firstHeavy = true;
           this.showOnboardingTip('HV-7 레일 랜스와 T-4 아크 리벳건은 중장갑 방패를 관통합니다', 4.5);
+        }
+        if (
+          !this._onboardingFlags.firstMortar &&
+          e.archetype &&
+          e.archetype.id === 'mortar_artillery'
+        ) {
+          this._onboardingFlags.firstMortar = true;
+          this.showOnboardingTip('포격수(SIEGE MORTAR)의 주황 조준 레이저가 고정되기 전에 대시로 회피하세요', 4.5);
+        }
+        if (
+          !this._onboardingFlags.firstOverlord &&
+          e.archetype &&
+          e.archetype.id === 'aegis_overlord_boss'
+        ) {
+          this._onboardingFlags.firstOverlord = true;
+          this.showOnboardingTip('AEGIS-IX 위상 방어막 가동 시 EMP 파일런·중계기를 파괴해 즉시 해제하세요', 5.0);
         }
       }
     }
@@ -1577,7 +1620,13 @@ class HudManager {
           ctx.strokeRect(-pulse * 0.5, -pulse * 0.5, pulse, pulse);
           ctx.restore();
         } else {
-          ctx.fillStyle = e.archetype && e.archetype.id === 'sniper_stalker' ? '#fb923c' : '#ef4444';
+          const aid = e.archetype ? e.archetype.id : '';
+          ctx.fillStyle =
+            aid === 'sniper_stalker' || aid === 'mortar_artillery'
+              ? '#fb923c'
+              : aid === 'vanguard_assassin'
+              ? '#f43f5e'
+              : '#ef4444';
           ctx.beginPath();
           ctx.arc(ex, ey, 3.0, 0, Math.PI * 2);
           ctx.fill();
@@ -1690,7 +1739,9 @@ class HudManager {
     }
     if (this._endSubtitle) {
       this._endSubtitle.textContent = isVictory
-        ? 'COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보'
+        ? (s.wave || 0) >= 10
+          ? 'AEGIS-IX 격파 완료 — 이지스 궤도 성채 완전 탈환'
+          : 'COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보'
         : `WAVE ${s.wave || 1}에서 기체 파괴 — 재투입 준비 완료`;
     }
     if (this._endRank) {
@@ -1703,7 +1754,7 @@ class HudManager {
     if (this._statHeadshots) this._statHeadshots.textContent = String(headshots);
     if (this._statAccuracy) this._statAccuracy.textContent = `${accuracy}%`;
     if (this._statCombo) this._statCombo.textContent = `x${Math.max(1, s.maxCombo || 1)}`;
-    if (this._statWave) this._statWave.textContent = `${s.wave || 1} / ${s.totalWaves || 5}`;
+    if (this._statWave) this._statWave.textContent = `${s.wave || 1} / ${s.totalWaves || 10}`;
     if (this._statTime) this._statTime.textContent = formatTime(s.elapsedSec || 0);
 
     this._sceneResult.classList.toggle('victory', Boolean(isVictory));
@@ -1788,6 +1839,8 @@ class HudManager {
     this._onboardingFlags.firstKill = false;
     this._onboardingFlags.firstBeacon = false;
     this._onboardingFlags.firstHeavy = false;
+    this._onboardingFlags.firstMortar = false;
+    this._onboardingFlags.firstOverlord = false;
 
     if (this._zonePanel) this._zonePanel.className = 'hidden';
     if (this._crosshair) this._crosshair.className = '';
