@@ -13,6 +13,14 @@ __define("src/ai/EnemyModelFactory.js", (__exports, __require) => {
  * while per-enemy materials allow crisp hit-flashes, shield ripples, phase shifts,
  * death-dissolve animations, and zero-stutter rig pooling without affecting siblings.
  */
+const ACT1_GLB_MODELS = Object.freeze({
+  rusher_drone: './assets/models/rusher_drone.glb?v=20261127c',
+  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127c',
+  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127c',
+  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127c',
+  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127c',
+});
+
 class EnemyModelFactory {
   constructor() {
     this._geoCache = new Map();
@@ -25,6 +33,48 @@ class EnemyModelFactory {
       opacity: 0.42,
       depthWrite: false,
     });
+
+    // Warm-preload all 5 Blender sculpted Wave 1-5 Legion GLB models non-blockingly
+    if (typeof document !== 'undefined' && globalThis.GLTFLoader) {
+      this.preloadModels().catch(() => {});
+    }
+  }
+
+  /**
+   * Preload sculpted Wave 1-5 Ash-Furnace Legion GLB models from assets/models/.
+   * Cached once across factory instances; safe to call concurrently.
+   * @returns {Promise<void>}
+   */
+  preloadModels() {
+    const ids = Object.keys(ACT1_GLB_MODELS);
+    if (ids.every((id) => EnemyModelFactory._glbCache.has(id))) {
+      return Promise.resolve();
+    }
+    if (EnemyModelFactory._glbLoadPromise) {
+      return EnemyModelFactory._glbLoadPromise;
+    }
+    if (!globalThis.GLTFLoader) {
+      return Promise.resolve();
+    }
+    const loader = new globalThis.GLTFLoader();
+    EnemyModelFactory._glbLoadPromise = Promise.all(
+      ids.map((id) =>
+        loader
+          .loadAsync(ACT1_GLB_MODELS[id])
+          .then((gltf) => {
+            if (gltf && gltf.scene) {
+              EnemyModelFactory._glbCache.set(id, gltf.scene);
+              if (id === 'cyber_mech_boss') {
+                EnemyModelFactory._colossusGltf = gltf.scene;
+              }
+            }
+          })
+          .catch((err) => {
+            console.warn(`[EnemyModelFactory] Failed to preload ${id} GLB, using fallback rig:`, err);
+          })
+      )
+    );
+    return EnemyModelFactory._glbLoadPromise;
   }
 
   /**
@@ -535,15 +585,15 @@ class EnemyModelFactory {
           emissiveIntensity: 0.28,
         })
       : new THREE.MeshStandardMaterial({
-          color: 0xa8b4c0,
+          color: 0x6f6965,
           map: armorWear,
-          metalness: 0.52,
-          roughness: 0.48,
+          metalness: 0.62,
+          roughness: 0.42,
           bumpMap: armorBump,
-          bumpScale: 0.042,
+          bumpScale: 0.052,
           roughnessMap: armorRoughness,
-          emissive: new THREE.Color(0x161e26),
-          emissiveIntensity: 0.22,
+          emissive: new THREE.Color(0x1a1311),
+          emissiveIntensity: 0.24,
         });
 
     const coloredPlate = isAegisOrbital
@@ -641,7 +691,7 @@ class EnemyModelFactory {
     const accentGlow = new THREE.MeshStandardMaterial({
       color: archetype.accentColor,
       emissive: new THREE.Color(archetype.accentColor),
-      emissiveIntensity: isAbyssOrbital ? 3.4 : isAegisOrbital ? 3.1 : 2.2,
+      emissiveIntensity: isAbyssOrbital ? 3.4 : isAegisOrbital ? 3.1 : 2.85,
       metalness: 0.15,
       roughness: 0.20,
       fog: false,
@@ -673,7 +723,7 @@ class EnemyModelFactory {
       color: isAegisOrbital ? 0xffffff : 0xffe4d6,
       map: visorGrid,
       emissive: new THREE.Color(opticColor),
-      emissiveIntensity: 4.0,
+      emissiveIntensity: isAegisOrbital ? 4.0 : 4.8,
       metalness: 0.1,
       roughness: 0.14,
       fog: false,
@@ -802,77 +852,175 @@ class EnemyModelFactory {
 
     switch (archetype.id) {
       case 'rusher_drone':
-        this._buildRusherDrone(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          weaponMuzzle,
-          rotors
+        this._buildWithAct1Glb(
+          'rusher_drone',
+          {
+            p: palette,
+            ownedMaterials,
+            bodyGroup,
+            headGroup,
+            headAnchor,
+            leftArm,
+            rightArm,
+            leftLeg,
+            rightLeg,
+            weaponMuzzle,
+            rotors,
+            coreRings,
+          },
+          () =>
+            this._buildRusherDrone(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              weaponMuzzle,
+              rotors
+            )
         );
         break;
       case 'tactical_trooper':
-        this._buildTacticalTrooper(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        this._buildWithAct1Glb(
+          'tactical_trooper',
+          {
+            p: palette,
+            ownedMaterials,
+            bodyGroup,
+            headGroup,
+            headAnchor,
+            leftArm,
+            rightArm,
+            leftLeg,
+            rightLeg,
+            weaponMuzzle,
+            rotors,
+            coreRings,
+          },
+          () =>
+            this._buildTacticalTrooper(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle
+            )
         );
         break;
       case 'heavy_enforcer':
-        shieldMesh = this._buildHeavyEnforcer(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        shieldMesh = this._createHeavyBlastShieldMesh(ownedMaterials);
+        this._buildWithAct1Glb(
+          'heavy_enforcer',
+          {
+            p: palette,
+            ownedMaterials,
+            bodyGroup,
+            headGroup,
+            headAnchor,
+            leftArm,
+            rightArm,
+            leftLeg,
+            rightLeg,
+            weaponMuzzle,
+            rotors,
+            coreRings,
+            shieldMesh,
+          },
+          () =>
+            this._buildHeavyEnforcer(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              shieldMesh
+            )
         );
         break;
       case 'sniper_stalker':
-        laserLine = this._buildSniperStalker(
-          palette,
-          ownedMaterials,
-          ownedGeometries,
-          root,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        laserLine = this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xe62020, 0xffb3a0);
+        this._buildWithAct1Glb(
+          'sniper_stalker',
+          {
+            p: palette,
+            ownedMaterials,
+            bodyGroup,
+            headGroup,
+            headAnchor,
+            leftArm,
+            rightArm,
+            leftLeg,
+            rightLeg,
+            weaponMuzzle,
+            rotors,
+            coreRings,
+          },
+          () =>
+            this._buildSniperStalker(
+              palette,
+              ownedMaterials,
+              ownedGeometries,
+              root,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle
+            )
         );
         break;
       case 'cyber_mech_boss': {
-        const bossExtras = this._buildCyberMechBoss(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle,
-          rotors,
-          coreRings
+        shieldMesh = this._createBossPhaseShieldMesh(ownedMaterials, bodyGroup);
+        leftWeaponMuzzle = new THREE.Object3D();
+        this._buildWithAct1Glb(
+          'cyber_mech_boss',
+          {
+            p: palette,
+            ownedMaterials,
+            bodyGroup,
+            headGroup,
+            headAnchor,
+            leftArm,
+            rightArm,
+            leftLeg,
+            rightLeg,
+            weaponMuzzle,
+            leftWeaponMuzzle,
+            rotors,
+            coreRings,
+            shieldMesh,
+          },
+          () =>
+            this._buildLegacyCyberMechBoss(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              leftWeaponMuzzle,
+              rotors,
+              coreRings,
+              shieldMesh
+            )
         );
-        shieldMesh = bossExtras.shieldMesh;
-        leftWeaponMuzzle = bossExtras.leftWeaponMuzzle;
         break;
       }
       case 'interceptor_drone':
@@ -1141,7 +1289,7 @@ class EnemyModelFactory {
   }
 
   // ===========================================================================
-  // 1. SCAVENGER DRONE (Rusted Ducted Quad-Fan Chassis + Exposed Wires + Crimson Eye)
+  // 1. HUNTER-KILLER RAZOR DRONE (Swept Arrowhead Hull + Mandible Fangs + Tri-Optic)
   // ===========================================================================
   _buildRusherDrone(
     p,
@@ -1155,103 +1303,149 @@ class EnemyModelFactory {
   ) {
     bodyGroup.position.set(0, 0.55, 0);
 
-    // Bolted cast-iron salvage main drum chassis
+    // Aggressive swept arrowhead armored hunter chassis
     const hullGeo = this._makeExtrudedPoly(
-      'scavenger_hull',
+      'scavenger_hull_predator',
       [
-        [-0.22, 0.30],
-        [0.22, 0.30],
-        [0.34, 0.08],
-        [0.28, -0.26],
-        [0.14, -0.34],
-        [-0.14, -0.34],
-        [-0.28, -0.26],
-        [-0.34, 0.08],
+        [-0.14, 0.36],
+        [0.14, 0.36],
+        [0.36, 0.08],
+        [0.30, -0.26],
+        [0.16, -0.38],
+        [-0.16, -0.38],
+        [-0.30, -0.26],
+        [-0.36, 0.08],
       ],
-      0.18,
-      0.028,
-      0.022,
+      0.19,
+      0.032,
+      0.024,
       2
     );
     const hull = new THREE.Mesh(hullGeo, p.primaryArmor);
     hull.rotation.x = Math.PI * 0.5;
-    hull.position.set(0, 0.06, 0);
+    hull.position.set(0, 0.05, 0);
     bodyGroup.add(hull);
 
-    // Asymmetric rusted salvage top cowling + welded reinforcement bar
+    // Sloped dorsal armored predator carapace + glowing core intake vent
     const cowlGeo = this._makeExtrudedPoly(
-      'scavenger_cowl',
+      'scavenger_cowl_predator',
       [
-        [-0.16, -0.24],
-        [0.18, -0.20],
-        [0.21, 0.16],
-        [0.06, 0.32],
-        [-0.14, 0.24],
+        [-0.17, -0.26],
+        [0.17, -0.26],
+        [0.24, 0.10],
+        [0.0, 0.36],
+        [-0.24, 0.10],
       ],
-      0.10,
+      0.12,
+      0.022,
       0.02,
-      0.018,
       2
     );
     const cowl = new THREE.Mesh(cowlGeo, p.coloredPlate);
     cowl.rotation.x = Math.PI * 0.5;
-    cowl.position.set(0.02, 0.17, -0.02);
-    cowl.rotation.z = -0.06;
+    cowl.position.set(0, 0.17, -0.02);
     bodyGroup.add(cowl);
 
-    // Asymmetric scrap salvage antenna + bumper cage
-    const antenna = new THREE.Mesh(
-      this._getGeo('scavenger_antenna', () => new THREE.CylinderGeometry(0.008, 0.014, 0.36, 6)),
-      p.pistonSteel
+    // Swept Dorsal Razor Spine Fins
+    const dorsalFinGeo = this._makeExtrudedPoly(
+      'scavenger_dorsal_fin',
+      [
+        [-0.02, -0.02],
+        [0.22, -0.04],
+        [0.06, 0.24],
+        [-0.08, 0.28],
+      ],
+      0.028,
+      0.008,
+      0.007,
+      1
     );
-    antenna.position.set(-0.18, 0.32, -0.18);
-    antenna.rotation.z = 0.22;
-    antenna.rotation.x = -0.18;
-    bodyGroup.add(antenna);
+    for (let side = -1; side <= 1; side += 2) {
+      const fin = new THREE.Mesh(dorsalFinGeo, p.darkFrame);
+      fin.position.set(side * 0.14, 0.22, -0.10);
+      fin.rotation.y = Math.PI * 0.5 + side * 0.18;
+      fin.rotation.z = side * 0.22;
+      bodyGroup.add(fin);
+    }
 
-    // Quad/Twin LatheGeometry Ducted Industrial Turbofans on Outrigger Struts
+    // Menacing Curved Predator Scythe-Mandibles flanking lower prow
+    const fangGeo = this._makeExtrudedPoly(
+      'scavenger_scythe_fang',
+      [
+        [-0.035, 0.0],
+        [0.045, 0.0],
+        [0.08, 0.22],
+        [-0.02, 0.36],
+        [-0.05, 0.16],
+      ],
+      0.045,
+      0.01,
+      0.009,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const mandible = new THREE.Mesh(fangGeo, p.pistonSteel);
+      mandible.position.set(side * 0.21, -0.08, 0.22);
+      mandible.rotation.x = Math.PI * 0.5 + 0.12;
+      mandible.rotation.z = -side * 0.32;
+      bodyGroup.add(mandible);
+    }
+
+    // Dual Angled Communications / Targeter Spikes
+    for (let side = -1; side <= 1; side += 2) {
+      const spike = new THREE.Mesh(
+        this._getGeo('scavenger_antenna_spike', () => new THREE.ConeGeometry(0.022, 0.36, 6)),
+        p.pistonSteel
+      );
+      spike.position.set(side * 0.20, 0.32, -0.22);
+      spike.rotation.z = -side * 0.26;
+      spike.rotation.x = -0.34;
+      bodyGroup.add(spike);
+    }
+
+    // Quad LatheGeometry Ducted Industrial Turbofans on Aggressive Cant Outriggers
     const mainShroudGeo = this._makeLathe(
       'scavenger_shroud_main',
       [
-        [0.16, -0.09],
-        [0.21, -0.07],
-        [0.22, 0.01],
-        [0.20, 0.08],
-        [0.15, 0.09],
+        [0.16, -0.10],
+        [0.22, -0.08],
+        [0.24, 0.01],
+        [0.21, 0.09],
+        [0.15, 0.10],
         [0.14, 0.03],
-        [0.14, -0.05],
-        [0.16, -0.09],
+        [0.14, -0.06],
+        [0.16, -0.10],
       ],
       18
     );
     const smallShroudGeo = this._makeLathe(
       'scavenger_shroud_rear',
       [
-        [0.11, -0.06],
-        [0.145, -0.05],
-        [0.15, 0.01],
-        [0.135, 0.06],
-        [0.105, 0.07],
-        [0.095, -0.04],
-        [0.11, -0.06],
+        [0.115, -0.07],
+        [0.155, -0.05],
+        [0.165, 0.01],
+        [0.145, 0.07],
+        [0.105, 0.08],
+        [0.095, -0.05],
+        [0.115, -0.07],
       ],
       14
     );
     const bladeGeo = this._makeExtrudedPoly(
       'scavenger_blade',
       [
-        [-0.13, -0.02],
-        [0.13, -0.02],
-        [0.115, 0.02],
-        [-0.115, 0.02],
+        [-0.14, -0.022],
+        [0.14, -0.022],
+        [0.12, 0.022],
+        [-0.12, 0.022],
       ],
-      0.012,
-      0.003,
-      0.003,
+      0.014,
+      0.004,
+      0.004,
       1
     );
-    const hubGeo = this._getGeo('scavenger_rotor_hub', () => new THREE.CylinderGeometry(0.036, 0.04, 0.08, 8));
-    const emberRingGeo = this._getGeo('scavenger_heat_ring', () => new THREE.TorusGeometry(0.15, 0.012, 6, 16));
+    const hubGeo = this._getGeo('scavenger_rotor_hub', () => new THREE.CylinderGeometry(0.038, 0.044, 0.09, 8));
+    const emberRingGeo = this._getGeo('scavenger_heat_ring', () => new THREE.TorusGeometry(0.16, 0.014, 6, 16));
 
     const mountFan = (x, y, z, tiltZ, tiltX, isRear) => {
       const fanGroup = new THREE.Group();
@@ -1264,7 +1458,7 @@ class EnemyModelFactory {
       if (!isRear) {
         const heatRing = new THREE.Mesh(emberRingGeo, p.accentGlow);
         heatRing.rotation.x = Math.PI * 0.5;
-        heatRing.position.y = -0.05;
+        heatRing.position.y = -0.055;
         fanGroup.add(heatRing);
       }
 
@@ -1285,22 +1479,21 @@ class EnemyModelFactory {
     };
 
     for (let side = -1; side <= 1; side += 2) {
-      // Main forward-lateral turbofans
-      mountFan(side * 0.46, 0.06, 0.06, -side * 0.16, 0.12, false);
-      // Secondary rear stabilizer turbofans
-      mountFan(side * 0.34, 0.13, -0.28, -side * 0.24, 0.22, true);
+      // Swept aggressive gunship tilt
+      mountFan(side * 0.49, 0.05, 0.08, -side * 0.26, 0.16, false);
+      mountFan(side * 0.36, 0.14, -0.30, -side * 0.30, 0.24, true);
 
-      // Tubular steel outrigger boom
+      // Swept armored wing-spar strut + armored stabilizer tip
       bodyGroup.add(
         new THREE.Mesh(
           this._makeTube(
             `scavenger_strut_${side}`,
             [
-              [side * 0.16, 0.05, 0.04],
-              [side * 0.34, 0.07, 0.06],
-              [side * 0.42, 0.06, 0.06],
+              [side * 0.16, 0.06, 0.04],
+              [side * 0.34, 0.08, 0.07],
+              [side * 0.45, 0.05, 0.08],
             ],
-            0.024,
+            0.030,
             8,
             6
           ),
@@ -1308,7 +1501,7 @@ class EnemyModelFactory {
         )
       );
 
-      // Tangled exposed hydraulic / copper power wires
+      // Exposed hydraulic / power conduits
       bodyGroup.add(
         new THREE.Mesh(
           this._makeTube(
@@ -1343,141 +1536,186 @@ class EnemyModelFactory {
       );
     }
 
-    // Dirty Rear Soot Muffler Exhaust Vent + Hot Radiator Slit
+    // Twin Blazing Rear Thruster Afterburner Nozzles + Central Radiator Core
     const mufflerGeo = this._makeLathe(
       'scavenger_exhaust',
       [
-        [0.065, 0.0],
-        [0.095, 0.04],
-        [0.09, 0.20],
-        [0.115, 0.24],
-        [0.08, 0.24],
-        [0.075, 0.12],
+        [0.068, 0.0],
+        [0.098, 0.04],
+        [0.092, 0.22],
+        [0.12, 0.26],
+        [0.082, 0.26],
       ],
       12
     );
-    const muffler = new THREE.Mesh(mufflerGeo, p.darkFrame);
-    muffler.rotation.x = -Math.PI * 0.42;
-    muffler.position.set(0, 0.04, -0.28);
-    bodyGroup.add(muffler);
+    for (let side = -1; side <= 1; side += 2) {
+      const thr = new THREE.Mesh(mufflerGeo, p.darkFrame);
+      thr.rotation.x = -Math.PI * 0.46;
+      thr.position.set(side * 0.12, 0.04, -0.28);
+      bodyGroup.add(thr);
 
-    const coalVent = new THREE.Mesh(
-      this._getGeo('scavenger_ember', () => new THREE.CylinderGeometry(0.06, 0.06, 0.06, 8)),
-      p.accentGlow
-    );
-    coalVent.rotation.x = Math.PI * 0.5;
-    coalVent.position.set(0, 0.02, -0.34);
-    bodyGroup.add(coalVent);
+      const core = new THREE.Mesh(
+        this._getGeo('scavenger_ember', () => new THREE.CylinderGeometry(0.058, 0.058, 0.06, 8)),
+        p.accentGlow
+      );
+      core.rotation.x = Math.PI * 0.5;
+      core.position.set(side * 0.12, 0.02, -0.35);
+      bodyGroup.add(core);
+    }
 
-    // Bright Glowing Crimson Infrared Scanner Eye Weakpoint (headGroup / headAnchor)
-    headGroup.position.set(0, 0.02, 0.28);
+    // Sinister Skull-Pod Tri-Optic Scanner Head (headGroup / headAnchor)
+    headGroup.position.set(0, 0.02, 0.29);
     bodyGroup.add(headGroup);
 
-    const eyeCanGeo = this._makeLathe(
-      'scavenger_eye_can',
+    const skullCoreGeo = this._makeExtrudedPoly(
+      'scavenger_skull_face',
       [
-        [0.05, -0.14],
-        [0.20, -0.10],
-        [0.23, 0.02],
-        [0.21, 0.12],
-        [0.15, 0.14],
-        [0.13, 0.08],
+        [-0.22, 0.08],
+        [-0.12, 0.18],
+        [0.12, 0.18],
+        [0.22, 0.08],
+        [0.17, -0.14],
+        [0.0, -0.18],
+        [-0.17, -0.14],
       ],
-      16
+      0.24,
+      0.024,
+      0.02,
+      2
     );
-    const eyeCan = new THREE.Mesh(eyeCanGeo, p.darkFrame);
-    eyeCan.rotation.x = Math.PI * 0.5;
-    headGroup.add(eyeCan);
+    headGroup.add(new THREE.Mesh(skullCoreGeo, p.darkFrame));
 
-    // Welded steel shutter brow hood over scanner eye
+    // Heavy frowning armored shutter brow hood (deep predatory V-brow)
     const shutterHoodGeo = this._makeExtrudedPoly(
-      'scavenger_shutter_hood',
+      'scavenger_shutter_hood_v',
       [
-        [-0.25, 0.04],
-        [-0.17, 0.19],
-        [0.17, 0.19],
-        [0.25, 0.04],
-        [0.15, 0.09],
-        [-0.15, 0.09],
+        [-0.26, 0.02],
+        [-0.18, 0.21],
+        [0.0, 0.14],
+        [0.18, 0.21],
+        [0.26, 0.02],
+        [0.14, 0.08],
+        [0.0, 0.02],
+        [-0.14, 0.08],
       ],
-      0.16,
-      0.018,
-      0.015,
+      0.19,
+      0.02,
+      0.016,
       1
     );
     const hood = new THREE.Mesh(shutterHoodGeo, p.coloredPlate);
-    hood.position.set(0, 0.06, 0.03);
+    hood.position.set(0, 0.05, 0.05);
     headGroup.add(hood);
 
-    const irIrisGeo = this._getGeo('scavenger_ir_iris', () => new THREE.SphereGeometry(0.145, 16, 12));
+    // Central blazing crimson cyclops optic + twin fierce flanking micro-slit eyes
+    const irIrisGeo = this._getGeo('scavenger_ir_iris', () => new THREE.SphereGeometry(0.115, 16, 12));
     const irIris = new THREE.Mesh(irIrisGeo, p.weakpointGlow);
-    irIris.scale.set(1.0, 1.0, 0.65);
-    irIris.position.set(0, 0, 0.085);
+    irIris.scale.set(1.15, 0.85, 0.68);
+    irIris.position.set(0, 0.015, 0.105);
     headGroup.add(irIris);
 
+    const sideEyeGeo = this._getGeo('scavenger_side_eye', () => new THREE.BoxGeometry(0.085, 0.028, 0.05));
+    for (let side = -1; side <= 1; side += 2) {
+      const se = new THREE.Mesh(sideEyeGeo, p.weakpointGlow);
+      se.position.set(side * 0.135, 0.035, 0.105);
+      se.rotation.z = side * 0.34;
+      headGroup.add(se);
+    }
+
     const irBezel = new THREE.Mesh(
-      this._getGeo('scavenger_ir_bezel', () => new THREE.TorusGeometry(0.162, 0.018, 8, 18)),
+      this._getGeo('scavenger_ir_bezel', () => new THREE.TorusGeometry(0.148, 0.018, 8, 18)),
       p.accentGlow
     );
-    irBezel.position.set(0, 0, 0.115);
+    irBezel.position.set(0, 0.015, 0.115);
     headGroup.add(irBezel);
+
+    // Glowing Crimson Jaw-Vent Teeth Bars under the Eye
+    for (let t = -2; t <= 2; t++) {
+      const fangBar = new THREE.Mesh(
+        this._getGeo('scavenger_jaw_tooth', () => new THREE.BoxGeometry(0.018, 0.055, 0.04)),
+        p.pistonSteel
+      );
+      fangBar.position.set(t * 0.046, -0.105, 0.125);
+      headGroup.add(fangBar);
+    }
 
     headAnchor.position.set(0, 0, 0.06);
     headGroup.add(headAnchor);
 
-    // Under-slung Scrap Autocannon (rightArm gimbal)
-    rightArm.position.set(0, -0.18, 0.12);
+    // Under-slung Twin-Barrel Shredder Autocannon + Bayonet Blade (rightArm gimbal)
+    rightArm.position.set(0, -0.19, 0.12);
     bodyGroup.add(rightArm);
 
     const gunBoxGeo = this._makeExtrudedPoly(
       'scavenger_gun_box',
       [
-        [-0.085, -0.065],
-        [0.085, -0.065],
-        [0.095, 0.065],
-        [-0.095, 0.065],
+        [-0.095, -0.07],
+        [0.095, -0.07],
+        [0.105, 0.07],
+        [-0.105, 0.07],
       ],
-      0.32,
+      0.34,
+      0.016,
       0.014,
-      0.012,
       1
     );
     rightArm.add(new THREE.Mesh(gunBoxGeo, p.darkFrame));
 
     const drumMag = new THREE.Mesh(
-      this._getGeo('scavenger_ammo_drum', () => new THREE.CylinderGeometry(0.068, 0.068, 0.11, 10)),
+      this._getGeo('scavenger_ammo_drum', () => new THREE.CylinderGeometry(0.072, 0.072, 0.12, 10)),
       p.coloredPlate
     );
     drumMag.rotation.z = Math.PI * 0.5;
-    drumMag.position.set(0.11, -0.02, 0.02);
+    drumMag.position.set(0.12, -0.02, 0.02);
     rightArm.add(drumMag);
 
     const autoBarrelGeo = this._makeLathe(
       'scavenger_auto_barrel',
       [
-        [0.036, 0.0],
-        [0.036, 0.16],
-        [0.025, 0.18],
-        [0.025, 0.36],
-        [0.036, 0.38],
-        [0.022, 0.43],
+        [0.028, 0.0],
+        [0.028, 0.18],
+        [0.020, 0.20],
+        [0.020, 0.38],
+        [0.030, 0.40],
+        [0.018, 0.45],
       ],
       10
     );
-    const gunBarrel = new THREE.Mesh(autoBarrelGeo, p.pistonSteel);
-    gunBarrel.rotation.x = Math.PI * 0.5;
-    gunBarrel.position.set(0, -0.01, 0.10);
-    rightArm.add(gunBarrel);
+    for (let side = -1; side <= 1; side += 2) {
+      const gunBarrel = new THREE.Mesh(autoBarrelGeo, p.pistonSteel);
+      gunBarrel.rotation.x = Math.PI * 0.5;
+      gunBarrel.position.set(side * 0.044, -0.005, 0.12);
+      rightArm.add(gunBarrel);
 
-    const hotCollar = new THREE.Mesh(
-      this._getGeo('scavenger_hot_collar', () => new THREE.CylinderGeometry(0.034, 0.034, 0.10, 10)),
-      p.accentGlow
+      const hotCollar = new THREE.Mesh(
+        this._getGeo('scavenger_hot_collar', () => new THREE.CylinderGeometry(0.028, 0.028, 0.10, 8)),
+        p.accentGlow
+      );
+      hotCollar.rotation.x = Math.PI * 0.5;
+      hotCollar.position.set(side * 0.044, -0.005, 0.30);
+      rightArm.add(hotCollar);
+    }
+
+    // Underslung Serrated Assault Bayonet under Shredder Gun
+    const bayoGeo = this._makeExtrudedPoly(
+      'scavenger_bayonet',
+      [
+        [-0.01, -0.02],
+        [0.24, 0.0],
+        [0.06, -0.075],
+        [-0.01, -0.05],
+      ],
+      0.016,
+      0.003,
+      0.003,
+      1
     );
-    hotCollar.rotation.x = Math.PI * 0.5;
-    hotCollar.position.set(0, -0.01, 0.28);
-    rightArm.add(hotCollar);
+    const bayonet = new THREE.Mesh(bayoGeo, p.pistonSteel);
+    bayonet.rotation.y = -Math.PI * 0.5;
+    bayonet.position.set(0, -0.065, 0.28);
+    rightArm.add(bayonet);
 
-    weaponMuzzle.position.set(0, -0.01, 0.55);
+    weaponMuzzle.position.set(0, -0.005, 0.56);
     rightArm.add(weaponMuzzle);
     bodyGroup.add(leftArm);
   }
@@ -1580,13 +1818,21 @@ class EnemyModelFactory {
       shinSleeve.position.set(sideX > 0 ? 0.05 : -0.05, -0.62, 0.03);
       legGroup.add(shinSleeve);
 
-      // Asymmetric bolted shin plate on left leg only
+      // Asymmetric bolted shin plate + knee ram spike
+      const kneeSpur = new THREE.Mesh(
+        this._getGeo('rustwalker_knee_spur', () => new THREE.ConeGeometry(0.052, 0.14, 5)),
+        p.coloredPlate
+      );
+      kneeSpur.rotation.x = Math.PI * 0.38;
+      kneeSpur.position.set(0, -0.42, 0.105);
+      legGroup.add(kneeSpur);
+
       if (hasScrapPlate) {
         const scrapShin = new THREE.Mesh(
-          this._getGeo('rustwalker_scrap_shin', () => new THREE.BoxGeometry(0.11, 0.28, 0.045)),
+          this._getGeo('rustwalker_scrap_shin', () => new THREE.BoxGeometry(0.115, 0.30, 0.05)),
           p.coloredPlate
         );
-        scrapShin.position.set(0, -0.64, 0.072);
+        scrapShin.position.set(0, -0.64, 0.074);
         legGroup.add(scrapShin);
       }
 
@@ -1627,20 +1873,20 @@ class EnemyModelFactory {
     spineCore.position.set(0, 1.10, 0);
     bodyGroup.add(spineCore);
 
-    // Welded Angular Cast-Iron Chest Hull
+    // Welded Angular Cast-Iron Chest Hull + Layered Predator Ribcage Plates
     const chestGeo = this._makeExtrudedPoly(
       'rustwalker_chest',
       [
-        [-0.27, 0.22],
-        [-0.14, 0.28],
-        [0.16, 0.27],
-        [0.28, 0.20],
+        [-0.29, 0.23],
+        [-0.15, 0.30],
+        [0.15, 0.30],
+        [0.29, 0.23],
         [0.23, -0.07],
-        [0.16, -0.18],
-        [-0.17, -0.18],
-        [-0.24, -0.05],
+        [0.16, -0.19],
+        [-0.16, -0.19],
+        [-0.23, -0.07],
       ],
-      0.26,
+      0.27,
       0.032,
       0.026,
       2
@@ -1649,33 +1895,53 @@ class EnemyModelFactory {
     chest.position.set(0, 1.32, 0.02);
     bodyGroup.add(chest);
 
-    // Asymmetric Welded Rust-Vermilion Pectoral Scrap Plate
-    const asymPlateGeo = this._makeExtrudedPoly(
-      'rustwalker_asym_chest',
+    // Angled Twin Armored Pectoral Slabs framing Glowing Furnace-Core Sternum Slit
+    const ribPlateGeo = this._makeExtrudedPoly(
+      'rustwalker_rib_plate',
       [
-        [-0.24, 0.14],
-        [0.20, 0.10],
-        [0.16, -0.09],
-        [-0.04, -0.13],
-        [-0.20, -0.04],
+        [-0.18, 0.13],
+        [0.02, 0.06],
+        [0.0, -0.10],
+        [-0.15, -0.05],
       ],
       0.065,
-      0.018,
       0.014,
-      2
+      0.012,
+      1
     );
-    const asymPlate = new THREE.Mesh(asymPlateGeo, p.coloredPlate);
-    asymPlate.position.set(-0.02, 1.38, 0.155);
-    asymPlate.rotation.z = 0.04;
-    bodyGroup.add(asymPlate);
+    for (let side = -1; side <= 1; side += 2) {
+      const rp = new THREE.Mesh(ribPlateGeo, p.coloredPlate);
+      rp.position.set(side * 0.12, 1.37, 0.165);
+      rp.scale.x = side;
+      bodyGroup.add(rp);
+    }
 
-    // Furnace-amber chest battery gauge slit
-    const batterySlit = new THREE.Mesh(
-      this._getGeo('rustwalker_chest_gauge', () => new THREE.BoxGeometry(0.14, 0.045, 0.035)),
-      p.accentGlow
+    // Glowing Crimson Sternum Core + Exposed Chest Ribs
+    const chestCoreV = new THREE.Mesh(
+      this._getGeo('rustwalker_chest_core_v', () => new THREE.BoxGeometry(0.08, 0.19, 0.045)),
+      p.weakpointGlow
     );
-    batterySlit.position.set(0.06, 1.35, 0.195);
-    bodyGroup.add(batterySlit);
+    chestCoreV.position.set(0, 1.34, 0.175);
+    bodyGroup.add(chestCoreV);
+
+    for (let r = 0; r < 3; r++) {
+      const ribBar = new THREE.Mesh(
+        this._getGeo('rustwalker_sternum_bar', () => new THREE.BoxGeometry(0.14, 0.024, 0.035)),
+        p.darkFrame
+      );
+      ribBar.position.set(0, 1.40 - r * 0.055, 0.198);
+      bodyGroup.add(ribBar);
+    }
+
+    // Jagged Dorsal Spine Fins rising behind Collar
+    const dorsalBladeGeo = this._getGeo('rustwalker_dorsal_blade', () => new THREE.ConeGeometry(0.036, 0.18, 4));
+    for (let side = -1; side <= 1; side += 2) {
+      const collarSpike = new THREE.Mesh(dorsalBladeGeo, p.darkFrame);
+      collarSpike.position.set(side * 0.18, 1.62, -0.08);
+      collarSpike.rotation.x = -0.35;
+      collarSpike.rotation.z = -side * 0.25;
+      bodyGroup.add(collarSpike);
+    }
 
     // Rear Diesel / Battery Pack + Vertical Exhaust Smoke Pipe + Fuel Hoses
     const packGeo = this._makeExtrudedPoly(
@@ -1759,70 +2025,98 @@ class EnemyModelFactory {
       );
     }
 
-    // Menacing Single Glowing Furnace-Red Optical Visor Head (headHeight = 1.62)
+    // Predatory Skull-Cowl Helmet with Slanted Furnace-Crimson Eyes & Respirator Teeth (headHeight = 1.62)
     headGroup.position.set(0, 1.62, 0.02);
     bodyGroup.add(headGroup);
 
     const neck = new THREE.Mesh(
-      this._getGeo('rustwalker_neck', () => new THREE.CylinderGeometry(0.072, 0.09, 0.12, 8)),
+      this._getGeo('rustwalker_neck', () => new THREE.CylinderGeometry(0.072, 0.095, 0.13, 8)),
       p.pistonSteel
     );
     neck.position.set(0, -0.10, 0);
     headGroup.add(neck);
 
     const helmGeo = this._makeExtrudedPoly(
-      'rustwalker_helmet',
+      'rustwalker_skull_helm',
       [
-        [-0.125, -0.10],
-        [0.125, -0.10],
-        [0.155, 0.04],
-        [0.12, 0.16],
-        [0, 0.18],
-        [-0.12, 0.16],
-        [-0.155, 0.04],
+        [-0.10, -0.12],
+        [0.10, -0.12],
+        [0.16, 0.02],
+        [0.13, 0.16],
+        [0, 0.21],
+        [-0.13, 0.16],
+        [-0.16, 0.02],
       ],
-      0.24,
+      0.26,
       0.028,
-      0.024,
+      0.022,
       2
     );
     headGroup.add(new THREE.Mesh(helmGeo, p.primaryArmor));
 
-    // Welded forehead scrap visor hood
-    const browPlate = new THREE.Mesh(
-      this._getGeo('rustwalker_helm_brow', () => new THREE.BoxGeometry(0.28, 0.06, 0.20)),
-      p.coloredPlate
-    );
-    browPlate.position.set(0, 0.11, 0.04);
-    browPlate.rotation.x = 0.18;
-    headGroup.add(browPlate);
-
-    // Menacing Single Glowing Furnace-Red Optical Visor Slit
-    const visorGeo = this._makeExtrudedPoly(
-      'rustwalker_visor',
+    // Aggressive V-angled Predator Brow Crown
+    const vBrowGeo = this._makeExtrudedPoly(
+      'rustwalker_v_brow',
       [
-        [-0.125, 0.04],
-        [0.125, 0.04],
-        [0.105, -0.045],
-        [-0.105, -0.045],
+        [-0.175, 0.03],
+        [-0.12, 0.17],
+        [0, 0.11],
+        [0.12, 0.17],
+        [0.175, 0.03],
+        [0, -0.02],
       ],
-      0.08,
-      0.012,
-      0.01,
+      0.16,
+      0.016,
+      0.014,
       1
     );
-    const visor = new THREE.Mesh(visorGeo, p.weakpointGlow);
-    visor.position.set(0, 0.025, 0.125);
-    headGroup.add(visor);
+    const browPlate = new THREE.Mesh(vBrowGeo, p.coloredPlate);
+    browPlate.position.set(0, 0.06, 0.075);
+    headGroup.add(browPlate);
 
-    // Crooked rusted radio mast on left ear
-    const earAnt = new THREE.Mesh(
-      this._getGeo('rustwalker_antenna', () => new THREE.CylinderGeometry(0.007, 0.012, 0.24, 6)),
-      p.pistonSteel
+    // Twin Blazing Slanted Predator Optic Slits + Forehead Sensor Eye
+    const eyeSlitGeo = this._getGeo('rustwalker_pred_eye', () => new THREE.BoxGeometry(0.088, 0.028, 0.055));
+    for (let side = -1; side <= 1; side += 2) {
+      const eye = new THREE.Mesh(eyeSlitGeo, p.weakpointGlow);
+      eye.position.set(side * 0.068, 0.025, 0.135);
+      eye.rotation.z = side * 0.30;
+      headGroup.add(eye);
+    }
+    const thirdEye = new THREE.Mesh(
+      this._getGeo('rustwalker_third_eye', () => new THREE.CylinderGeometry(0.018, 0.018, 0.04, 8)),
+      p.weakpointGlow
     );
-    earAnt.position.set(0.15, 0.14, -0.04);
-    earAnt.rotation.z = -0.16;
-    headGroup.add(earAnt);
+    thirdEye.rotation.x = Math.PI * 0.5;
+    thirdEye.position.set(0, 0.095, 0.145);
+    headGroup.add(thirdEye);
+
+    // Serrated Steel Jaw Mask & Vertical Fang Grille
+    const jawMask = new THREE.Mesh(
+      this._getGeo('rustwalker_jaw_mask', () => new THREE.BoxGeometry(0.17, 0.075, 0.12)),
+      p.darkFrame
+    );
+    jawMask.position.set(0, -0.065, 0.105);
+    headGroup.add(jawMask);
+    for (let f = -2; f <= 2; f++) {
+      const fang = new THREE.Mesh(
+        this._getGeo('rustwalker_jaw_tooth', () => new THREE.BoxGeometry(0.016, 0.06, 0.03)),
+        p.pistonSteel
+      );
+      fang.position.set(f * 0.032, -0.06, 0.162);
+      headGroup.add(fang);
+    }
+
+    // Swept Razor Helmet Ear-Fins & Asymmetric Comms Antenna
+    for (let side = -1; side <= 1; side += 2) {
+      const earFin = new THREE.Mesh(
+        this._getGeo('rustwalker_ear_fin', () => new THREE.BoxGeometry(0.02, 0.18, 0.07)),
+        p.coloredPlate
+      );
+      earFin.position.set(side * 0.155, 0.10, -0.04);
+      earFin.rotation.x = -0.52;
+      earFin.rotation.z = -side * 0.18;
+      headGroup.add(earFin);
+    }
 
     headAnchor.position.set(0, 0.02, 0.02);
     headGroup.add(headAnchor);
@@ -1855,12 +2149,20 @@ class EnemyModelFactory {
     const upperArmGeo = this._getGeo('rustwalker_uarm', () => new THREE.CylinderGeometry(0.056, 0.048, 0.30, 8));
     const forearmGeo = this._getGeo('rustwalker_farm', () => new THREE.BoxGeometry(0.095, 0.28, 0.105));
 
-    // Right Arm (Weapon Arm with heavy angled rust-vermilion pauldron)
-    rightArm.position.set(-0.34, 1.44, 0.02);
+    // Right Arm (Spiked War Pauldron + Heavy Hellfire Pulse Carbine + Bayonet)
+    rightArm.position.set(-0.35, 1.45, 0.02);
     const rPauldron = new THREE.Mesh(bigPauldronGeo, p.coloredPlate);
     rPauldron.position.set(-0.04, 0.04, 0);
-    rPauldron.rotation.z = 0.26;
+    rPauldron.rotation.z = 0.28;
     rightArm.add(rPauldron);
+
+    const pSpikeGeo = this._getGeo('rustwalker_pauldron_spike', () => new THREE.ConeGeometry(0.028, 0.13, 5));
+    for (let sp = 0; sp < 2; sp++) {
+      const ps = new THREE.Mesh(pSpikeGeo, p.pistonSteel);
+      ps.position.set(-0.10 - sp * 0.05, 0.12 - sp * 0.04, (sp - 0.5) * 0.10);
+      ps.rotation.z = 0.55;
+      rightArm.add(ps);
+    }
 
     const rUpper = new THREE.Mesh(upperArmGeo, p.pistonSteel);
     rUpper.position.set(-0.02, -0.14, 0.06);
@@ -1872,73 +2174,88 @@ class EnemyModelFactory {
     rFore.rotation.x = -1.32;
     rightArm.add(rFore);
 
-    // Battered Scrap Assault Rifle held forward in rightArm
+    // Upgraded Heavy Hellfire Pulse Carbine with Vented Shroud, Coil & Bayonet
     const rifleGroup = new THREE.Group();
     rifleGroup.position.set(0.08, -0.21, 0.38);
 
     const receiverGeo = this._makeExtrudedPoly(
       'rustwalker_rifle_body',
       [
-        [-0.042, -0.06],
-        [0.042, -0.06],
-        [0.048, 0.055],
-        [-0.048, 0.055],
+        [-0.046, -0.07],
+        [0.046, -0.07],
+        [0.052, 0.06],
+        [-0.052, 0.06],
       ],
-      0.56,
+      0.60,
+      0.014,
       0.012,
-      0.01,
       1
     );
     rifleGroup.add(new THREE.Mesh(receiverGeo, p.darkFrame));
 
     const handguard = new THREE.Mesh(
-      this._getGeo('rustwalker_rifle_guard', () => new THREE.BoxGeometry(0.065, 0.052, 0.34)),
+      this._getGeo('rustwalker_rifle_guard', () => new THREE.BoxGeometry(0.072, 0.058, 0.38)),
       p.coloredPlate
     );
-    handguard.position.set(0, 0.048, 0.08);
+    handguard.position.set(0, 0.052, 0.10);
     rifleGroup.add(handguard);
+
+    const heatCoil = new THREE.Mesh(
+      this._getGeo('rustwalker_rifle_coil', () => new THREE.BoxGeometry(0.056, 0.026, 0.24)),
+      p.accentGlow
+    );
+    heatCoil.position.set(0, 0.015, 0.28);
+    rifleGroup.add(heatCoil);
 
     const rifleBarrelGeo = this._makeLathe(
       'rustwalker_rifle_barrel',
       [
-        [0.024, 0.0],
-        [0.024, 0.26],
-        [0.034, 0.28],
-        [0.034, 0.36],
-        [0.02, 0.38],
+        [0.026, 0.0],
+        [0.026, 0.28],
+        [0.038, 0.31],
+        [0.038, 0.40],
+        [0.022, 0.42],
       ],
       10
     );
     const rifleBarrel = new THREE.Mesh(rifleBarrelGeo, p.pistonSteel);
     rifleBarrel.rotation.x = Math.PI * 0.5;
-    rifleBarrel.position.set(0, 0.015, 0.24);
+    rifleBarrel.position.set(0, 0.015, 0.26);
     rifleGroup.add(rifleBarrel);
 
     const mag = new THREE.Mesh(
-      this._getGeo('rustwalker_rifle_mag', () => new THREE.BoxGeometry(0.042, 0.17, 0.078)),
+      this._getGeo('rustwalker_rifle_mag', () => new THREE.BoxGeometry(0.044, 0.19, 0.085)),
       p.primaryArmor
     );
-    mag.position.set(0, -0.11, 0.08);
-    mag.rotation.x = 0.24;
+    mag.position.set(0, -0.12, 0.08);
+    mag.rotation.x = 0.28;
     rifleGroup.add(mag);
 
     const sight = new THREE.Mesh(
-      this._getGeo('rustwalker_rifle_sight', () => new THREE.BoxGeometry(0.036, 0.042, 0.075)),
-      p.accentGlow
+      this._getGeo('rustwalker_rifle_sight', () => new THREE.BoxGeometry(0.038, 0.048, 0.095)),
+      p.weakpointGlow
     );
-    sight.position.set(0, 0.09, -0.02);
+    sight.position.set(0, 0.095, -0.02);
     rifleGroup.add(sight);
 
-    weaponMuzzle.position.set(0, 0.015, 0.64);
+    const rifleBayo = new THREE.Mesh(
+      this._getGeo('rustwalker_rifle_bayo', () => new THREE.BoxGeometry(0.014, 0.045, 0.22)),
+      p.pistonSteel
+    );
+    rifleBayo.position.set(0, -0.055, 0.50);
+    rifleGroup.add(rifleBayo);
+
+    weaponMuzzle.position.set(0, 0.015, 0.68);
     rifleGroup.add(weaponMuzzle);
     rightArm.add(rifleGroup);
     bodyGroup.add(rightArm);
 
-    // Left Arm (Mismatched smaller boiler-cap shoulder guard supporting foregrip)
-    leftArm.position.set(0.34, 1.44, 0.02);
-    const lCap = new THREE.Mesh(smallCapGeo, p.primaryArmor);
-    lCap.position.set(0.04, 0.05, 0);
-    lCap.rotation.z = -0.35;
+    // Left Arm (Armored Pauldron + Support Hand with Forearm Trench-Claw Blades)
+    leftArm.position.set(0.35, 1.45, 0.02);
+    const lCap = new THREE.Mesh(bigPauldronGeo, p.primaryArmor);
+    lCap.scale.set(-0.85, 0.85, 0.85);
+    lCap.position.set(0.04, 0.04, 0);
+    lCap.rotation.z = -0.32;
     leftArm.add(lCap);
 
     const lUpper = new THREE.Mesh(upperArmGeo, p.pistonSteel);
@@ -1952,6 +2269,15 @@ class EnemyModelFactory {
     lFore.rotation.x = -1.25;
     lFore.rotation.y = 0.52;
     leftArm.add(lFore);
+
+    for (let c = -1; c <= 1; c += 2) {
+      const wristClaw = new THREE.Mesh(
+        this._getGeo('rustwalker_wrist_claw', () => new THREE.BoxGeometry(0.014, 0.036, 0.20)),
+        p.pistonSteel
+      );
+      wristClaw.position.set(-0.12 + c * 0.028, -0.19, 0.44);
+      leftArm.add(wristClaw);
+    }
     bodyGroup.add(leftArm);
   }
 
@@ -1968,7 +2294,8 @@ class EnemyModelFactory {
     rightArm,
     leftLeg,
     rightLeg,
-    weaponMuzzle
+    weaponMuzzle,
+    sharedShieldMesh = null
   ) {
     // Heavy Demolition Legs (hip pivot at y = 1.08)
     const thighGeo = this._makeExtrudedPoly(
@@ -2041,11 +2368,19 @@ class EnemyModelFactory {
       legGroup.add(kneeDrum);
 
       const kneeCap = new THREE.Mesh(
-        this._getGeo('bulwark_knee_cap', () => new THREE.BoxGeometry(0.24, 0.18, 0.10)),
+        this._getGeo('bulwark_knee_cap', () => new THREE.BoxGeometry(0.28, 0.22, 0.14)),
         p.coloredPlate
       );
-      kneeCap.position.set(0, -0.48, 0.15);
+      kneeCap.position.set(0, -0.48, 0.16);
       legGroup.add(kneeCap);
+
+      const kneeRamSpike = new THREE.Mesh(
+        this._getGeo('bulwark_knee_spike', () => new THREE.ConeGeometry(0.068, 0.20, 5)),
+        p.pistonSteel
+      );
+      kneeRamSpike.rotation.x = Math.PI * 0.42;
+      kneeRamSpike.position.set(0, -0.46, 0.26);
+      legGroup.add(kneeRamSpike);
 
       const shin = new THREE.Mesh(shinGeo, p.darkFrame);
       shin.position.set(0, -0.50, 0);
@@ -2063,18 +2398,18 @@ class EnemyModelFactory {
     buildHeavyLeg(leftLeg, 0.28);
     buildHeavyLeg(rightLeg, -0.28);
 
-    // Armored Pelvis & Sloped Rusted Steel Bunker-Torso
+    // Armored Pelvis & Massive Furnace-Rib Siege Torso
     const pelvisGeo = this._makeExtrudedPoly(
       'bulwark_pelvis',
       [
-        [-0.38, 0.14],
-        [0.38, 0.14],
-        [0.28, -0.18],
-        [-0.28, -0.18],
+        [-0.40, 0.15],
+        [0.40, 0.15],
+        [0.30, -0.20],
+        [-0.30, -0.20],
       ],
-      0.38,
-      0.035,
-      0.03,
+      0.40,
+      0.036,
+      0.032,
       2
     );
     const pelvis = new THREE.Mesh(pelvisGeo, p.darkFrame);
@@ -2084,92 +2419,118 @@ class EnemyModelFactory {
     const torsoGeo = this._makeExtrudedPoly(
       'bulwark_torso',
       [
-        [-0.54, 0.42],
-        [-0.32, 0.54],
-        [0.32, 0.54],
-        [0.54, 0.42],
-        [0.46, -0.12],
-        [0.32, -0.34],
-        [-0.32, -0.34],
-        [-0.46, -0.12],
+        [-0.58, 0.44],
+        [-0.34, 0.58],
+        [0.34, 0.58],
+        [0.58, 0.44],
+        [0.48, -0.14],
+        [0.34, -0.36],
+        [-0.34, -0.36],
+        [-0.48, -0.14],
       ],
-      0.50,
-      0.05,
-      0.04,
+      0.54,
+      0.055,
+      0.044,
       2
     );
     const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
     torso.position.set(0, 1.62, 0.02);
     bodyGroup.add(torso);
 
-    // Sloped Welded Bunker Glacis Plate + Heated Furnace Boiler Slits
-    const glacisGeo = this._makeExtrudedPoly(
-      'bulwark_glacis',
+    // Dual Sloped Glacis Breastplates + Roaring Internal Chest Furnace Reactor Core
+    const ribArmorGeo = this._makeExtrudedPoly(
+      'bulwark_chest_flank',
       [
-        [-0.42, 0.26],
-        [0.42, 0.26],
-        [0.32, -0.22],
-        [-0.32, -0.22],
+        [-0.24, 0.28],
+        [0.06, 0.18],
+        [0.04, -0.22],
+        [-0.20, -0.14],
       ],
-      0.13,
+      0.16,
+      0.028,
+      0.022,
+      2
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const flank = new THREE.Mesh(ribArmorGeo, p.coloredPlate);
+      flank.position.set(side * 0.28, 1.66, 0.30);
+      flank.scale.x = side;
+      bodyGroup.add(flank);
+    }
+
+    const chestReactor = new THREE.Mesh(
+      this._getGeo('bulwark_chest_reactor', () => new THREE.CylinderGeometry(0.18, 0.20, 0.12, 12)),
+      p.accentGlow
+    );
+    chestReactor.rotation.x = Math.PI * 0.5;
+    chestReactor.position.set(0, 1.66, 0.31);
+    bodyGroup.add(chestReactor);
+
+    for (let i = 0; i < 4; i++) {
+      const cageBar = new THREE.Mesh(
+        this._getGeo('bulwark_chest_cage', () => new THREE.BoxGeometry(0.40, 0.036, 0.045)),
+        p.darkFrame
+      );
+      cageBar.position.set(0, 1.79 - i * 0.09, 0.375);
+      bodyGroup.add(cageBar);
+    }
+
+    // Towering Spiked Dreadnought Gorget & Shoulder Collar Towers (head open from front!)
+    const collarGeo = this._makeExtrudedPoly(
+      'bulwark_collar',
+      [
+        [-0.50, 0.0],
+        [-0.38, 0.34],
+        [0.38, 0.34],
+        [0.50, 0.0],
+        [0.30, 0.0],
+        [0.24, 0.22],
+        [-0.24, 0.22],
+        [-0.30, 0.0],
+      ],
+      0.38,
       0.03,
       0.025,
       2
     );
-    const glacis = new THREE.Mesh(glacisGeo, p.coloredPlate);
-    glacis.position.set(0, 1.66, 0.29);
-    glacis.rotation.x = -0.18;
-    bodyGroup.add(glacis);
-
-    for (let i = 0; i < 3; i++) {
-      const furnaceSlit = new THREE.Mesh(
-        this._getGeo('bulwark_chest_slit', () => new THREE.BoxGeometry(0.36, 0.04, 0.04)),
-        p.accentGlow
-      );
-      furnaceSlit.position.set(0, 1.76 - i * 0.11, 0.365);
-      bodyGroup.add(furnaceSlit);
-    }
-
-    // Sloped Bunker Collar Hood (frames head cleanly without obstructing headshot hitbox)
-    const collarGeo = this._makeExtrudedPoly(
-      'bulwark_collar',
-      [
-        [-0.46, 0.0],
-        [-0.34, 0.28],
-        [0.34, 0.28],
-        [0.46, 0.0],
-        [0.29, 0.0],
-        [0.24, 0.18],
-        [-0.24, 0.18],
-        [-0.29, 0.0],
-      ],
-      0.34,
-      0.028,
-      0.024,
-      2
-    );
     const collar = new THREE.Mesh(collarGeo, p.primaryArmor);
-    collar.position.set(0, 1.94, -0.06);
+    collar.position.set(0, 1.94, -0.08);
     bodyGroup.add(collar);
 
-    // Dual Hydraulic Spine Pistons + Twin Industrial Exhaust Stacks
+    const hornSpikeGeo = this._getGeo('bulwark_collar_horn', () => new THREE.ConeGeometry(0.06, 0.28, 5));
+    for (let side = -1; side <= 1; side += 2) {
+      const cHorn = new THREE.Mesh(hornSpikeGeo, p.pistonSteel);
+      cHorn.position.set(side * 0.42, 2.34, -0.06);
+      cHorn.rotation.z = -side * 0.30;
+      bodyGroup.add(cHorn);
+    }
+
+    // Dual Hydraulic Spine Pistons + Twin Blazing Furnace Exhaust Stacks
     const exhaustGeo = this._makeLathe(
       'bulwark_exhaust',
       [
-        [0.06, 0.0],
-        [0.095, 0.05],
-        [0.09, 0.44],
-        [0.115, 0.50],
-        [0.075, 0.52],
+        [0.065, 0.0],
+        [0.105, 0.05],
+        [0.098, 0.48],
+        [0.125, 0.56],
+        [0.08, 0.58],
       ],
       12
     );
-    const spineCylGeo = this._getGeo('bulwark_spine_cyl', () => new THREE.CylinderGeometry(0.05, 0.05, 0.68, 8));
+    const spineCylGeo = this._getGeo('bulwark_spine_cyl', () => new THREE.CylinderGeometry(0.052, 0.052, 0.70, 8));
     for (let side = -1; side <= 1; side += 2) {
       const stack = new THREE.Mesh(exhaustGeo, p.darkFrame);
-      stack.position.set(side * 0.25, 1.88, -0.32);
-      stack.rotation.x = -0.22;
+      stack.position.set(side * 0.27, 1.90, -0.34);
+      stack.rotation.x = -0.24;
       bodyGroup.add(stack);
+
+      const stackEmber = new THREE.Mesh(
+        this._getGeo('bulwark_stack_ember', () => new THREE.CylinderGeometry(0.075, 0.075, 0.06, 8)),
+        p.accentGlow
+      );
+      stackEmber.position.set(side * 0.27, 2.42, -0.47);
+      stackEmber.rotation.x = -0.24;
+      bodyGroup.add(stackEmber);
 
       const spinePiston = new THREE.Mesh(spineCylGeo, p.pistonSteel);
       spinePiston.position.set(side * 0.18, 1.62, -0.32);
@@ -2192,65 +2553,67 @@ class EnemyModelFactory {
       bodyGroup.add(hose);
     }
 
-    // Recessed Glowing Furnace-Red Slit Visor Weakpoint (headHeight = 2.02)
-    headGroup.position.set(0, 2.02, 0.07);
+    // Menacing Dreadnought Demon-Skull Helm & Slit Optics protruding over Collar (headHeight ~ 2.08)
+    headGroup.position.set(0, 2.12, 0.18);
     bodyGroup.add(headGroup);
 
     const pillboxHelmGeo = this._makeExtrudedPoly(
-      'bulwark_helm',
+      'bulwark_demon_helm',
       [
-        [-0.18, -0.11],
-        [0.18, -0.11],
-        [0.21, 0.06],
-        [0.14, 0.21],
-        [-0.14, 0.21],
-        [-0.21, 0.06],
+        [-0.17, -0.14],
+        [0.17, -0.14],
+        [0.23, 0.04],
+        [0.16, 0.22],
+        [0, 0.25],
+        [-0.16, 0.22],
+        [-0.23, 0.04],
       ],
-      0.28,
-      0.032,
-      0.026,
+      0.30,
+      0.034,
+      0.028,
       2
     );
-    headGroup.add(new THREE.Mesh(pillboxHelmGeo, p.primaryArmor));
+    headGroup.add(new THREE.Mesh(pillboxHelmGeo, p.coloredPlate));
 
-    // Recessed furnace-red slit visor + armored brow peak
+    // Frowning heavy anvil brow + twin angry red slit eyes + vertical teeth bars
     const browShield = new THREE.Mesh(
-      this._getGeo('bulwark_brow_plate', () => new THREE.BoxGeometry(0.38, 0.065, 0.16)),
+      this._getGeo('bulwark_brow_plate', () => new THREE.BoxGeometry(0.42, 0.072, 0.18)),
       p.darkFrame
     );
-    browShield.position.set(0, 0.12, 0.10);
-    browShield.rotation.x = 0.16;
+    browShield.position.set(0, 0.115, 0.12);
+    browShield.rotation.x = 0.22;
     headGroup.add(browShield);
 
-    const heavyVisorGeo = this._makeExtrudedPoly(
-      'bulwark_visor',
-      [
-        [-0.17, 0.055],
-        [0.17, 0.055],
-        [0.145, -0.045],
-        [-0.145, -0.045],
-      ],
-      0.09,
-      0.014,
-      0.012,
-      1
-    );
-    const heavyVisor = new THREE.Mesh(heavyVisorGeo, p.weakpointGlow);
-    heavyVisor.position.set(0, 0.025, 0.14);
-    headGroup.add(heavyVisor);
+    const bullEyeGeo = this._getGeo('bulwark_demon_eye', () => new THREE.BoxGeometry(0.115, 0.040, 0.065));
+    for (let side = -1; side <= 1; side += 2) {
+      const eye = new THREE.Mesh(bullEyeGeo, p.weakpointGlow);
+      eye.position.set(side * 0.088, 0.035, 0.168);
+      eye.rotation.z = side * 0.26;
+      headGroup.add(eye);
 
-    const browOptic = new THREE.Mesh(
-      this._getGeo('bulwark_brow_optic', () => new THREE.CylinderGeometry(0.046, 0.054, 0.08, 10)),
-      p.accentGlow
-    );
-    browOptic.rotation.x = Math.PI * 0.5;
-    browOptic.position.set(0, 0.13, 0.16);
-    headGroup.add(browOptic);
+      const helmHorn = new THREE.Mesh(
+        this._getGeo('bulwark_helm_horn', () => new THREE.ConeGeometry(0.042, 0.22, 5)),
+        p.pistonSteel
+      );
+      helmHorn.position.set(side * 0.18, 0.22, 0.08);
+      helmHorn.rotation.z = -side * 0.42;
+      helmHorn.rotation.x = 0.30;
+      headGroup.add(helmHorn);
+    }
+
+    for (let f = -2; f <= 2; f++) {
+      const teethBar = new THREE.Mesh(
+        this._getGeo('bulwark_teeth_bar', () => new THREE.BoxGeometry(0.024, 0.095, 0.045)),
+        p.pistonSteel
+      );
+      teethBar.position.set(f * 0.046, -0.075, 0.168);
+      headGroup.add(teethBar);
+    }
 
     headAnchor.position.set(0, 0.04, 0.04);
     headGroup.add(headAnchor);
 
-    // Massive Bolted Shoulder Pauldrons
+    // Massive Multi-Bevel Siege Shoulder Pauldrons
     const heavyPauldronGeo = this._makeExtrudedPoly(
       'bulwark_pauldron',
       [
@@ -2266,14 +2629,22 @@ class EnemyModelFactory {
       2
     );
 
-    // Right Arm — Shoulder/Forearm Heavy Autocannon
-    rightArm.position.set(-0.60, 1.84, 0.04);
+    // Right Arm — Spiked Pauldron + Twin-Barrel Linked Siege Autocannon
+    rightArm.position.set(-0.62, 1.84, 0.04);
     const rPauldron = new THREE.Mesh(heavyPauldronGeo, p.coloredPlate);
-    rPauldron.position.set(-0.08, 0.06, 0);
+    rPauldron.position.set(-0.08, 0.08, 0);
     rightArm.add(rPauldron);
 
+    const rPauldronSpike = new THREE.Mesh(
+      this._getGeo('bulwark_p_spike', () => new THREE.ConeGeometry(0.05, 0.24, 5)),
+      p.pistonSteel
+    );
+    rPauldronSpike.position.set(-0.18, 0.26, 0.04);
+    rPauldronSpike.rotation.z = 0.56;
+    rightArm.add(rPauldronSpike);
+
     const rArmPiston = new THREE.Mesh(
-      this._getGeo('bulwark_arm_core', () => new THREE.CylinderGeometry(0.105, 0.095, 0.42, 8)),
+      this._getGeo('bulwark_arm_core', () => new THREE.CylinderGeometry(0.11, 0.10, 0.44, 8)),
       p.pistonSteel
     );
     rArmPiston.position.set(-0.04, -0.22, 0.08);
@@ -2286,43 +2657,52 @@ class EnemyModelFactory {
     const breechGeo = this._makeExtrudedPoly(
       'bulwark_cannon_breech',
       [
-        [-0.12, -0.13],
-        [0.12, -0.13],
-        [0.15, 0.12],
-        [-0.15, 0.12],
+        [-0.14, -0.14],
+        [0.14, -0.14],
+        [0.17, 0.14],
+        [-0.17, 0.14],
       ],
-      0.56,
-      0.022,
-      0.018,
+      0.60,
+      0.024,
+      0.02,
       2
     );
     cannonGroup.add(new THREE.Mesh(breechGeo, p.primaryArmor));
 
     const cannonBarrelGeo = this._makeLathe(
-      'bulwark_cannon_barrel',
+      'bulwark_cannon_twin_barrel',
       [
-        [0.09, 0.0],
-        [0.095, 0.14],
-        [0.072, 0.16],
-        [0.072, 0.48],
-        [0.115, 0.54],
-        [0.10, 0.62],
-        [0.062, 0.60],
+        [0.056, 0.0],
+        [0.060, 0.14],
+        [0.046, 0.16],
+        [0.046, 0.50],
+        [0.074, 0.56],
+        [0.064, 0.64],
+        [0.038, 0.62],
       ],
-      14
+      12
     );
-    const barrel = new THREE.Mesh(cannonBarrelGeo, p.darkFrame);
-    barrel.rotation.x = Math.PI * 0.5;
-    barrel.position.set(0, 0.02, 0.24);
-    cannonGroup.add(barrel);
+    for (let side = -1; side <= 1; side += 2) {
+      const barrel = new THREE.Mesh(cannonBarrelGeo, p.darkFrame);
+      barrel.rotation.x = Math.PI * 0.5;
+      barrel.position.set(side * 0.072, 0.02, 0.26);
+      cannonGroup.add(barrel);
+    }
 
-    // Heated amber barrel cooling ribs
-    const heatRingGeo = this._getGeo('bulwark_cannon_heat', () => new THREE.TorusGeometry(0.096, 0.016, 8, 14));
+    // Heated amber barrel cooling ribs + Under-barrel Siege Bayonet
+    const heatRingGeo = this._getGeo('bulwark_cannon_heat', () => new THREE.TorusGeometry(0.125, 0.018, 8, 16));
     for (let c = 0; c < 3; c++) {
       const ring = new THREE.Mesh(heatRingGeo, p.accentGlow);
-      ring.position.set(0, 0.02, 0.36 + c * 0.14);
+      ring.position.set(0, 0.02, 0.38 + c * 0.14);
       cannonGroup.add(ring);
     }
+
+    const siegeBlade = new THREE.Mesh(
+      this._getGeo('bulwark_cannon_blade', () => new THREE.BoxGeometry(0.032, 0.08, 0.42)),
+      p.pistonSteel
+    );
+    siegeBlade.position.set(0, -0.12, 0.62);
+    cannonGroup.add(siegeBlade);
 
     cannonGroup.add(
       new THREE.Mesh(
@@ -2341,27 +2721,35 @@ class EnemyModelFactory {
       )
     );
 
-    weaponMuzzle.position.set(0, 0.02, 0.90);
+    weaponMuzzle.position.set(0, 0.02, 0.94);
     cannonGroup.add(weaponMuzzle);
     rightArm.add(cannonGroup);
     bodyGroup.add(rightArm);
 
-    // Left Arm — Articulated Welded Steel + Thermal-Amber Reinforced Riot Shield
-    leftArm.position.set(0.60, 1.84, 0.06);
+    // Left Arm — Spiked Pauldron + Molten-Slag Crimson Ram Siege Shield
+    leftArm.position.set(0.62, 1.84, 0.06);
     const lPauldron = new THREE.Mesh(heavyPauldronGeo, p.coloredPlate);
-    lPauldron.position.set(0.08, 0.06, 0);
+    lPauldron.position.set(0.08, 0.08, 0);
     lPauldron.scale.x = -1;
     leftArm.add(lPauldron);
 
+    const lPauldronSpike = new THREE.Mesh(
+      this._getGeo('bulwark_p_spike', () => new THREE.ConeGeometry(0.05, 0.24, 5)),
+      p.pistonSteel
+    );
+    lPauldronSpike.position.set(0.18, 0.26, 0.04);
+    lPauldronSpike.rotation.z = -0.56;
+    leftArm.add(lPauldronSpike);
+
     const lArmCore = new THREE.Mesh(
-      this._getGeo('bulwark_arm_core', () => new THREE.CylinderGeometry(0.105, 0.095, 0.42, 8)),
+      this._getGeo('bulwark_arm_core', () => new THREE.CylinderGeometry(0.11, 0.10, 0.44, 8)),
       p.pistonSteel
     );
     lArmCore.position.set(0.02, -0.22, 0.16);
     lArmCore.rotation.x = -0.68;
     leftArm.add(lArmCore);
 
-    // Welded industrial blast shield mounted cleanly across chest while leaving head open!
+    // Heavy Ram-Bastion Frame leaving head cleanly exposed for weakpoint shots!
     const shieldPivot = new THREE.Group();
     shieldPivot.position.set(-0.22, -0.50, 0.62);
     shieldPivot.rotation.y = -0.22;
@@ -2369,14 +2757,14 @@ class EnemyModelFactory {
     const bumperBarGeo = this._makeExtrudedPoly(
       'bulwark_shield_bumper',
       [
-        [-0.48, -0.065],
-        [0.48, -0.065],
-        [0.40, 0.065],
-        [-0.40, 0.065],
+        [-0.50, -0.07],
+        [0.50, -0.07],
+        [0.42, 0.07],
+        [-0.42, 0.07],
       ],
-      0.11,
-      0.018,
-      0.014,
+      0.12,
+      0.02,
+      0.016,
       1
     );
     const topBumper = new THREE.Mesh(bumperBarGeo, p.primaryArmor);
@@ -2386,40 +2774,28 @@ class EnemyModelFactory {
     botBumper.position.set(0, -0.64, -0.02);
     shieldPivot.add(botBumper);
 
-    const sideFrameGeo = this._getGeo('bulwark_shield_post', () => new THREE.BoxGeometry(0.09, 1.24, 0.09));
+    // Serrated Steel Ram-Spikes protruding from Shield Front & Sides
+    const ramToothGeo = this._getGeo('bulwark_shield_ram_spike', () => new THREE.ConeGeometry(0.048, 0.22, 4));
+    for (let st = -1; st <= 1; st++) {
+      const topTooth = new THREE.Mesh(ramToothGeo, p.pistonSteel);
+      topTooth.rotation.x = Math.PI * 0.48;
+      topTooth.position.set(st * 0.28, 0.66, 0.12);
+      shieldPivot.add(topTooth);
+
+      const botTooth = new THREE.Mesh(ramToothGeo, p.pistonSteel);
+      botTooth.rotation.x = Math.PI * 0.52;
+      botTooth.position.set(st * 0.28, -0.66, 0.12);
+      shieldPivot.add(botTooth);
+    }
+
+    const sideFrameGeo = this._getGeo('bulwark_shield_post', () => new THREE.BoxGeometry(0.10, 1.32, 0.11));
     for (let s = -1; s <= 1; s += 2) {
       const post = new THREE.Mesh(sideFrameGeo, p.darkFrame);
-      post.position.set(s * 0.48, 0, -0.02);
+      post.position.set(s * 0.50, 0, -0.02);
       shieldPivot.add(post);
     }
 
-    // Curved Welded Steel + Thermal-Amber Blast Shield Plate
-    const curvedShieldGeo = this._getGeo('bulwark_blast_shield', () => {
-      const geo = new THREE.CylinderGeometry(1.15, 1.15, 1.28, 18, 1, true, -0.46, 0.92);
-      geo.translate(0, 0, -1.06);
-      return geo;
-    });
-
-    const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0x00f0ff,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0x0284c7),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 1.45,
-      transparent: true,
-      opacity: 0.86,
-      roughness: 0.42,
-      metalness: 0.55,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    shieldMat.userData.baseColor = shieldMat.color.clone();
-    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
-    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
-    shieldMat.userData.baseOpacity = 0.86;
-    ownedMaterials.push(shieldMat);
-
-    const shieldMesh = new THREE.Mesh(curvedShieldGeo, shieldMat);
+    const shieldMesh = sharedShieldMesh || this._createHeavyBlastShieldMesh(ownedMaterials);
     shieldMesh.renderOrder = 6;
     shieldPivot.add(shieldMesh);
 
@@ -2495,6 +2871,14 @@ class EnemyModelFactory {
       thigh.rotation.x = -0.14;
       legGroup.add(thigh);
 
+      const kneeSpur = new THREE.Mesh(
+        this._getGeo('deadeye_knee_spur', () => new THREE.ConeGeometry(0.04, 0.16, 4)),
+        p.pistonSteel
+      );
+      kneeSpur.rotation.x = Math.PI * 0.35;
+      kneeSpur.position.set(0, -0.42, 0.09);
+      legGroup.add(kneeSpur);
+
       const shin = new THREE.Mesh(shinStrutGeo, p.darkFrame);
       shin.position.set(0, -0.44, 0.03);
       shin.rotation.x = 0.14;
@@ -2507,12 +2891,15 @@ class EnemyModelFactory {
       piston.position.set(0, -0.66, -0.02);
       legGroup.add(piston);
 
-      const footClaw = new THREE.Mesh(
-        this._getGeo('deadeye_foot', () => new THREE.BoxGeometry(0.095, 0.065, 0.25)),
-        p.coloredPlate
-      );
-      footClaw.position.set(0, -0.945, 0.06);
-      legGroup.add(footClaw);
+      for (let t = -1; t <= 1; t += 2) {
+        const footClaw = new THREE.Mesh(
+          this._getGeo('deadeye_foot_talon', () => new THREE.BoxGeometry(0.036, 0.055, 0.26)),
+          p.coloredPlate
+        );
+        footClaw.position.set(t * 0.036, -0.945, 0.07);
+        footClaw.rotation.y = -t * 0.14;
+        legGroup.add(footClaw);
+      }
 
       legGroup.add(new THREE.Mesh(tendonGeo, p.cableMat));
       bodyGroup.add(legGroup);
@@ -2521,18 +2908,18 @@ class EnemyModelFactory {
     buildReconLeg(leftLeg, 0.145);
     buildReconLeg(rightLeg, -0.145);
 
-    // Gaunt Skeletal Angular Torso
+    // Gaunt Skeletal Ribcage Torso + Dorsal Hunter-Blade Rack
     const torsoGeo = this._makeExtrudedPoly(
       'deadeye_torso',
       [
-        [-0.21, 0.26],
-        [0.21, 0.26],
-        [0.15, -0.04],
+        [-0.22, 0.27],
+        [0.22, 0.27],
+        [0.16, -0.04],
         [0.095, -0.26],
         [-0.095, -0.26],
-        [-0.15, -0.04],
+        [-0.16, -0.04],
       ],
-      0.19,
+      0.20,
       0.024,
       0.02,
       2
@@ -2541,62 +2928,76 @@ class EnemyModelFactory {
     torso.position.set(0, 1.32, 0);
     bodyGroup.add(torso);
 
-    // Glowing furnace-amber spine battery core
+    // Glowing furnace-crimson spine & chest core battery cells
     const spineStrip = new THREE.Mesh(
-      this._getGeo('deadeye_spine_strip', () => new THREE.BoxGeometry(0.036, 0.40, 0.03)),
-      p.accentGlow
+      this._getGeo('deadeye_spine_strip', () => new THREE.BoxGeometry(0.04, 0.42, 0.04)),
+      p.weakpointGlow
     );
-    spineStrip.position.set(0, 1.34, -0.12);
+    spineStrip.position.set(0, 1.34, -0.125);
     bodyGroup.add(spineStrip);
 
-    // Tattered Weathered Steel Shroud Fins (notched jagged battle-damaged silhouettes!)
+    const chestEye = new THREE.Mesh(
+      this._getGeo('deadeye_chest_core', () => new THREE.BoxGeometry(0.11, 0.04, 0.05)),
+      p.accentGlow
+    );
+    chestEye.position.set(0, 1.38, 0.11);
+    bodyGroup.add(chestEye);
+
+    // 4 Towering Segmented Dorsal Hunter-Spines / Blade Tendrils curving over shoulders
+    const dorsalBladeFinGeo = this._makeExtrudedPoly(
+      'deadeye_dorsal_blade_fin',
+      [
+        [-0.03, 0.0],
+        [0.05, 0.0],
+        [0.14, 0.36],
+        [0.03, 0.62],
+        [-0.02, 0.34],
+      ],
+      0.026,
+      0.008,
+      0.007,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      for (let tier = 0; tier < 2; tier++) {
+        const blade = new THREE.Mesh(dorsalBladeFinGeo, tier === 0 ? p.darkFrame : p.coloredPlate);
+        blade.position.set(side * (0.14 + tier * 0.11), 1.48 - tier * 0.12, -0.12 - tier * 0.04);
+        blade.rotation.z = -side * (0.28 + tier * 0.24);
+        blade.rotation.x = -0.20 - tier * 0.14;
+        bodyGroup.add(blade);
+      }
+    }
+
+    // Jagged Stalker Shroud Plates framing Shoulders
     const shroudLargeGeo = this._makeExtrudedPoly(
       'deadeye_shroud_large',
       [
         [0.0, 0.18],
-        [0.36, 0.34],
-        [0.44, -0.06],
-        [0.28, -0.22],
-        [0.34, -0.42],
-        [0.14, -0.60],
+        [0.38, 0.36],
+        [0.46, -0.06],
+        [0.28, -0.24],
+        [0.36, -0.46],
+        [0.14, -0.64],
         [0.06, -0.36],
         [-0.04, -0.18],
       ],
-      0.032,
+      0.034,
       0.009,
       0.008,
       1
     );
-    const shroudLeft = new THREE.Mesh(shroudLargeGeo, p.coloredPlate);
-    shroudLeft.position.set(0.14, 1.44, -0.10);
-    shroudLeft.rotation.y = -0.35;
-    shroudLeft.rotation.x = 0.16;
-    bodyGroup.add(shroudLeft);
-
-    const shroudSmallGeo = this._makeExtrudedPoly(
-      'deadeye_shroud_small',
-      [
-        [0.0, 0.14],
-        [-0.28, 0.24],
-        [-0.22, -0.08],
-        [-0.28, -0.24],
-        [-0.12, -0.34],
-        [0.0, -0.12],
-      ],
-      0.03,
-      0.008,
-      0.008,
-      1
-    );
-    const shroudRight = new THREE.Mesh(shroudSmallGeo, p.primaryArmor);
-    shroudRight.position.set(-0.14, 1.44, -0.10);
-    shroudRight.rotation.y = 0.32;
-    shroudRight.rotation.x = 0.14;
-    bodyGroup.add(shroudRight);
+    for (let side = -1; side <= 1; side += 2) {
+      const shroud = new THREE.Mesh(shroudLargeGeo, side > 0 ? p.coloredPlate : p.darkFrame);
+      shroud.position.set(side * 0.14, 1.44, -0.11);
+      shroud.scale.x = side;
+      shroud.rotation.y = -side * 0.34;
+      shroud.rotation.x = 0.16;
+      bodyGroup.add(shroud);
+    }
 
     // Dorsal Recon Rangefinder Antenna Spire
     const spire = new THREE.Mesh(
-      this._getGeo('deadeye_spire', () => new THREE.CylinderGeometry(0.008, 0.022, 0.44, 6)),
+      this._getGeo('deadeye_spire', () => new THREE.CylinderGeometry(0.008, 0.022, 0.46, 6)),
       p.pistonSteel
     );
     spire.position.set(0.16, 1.78, -0.16);
@@ -2604,47 +3005,59 @@ class EnemyModelFactory {
     bodyGroup.add(spire);
 
     const spireTip = new THREE.Mesh(
-      this._getGeo('deadeye_spire_tip', () => new THREE.SphereGeometry(0.025, 8, 6)),
+      this._getGeo('deadeye_spire_tip', () => new THREE.SphereGeometry(0.026, 8, 6)),
       p.weakpointGlow
     );
     spireTip.position.set(0.16, 1.99, -0.21);
     bodyGroup.add(spireTip);
 
-    // Triple-Lens Red Telescopic Optic Head (headHeight = 1.68)
+    // Nightmarish Narrow Predator Skull Cranium + 4 Asymmetric Arachnid Eyes (headHeight = 1.68)
     headGroup.position.set(0, 1.68, 0.03);
     bodyGroup.add(headGroup);
 
     const maskGeo = this._makeExtrudedPoly(
-      'deadeye_head_mask',
+      'deadeye_stalker_cranium',
       [
-        [0, -0.14],
-        [0.14, 0.09],
-        [0, 0.19],
-        [-0.14, 0.09],
+        [0, -0.15],
+        [0.14, 0.02],
+        [0.12, 0.16],
+        [0, 0.22],
+        [-0.12, 0.16],
+        [-0.14, 0.02],
       ],
-      0.24,
+      0.28,
       0.022,
       0.018,
       2
     );
     headGroup.add(new THREE.Mesh(maskGeo, p.darkFrame));
 
-    // Three protruding telescopic camera housings + blazing crimson lenses
+    // Sloped armored brow hood curving aggressively back
+    const craniumCrest = new THREE.Mesh(
+      this._getGeo('deadeye_cranium_crest', () => new THREE.BoxGeometry(0.16, 0.09, 0.36)),
+      p.coloredPlate
+    );
+    craniumCrest.position.set(0, 0.15, -0.02);
+    craniumCrest.rotation.x = 0.28;
+    headGroup.add(craniumCrest);
+
+    // 4 Protruding Arachnid Telescopic Crimson Optics (asymmetrical unsettling cluster)
     const scopeTubeGeo = this._makeLathe(
       'deadeye_optic_tube',
       [
-        [0.03, -0.02],
-        [0.048, 0.0],
-        [0.05, 0.07],
-        [0.04, 0.08],
+        [0.028, -0.02],
+        [0.046, 0.0],
+        [0.048, 0.075],
+        [0.038, 0.085],
       ],
       12
     );
     const lensCapGeo = this._getGeo('deadeye_optic_lens', () => new THREE.CylinderGeometry(0.036, 0.036, 0.02, 12));
     const lensPositions = [
-      [0, 0.068, 0.115, 1.15],
-      [-0.062, -0.02, 0.11, 0.9],
-      [0.062, -0.02, 0.11, 0.9],
+      [0.018, 0.072, 0.12, 1.15],
+      [-0.068, 0.015, 0.115, 0.86],
+      [0.072, -0.022, 0.115, 0.92],
+      [-0.048, -0.055, 0.112, 0.68],
     ];
     for (let i = 0; i < lensPositions.length; i++) {
       const [lx, ly, lz, sc] = lensPositions[i];
@@ -2656,20 +3069,20 @@ class EnemyModelFactory {
 
       const lens = new THREE.Mesh(lensCapGeo, p.weakpointGlow);
       lens.rotation.x = Math.PI * 0.5;
-      lens.position.set(lx, ly, lz + 0.072);
+      lens.position.set(lx, ly, lz + 0.078);
       lens.scale.set(sc, 1, sc);
       headGroup.add(lens);
     }
 
-    // Swept dual jagged hood fins
+    // Swept Dual Long Predator Ear-Blades
     for (let side = -1; side <= 1; side += 2) {
       const ear = new THREE.Mesh(
-        this._getGeo('deadeye_ear', () => new THREE.BoxGeometry(0.022, 0.24, 0.05)),
+        this._getGeo('deadeye_ear', () => new THREE.BoxGeometry(0.022, 0.34, 0.06)),
         p.coloredPlate
       );
-      ear.position.set(side * 0.12, 0.15, -0.06);
-      ear.rotation.x = -0.58;
-      ear.rotation.z = -side * 0.24;
+      ear.position.set(side * 0.12, 0.18, -0.10);
+      ear.rotation.x = -0.68;
+      ear.rotation.z = -side * 0.26;
       headGroup.add(ear);
     }
 
@@ -2702,35 +3115,50 @@ class EnemyModelFactory {
     );
     rifle.add(new THREE.Mesh(stockGeo, p.primaryArmor));
 
-    // Twin elongated parallel anti-materiel steel rails (1.08m barrel extension!)
+    // Twin elongated parallel anti-materiel magnetic rail-lance (1.22m!)
     const railGeo = this._makeExtrudedPoly(
       'deadeye_rail_bar',
       [
-        [-0.017, -0.018],
-        [0.017, -0.018],
-        [0.013, 0.018],
-        [-0.013, 0.018],
+        [-0.019, -0.02],
+        [0.019, -0.02],
+        [0.014, 0.02],
+        [-0.014, 0.02],
       ],
-      1.08,
+      1.22,
       0.005,
       0.005,
       1
     );
     const upperRail = new THREE.Mesh(railGeo, p.darkFrame);
-    upperRail.position.set(0, 0.036, 0.65);
+    upperRail.position.set(0, 0.038, 0.72);
     rifle.add(upperRail);
     const lowerRail = new THREE.Mesh(railGeo, p.darkFrame);
-    lowerRail.position.set(0, -0.022, 0.65);
+    lowerRail.position.set(0, -0.024, 0.72);
     rifle.add(lowerRail);
 
-    // Heated copper-amber inner core tube between twin bars
+    // Heated crimson inner magnetic accelerator tube + 4 glowing accelerator rings
     const coreBarrel = new THREE.Mesh(
-      this._getGeo('deadeye_inner_barrel', () => new THREE.CylinderGeometry(0.012, 0.012, 1.02, 8)),
+      this._getGeo('deadeye_inner_barrel', () => new THREE.CylinderGeometry(0.014, 0.014, 1.16, 8)),
       p.accentGlow
     );
     coreBarrel.rotation.x = Math.PI * 0.5;
-    coreBarrel.position.set(0, 0.008, 0.63);
+    coreBarrel.position.set(0, 0.008, 0.70);
     rifle.add(coreBarrel);
+
+    const coilRingGeo = this._getGeo('deadeye_rail_coil', () => new THREE.TorusGeometry(0.044, 0.009, 6, 12));
+    for (let rc = 0; rc < 4; rc++) {
+      const cr = new THREE.Mesh(coilRingGeo, p.weakpointGlow);
+      cr.position.set(0, 0.008, 0.36 + rc * 0.24);
+      rifle.add(cr);
+    }
+
+    const recoilSpike = new THREE.Mesh(
+      this._getGeo('deadeye_muzzle_spike', () => new THREE.ConeGeometry(0.02, 0.24, 4)),
+      p.pistonSteel
+    );
+    recoilSpike.rotation.x = Math.PI * 0.5;
+    recoilSpike.position.set(0, -0.052, 1.18);
+    rifle.add(recoilSpike);
 
     // Heavy LatheGeometry telescopic rangefinder scope
     const scopeGeo = this._makeLathe(
@@ -2820,10 +3248,242 @@ class EnemyModelFactory {
     return laserLine;
   }
 
+  _createHeavyBlastShieldMesh(ownedMaterials) {
+    const curvedShieldGeo = this._getGeo('bulwark_blast_shield', () => {
+      const geo = new THREE.CylinderGeometry(1.15, 1.15, 1.24, 18, 1, true, -0.44, 0.88);
+      geo.translate(0, 0, -1.06);
+      return geo;
+    });
+
+    const shieldMat = new THREE.MeshStandardMaterial({
+      color: 0xff5a1f,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0xd9300e),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 1.55,
+      transparent: true,
+      opacity: 0.88,
+      roughness: 0.38,
+      metalness: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    shieldMat.userData.baseColor = shieldMat.color.clone();
+    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
+    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
+    shieldMat.userData.baseOpacity = 0.88;
+    ownedMaterials.push(shieldMat);
+
+    const shieldMesh = new THREE.Mesh(curvedShieldGeo, shieldMat);
+    shieldMesh.castShadow = false;
+    shieldMesh.receiveShadow = false;
+    shieldMesh.renderOrder = 6;
+    return shieldMesh;
+  }
+
+  _mountGlbRig(archetypeId, templateScene, ctx) {
+    const {
+      p,
+      ownedMaterials,
+      bodyGroup,
+      headGroup,
+      headAnchor,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      weaponMuzzle,
+      leftWeaponMuzzle,
+      rotors,
+      coreRings,
+      shieldMesh,
+    } = ctx;
+
+    const gltfRoot = templateScene.clone(true);
+    const clonedMatMap = new Map();
+
+    gltfRoot.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const srcMat = obj.material;
+      if (srcMat && !Array.isArray(srcMat)) {
+        let cloned = clonedMatMap.get(srcMat);
+        if (!cloned) {
+          cloned = srcMat.clone();
+          if (!cloned.emissive) cloned.emissive = new THREE.Color(0x000000);
+          if (cloned.emissiveIntensity === undefined || cloned.emissiveIntensity === null) {
+            cloned.emissiveIntensity = 0;
+          }
+          cloned.userData.baseEmissive = cloned.emissive.clone();
+          cloned.userData.baseEmissiveIntensity = cloned.emissiveIntensity;
+          clonedMatMap.set(srcMat, cloned);
+          ownedMaterials.push(cloned);
+          p.flashMaterials.push(cloned);
+        }
+        obj.material = cloned;
+      }
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    });
+
+    const glbBody = gltfRoot.getObjectByName('BodyGroup') || gltfRoot;
+    const transferNamedPivot = (glbName, targetGroup) => {
+      if (!targetGroup) return null;
+      const node = glbBody.getObjectByName(glbName);
+      if (!node) return null;
+      targetGroup.position.copy(node.position);
+      targetGroup.rotation.copy(node.rotation);
+      targetGroup.scale.copy(node.scale);
+      while (node.children.length > 0) {
+        targetGroup.add(node.children[0]);
+      }
+      if (node.parent) node.parent.remove(node);
+      if (targetGroup.parent !== bodyGroup) bodyGroup.add(targetGroup);
+      return targetGroup;
+    };
+
+    transferNamedPivot('HeadGroup', headGroup);
+    const glbHeadAnchor = headGroup.getObjectByName('HeadAnchor');
+    if (glbHeadAnchor) {
+      headAnchor.position.copy(glbHeadAnchor.position);
+      if (glbHeadAnchor.parent) glbHeadAnchor.parent.remove(glbHeadAnchor);
+    } else {
+      headAnchor.position.set(0, 0.04, 0.06);
+    }
+    if (headAnchor.parent !== headGroup) headGroup.add(headAnchor);
+
+    transferNamedPivot('LeftLeg', leftLeg);
+    transferNamedPivot('RightLeg', rightLeg);
+    transferNamedPivot('LeftArm', leftArm);
+    transferNamedPivot('RightArm', rightArm);
+
+    if (archetypeId === 'rusher_drone') {
+      bodyGroup.position.set(0, 0.55, 0);
+    }
+
+    const glbMuzzleR = rightArm.getObjectByName('WeaponMuzzleR') || rightArm.getObjectByName('WeaponMuzzle');
+    if (glbMuzzleR) {
+      weaponMuzzle.position.copy(glbMuzzleR.position);
+      if (glbMuzzleR.parent) glbMuzzleR.parent.remove(glbMuzzleR);
+    }
+    if (weaponMuzzle.parent !== rightArm) rightArm.add(weaponMuzzle);
+
+    if (leftWeaponMuzzle) {
+      const glbMuzzleL = leftArm.getObjectByName('WeaponMuzzleL');
+      if (glbMuzzleL) {
+        leftWeaponMuzzle.position.copy(glbMuzzleL.position);
+        if (glbMuzzleL.parent) glbMuzzleL.parent.remove(glbMuzzleL);
+      }
+      if (leftWeaponMuzzle.parent !== leftArm) leftArm.add(leftWeaponMuzzle);
+    }
+
+    if (archetypeId === 'heavy_enforcer' && shieldMesh) {
+      const shieldFrame = leftArm.getObjectByName('ShieldFrame') || bodyGroup.getObjectByName('ShieldFrame');
+      if (shieldFrame) {
+        shieldMesh.position.set(0, 0, 0.02);
+        shieldMesh.rotation.set(0, 0, 0);
+        shieldFrame.add(shieldMesh);
+      } else {
+        shieldMesh.position.set(-0.22, -0.50, 0.60);
+        shieldMesh.rotation.set(0, 0.22, 0);
+        leftArm.add(shieldMesh);
+      }
+    }
+
+    const rotorNames = ['LeftRotor', 'RightRotor', 'Rotor_0', 'Rotor_1', 'Rotor_2', 'Rotor_3'];
+    for (let i = 0; i < rotorNames.length; i++) {
+      const rotNode =
+        glbBody.getObjectByName(rotorNames[i]) ||
+        leftArm.getObjectByName(rotorNames[i]) ||
+        rightArm.getObjectByName(rotorNames[i]);
+      if (rotNode) rotors.push(rotNode);
+    }
+
+    for (let r = 0; r < 3; r++) {
+      const ring = glbBody.getObjectByName(`OrbitRing_${r}`);
+      if (ring) {
+        ring.userData.baseRotation = ring.rotation.clone();
+        coreRings.push(ring);
+      }
+    }
+
+    bodyGroup.add(glbBody);
+    bodyGroup.userData.glbMounted = true;
+  }
+
+  _buildWithAct1Glb(archetypeId, ctx, buildLegacyFn) {
+    const cachedScene = EnemyModelFactory._glbCache.get(archetypeId);
+    if (cachedScene) {
+      this._mountGlbRig(archetypeId, cachedScene, ctx);
+      return;
+    }
+
+    buildLegacyFn();
+
+    if (typeof document !== 'undefined' && globalThis.GLTFLoader) {
+      const { bodyGroup, headGroup, headAnchor, leftArm, rightArm, leftLeg, rightLeg, weaponMuzzle, leftWeaponMuzzle, shieldMesh, rotors, coreRings } = ctx;
+      const groupsToPurge = [headGroup, leftArm, rightArm, leftLeg, rightLeg].filter(Boolean);
+      const keepSet = new Set(
+        [shieldMesh, headGroup, headAnchor, leftArm, rightArm, leftLeg, rightLeg, weaponMuzzle, leftWeaponMuzzle].filter(Boolean)
+      );
+      const fallbackBodyNodes = bodyGroup.children.filter((c) => !keepSet.has(c));
+
+      this.preloadModels().then(() => {
+        const sceneTpl = EnemyModelFactory._glbCache.get(archetypeId);
+        if (!sceneTpl || bodyGroup.userData.glbMounted) return;
+        if (shieldMesh && shieldMesh.parent && shieldMesh.parent !== bodyGroup) {
+          shieldMesh.parent.remove(shieldMesh);
+        }
+        for (let i = 0; i < fallbackBodyNodes.length; i++) {
+          bodyGroup.remove(fallbackBodyNodes[i]);
+        }
+        for (let i = 0; i < groupsToPurge.length; i++) {
+          const grp = groupsToPurge[i];
+          const toRemove = grp.children.filter((c) => !keepSet.has(c));
+          for (let j = 0; j < toRemove.length; j++) grp.remove(toRemove[j]);
+          grp.rotation.set(0, 0, 0);
+        }
+        rotors.length = 0;
+        coreRings.length = 0;
+        this._mountGlbRig(archetypeId, sceneTpl, ctx);
+      });
+    }
+  }
+
   // ===========================================================================
-  // 5. COLOSSUS-IV // ASH TITAN (4.2m Reverse-Jointed Mining/Siege Boss)
+  // 5. COLOSSUS-IV // ASH TITAN (4.2m Sculpted AAA Blender GLB + Legacy Fallback)
   // ===========================================================================
-  _buildCyberMechBoss(
+  _createBossPhaseShieldMesh(ownedMaterials, bodyGroup) {
+    const bossShieldGeo = this._getGeo('colossus_phase_shield', () => {
+      return new THREE.CylinderGeometry(1.78, 1.85, 2.2, 24, 1, true);
+    });
+    const bossShieldMat = new THREE.MeshStandardMaterial({
+      color: 0xff7b24,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0xe63916),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 2.0,
+      transparent: true,
+      opacity: 0.0,
+      roughness: 0.38,
+      metalness: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    bossShieldMat.userData.baseColor = bossShieldMat.color.clone();
+    bossShieldMat.userData.baseEmissive = bossShieldMat.emissive.clone();
+    bossShieldMat.userData.baseEmissiveIntensity = bossShieldMat.emissiveIntensity;
+    bossShieldMat.userData.baseOpacity = 0.72;
+    ownedMaterials.push(bossShieldMat);
+
+    const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
+    shieldMesh.position.set(0, 2.15, 0.04);
+    shieldMesh.visible = false;
+    shieldMesh.renderOrder = 7;
+    bodyGroup.add(shieldMesh);
+    return shieldMesh;
+  }
+
+  _buildLegacyCyberMechBoss(
     p,
     ownedMaterials,
     bodyGroup,
@@ -2834,8 +3494,10 @@ class EnemyModelFactory {
     leftLeg,
     rightLeg,
     weaponMuzzle,
+    leftWeaponMuzzle,
     rotors,
-    coreRings
+    coreRings,
+    shieldMesh
   ) {
     // Colossal Reverse-Jointed Mining/Siege Walker Legs (hip pivot at y = 1.96)
     const thighGeo = this._makeExtrudedPoly(
@@ -2916,6 +3578,14 @@ class EnemyModelFactory {
       knee.rotation.z = Math.PI * 0.5;
       knee.position.set(0, -0.86, 0.16);
       legGroup.add(knee);
+
+      const kneeRam = new THREE.Mesh(
+        this._getGeo('colossus_knee_ram', () => new THREE.ConeGeometry(0.18, 0.44, 5)),
+        p.pistonSteel
+      );
+      kneeRam.rotation.x = Math.PI * 0.40;
+      kneeRam.position.set(0, -0.86, 0.44);
+      legGroup.add(kneeRam);
 
       const kneeRing = new THREE.Mesh(
         this._getGeo('colossus_knee_ring', () => new THREE.TorusGeometry(0.24, 0.032, 8, 16)),
@@ -3117,41 +3787,65 @@ class EnemyModelFactory {
       bodyGroup.add(emberTop);
     }
 
-    // Twin Shoulder-Mounted 6-Cell Missile Racks
+    // Twin Glacis Siege Armor Tusks flanking Chest Furnace Cage
+    const chestTuskGeo = this._makeExtrudedPoly(
+      'colossus_chest_tusk',
+      [
+        [-0.12, -0.26],
+        [0.14, -0.18],
+        [0.24, 0.34],
+        [0.02, 0.48],
+        [-0.08, 0.16],
+      ],
+      0.20,
+      0.03,
+      0.024,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const tusk = new THREE.Mesh(chestTuskGeo, p.darkFrame);
+      tusk.position.set(side * 0.66, 3.04, 0.48);
+      tusk.scale.x = side;
+      tusk.rotation.y = -side * 0.22;
+      tusk.rotation.x = 0.12;
+      bodyGroup.add(tusk);
+    }
+
+    // Twin Towering Shoulder-Mounted 9-Cell Missile Citadels
     const podGeo = this._makeExtrudedPoly(
       'colossus_missile_pod',
       [
-        [-0.32, -0.22],
-        [0.32, -0.22],
-        [0.36, 0.24],
-        [-0.36, 0.24],
+        [-0.38, -0.26],
+        [0.38, -0.26],
+        [0.42, 0.28],
+        [-0.42, 0.28],
       ],
-      0.56,
-      0.032,
-      0.028,
+      0.62,
+      0.036,
+      0.03,
       2
     );
-    const warheadGeo = this._getGeo('colossus_warhead', () => new THREE.ConeGeometry(0.062, 0.14, 8));
+    const warheadGeo = this._getGeo('colossus_warhead', () => new THREE.ConeGeometry(0.068, 0.16, 8));
     for (let side = -1; side <= 1; side += 2) {
       const pod = new THREE.Group();
-      pod.position.set(side * 0.96, 3.84, -0.06);
+      pod.position.set(side * 1.02, 3.90, -0.06);
       pod.rotation.x = -0.18;
-      pod.rotation.z = -side * 0.12;
+      pod.rotation.z = -side * 0.14;
       pod.add(new THREE.Mesh(podGeo, p.primaryArmor));
 
-      for (let r = 0; r < 2; r++) {
-        for (let c = 0; c < 3; c++) {
-          const tip = new THREE.Mesh(warheadGeo, p.coloredPlate);
+      for (let r = -1; r <= 1; r++) {
+        for (let c = -1; c <= 1; c++) {
+          const tip = new THREE.Mesh(warheadGeo, c === 0 && r === 0 ? p.accentGlow : p.coloredPlate);
           tip.rotation.x = Math.PI * 0.5;
-          tip.position.set((c - 1) * 0.18, (r - 0.5) * 0.18, 0.30);
+          tip.position.set(c * 0.20, r * 0.15, 0.34);
           pod.add(tip);
         }
       }
       bodyGroup.add(pod);
     }
 
-    // Prominent Armored Cranial Furnace Reactor Core (Headshot Weakpoint at y = 3.55!)
-    headGroup.position.set(0, 3.55, 0.16);
+    // Dreadnought Demon-Skull Cranial Furnace Weakpoint (Elevated Forward Over Upper Glacis!)
+    headGroup.position.set(0, 3.82, 0.46);
     bodyGroup.add(headGroup);
 
     const cranialCoreGeo = this._makeLathe(
@@ -3169,38 +3863,95 @@ class EnemyModelFactory {
     );
     headGroup.add(new THREE.Mesh(cranialCoreGeo, p.weakpointGlow));
 
-    // Welded Armored Blast Crown Cage framing the glowing furnace core (clear frontal sightline!)
-    const crownHornGeo = this._makeExtrudedPoly(
-      'colossus_crown_horn',
+    // Menacing Frowning Demon-Skull Brow Crown, Slit Optics & Jaw Mandibles framing Open Core
+    const skullBrowGeo = this._makeExtrudedPoly(
+      'colossus_skull_brow',
+      [
+        [-0.48, 0.04],
+        [-0.30, 0.32],
+        [0, 0.20],
+        [0.30, 0.32],
+        [0.48, 0.04],
+        [0, -0.06],
+      ],
+      0.38,
+      0.03,
+      0.026,
+      1
+    );
+    const skullBrow = new THREE.Mesh(skullBrowGeo, p.coloredPlate);
+    skullBrow.position.set(0, 0.32, 0.10);
+    skullBrow.rotation.x = 0.24;
+    headGroup.add(skullBrow);
+
+    const bossEyeSlitGeo = this._getGeo('colossus_demon_eye_slit', () => new THREE.BoxGeometry(0.19, 0.068, 0.10));
+    for (let side = -1; side <= 1; side += 2) {
+      const bEye = new THREE.Mesh(bossEyeSlitGeo, p.weakpointGlow);
+      bEye.position.set(side * 0.21, 0.18, 0.33);
+      bEye.rotation.z = side * 0.32;
+      headGroup.add(bEye);
+    }
+
+    const jawCheekGeo = this._makeExtrudedPoly(
+      'colossus_jaw_cheek',
       [
         [-0.08, -0.26],
-        [0.10, -0.18],
-        [0.22, 0.46],
-        [0.04, 0.56],
-        [-0.06, 0.20],
+        [0.10, -0.14],
+        [0.08, 0.24],
+        [-0.08, 0.18],
       ],
-      0.16,
-      0.022,
-      0.018,
+      0.38,
+      0.024,
+      0.02,
       1
     );
     for (let side = -1; side <= 1; side += 2) {
-      const horn = new THREE.Mesh(crownHornGeo, p.coloredPlate);
-      horn.position.set(side * 0.42, 0.12, -0.02);
-      horn.scale.x = side;
-      horn.rotation.y = side * 0.24;
-      headGroup.add(horn);
+      // Swept curved dreadnought bull-horns towering above skull
+      const curvedHorn = new THREE.Mesh(
+        this._makeTube(
+          `colossus_curved_horn_${side}`,
+          [
+            [side * 0.38, 0.24, -0.02],
+            [side * 0.66, 0.60, 0.10],
+            [side * 0.58, 1.02, 0.28],
+          ],
+          0.082,
+          12,
+          8
+        ),
+        p.pistonSteel
+      );
+      headGroup.add(curvedHorn);
+
+      const cheekJaw = new THREE.Mesh(jawCheekGeo, p.coloredPlate);
+      cheekJaw.position.set(side * 0.40, -0.04, 0.14);
+      cheekJaw.scale.x = side;
+      cheekJaw.rotation.y = side * 0.22;
+      headGroup.add(cheekJaw);
     }
 
+    // Iron Spike Chin Tusk Guard leaving glowing cranial furnace visible center-front
+    for (let jf = -2; jf <= 2; jf++) {
+      if (jf === 0) continue;
+      const chinTusk = new THREE.Mesh(
+        this._getGeo('colossus_chin_tusk', () => new THREE.ConeGeometry(0.052, 0.22, 4)),
+        p.pistonSteel
+      );
+      chinTusk.position.set(jf * 0.13, -0.22, 0.30);
+      chinTusk.rotation.x = 0.28;
+      headGroup.add(chinTusk);
+    }
+
+    // Neck Gorget Collar below skull (clear of front eyes/reactor core!)
     const crownCollar = new THREE.Mesh(
-      this._getGeo('colossus_crown_ring', () => new THREE.TorusGeometry(0.45, 0.042, 10, 22)),
+      this._getGeo('colossus_crown_ring', () => new THREE.TorusGeometry(0.46, 0.048, 10, 22)),
       p.darkFrame
     );
     crownCollar.rotation.x = Math.PI * 0.5;
-    crownCollar.position.set(0, 0.06, 0);
+    crownCollar.position.set(0, -0.32, -0.04);
     headGroup.add(crownCollar);
 
-    headAnchor.position.set(0, 0.06, 0.06);
+    headAnchor.position.set(0, 0.06, 0.08);
     headGroup.add(headAnchor);
 
     // Twin Articulated Arms Wielding 6-Barrel Spinning Rotary Autocannons
@@ -3244,7 +3995,7 @@ class EnemyModelFactory {
       2
     );
 
-    const leftWeaponMuzzle = new THREE.Object3D();
+    const leftWeaponMuzzleReady = leftWeaponMuzzle || new THREE.Object3D();
 
     const buildBossCannonArm = (armGroup, side, muzzleObj) => {
       armGroup.position.set(side * 1.24, 3.24, 0.08);
@@ -3265,6 +4016,20 @@ class EnemyModelFactory {
       const cannonPod = new THREE.Group();
       cannonPod.position.set(side * 0.14, -0.68, 0.56);
       cannonPod.add(new THREE.Mesh(gunHousingGeo, p.primaryArmor));
+
+      const gunShieldHood = new THREE.Mesh(
+        this._getGeo('colossus_gun_hood', () => new THREE.BoxGeometry(0.54, 0.14, 0.72)),
+        p.coloredPlate
+      );
+      gunShieldHood.position.set(0, 0.24, 0.12);
+      cannonPod.add(gunShieldHood);
+
+      const underBayonet = new THREE.Mesh(
+        this._getGeo('colossus_gun_bayonet', () => new THREE.BoxGeometry(0.08, 0.16, 0.92)),
+        p.pistonSteel
+      );
+      underBayonet.position.set(0, -0.24, 0.65);
+      cannonPod.add(underBayonet);
 
       const heatRail = new THREE.Mesh(
         this._getGeo('colossus_gun_rail', () => new THREE.BoxGeometry(0.12, 0.08, 0.76)),
@@ -3320,20 +4085,20 @@ class EnemyModelFactory {
     };
 
     buildBossCannonArm(rightArm, -1, weaponMuzzle);
-    buildBossCannonArm(leftArm, 1, leftWeaponMuzzle);
+    buildBossCannonArm(leftArm, 1, leftWeaponMuzzleReady);
 
-    // 3 Rotating Heavy Iron & Overheated Molten-Amber Orbital Cooling Rings (coreRings)
+    // 3 Rotating Heavy Iron & Overheated Molten-Amber Orbital Cooling Rings (dorsal engine halo framing behind torso!)
     const ringConfigs = [
-      { r: 1.75, tube: 0.052, tiltX: 0.45, tiltZ: 0.32, y: 2.96, color: 0x5c4b42, emissive: 0xd97706 },
-      { r: 2.02, tube: 0.048, tiltX: -0.58, tiltZ: 0.65, y: 2.98, color: 0x7c2d12, emissive: 0xff3b1f },
-      { r: 2.24, tube: 0.042, tiltX: 0.82, tiltZ: -0.48, y: 2.94, color: 0x4f443d, emissive: 0xff6b1a },
+      { r: 2.15, tube: 0.046, tiltX: 0.22, tiltZ: 0.28, y: 3.12, z: -0.78, color: 0x5c4b42, emissive: 0xd97706 },
+      { r: 2.42, tube: 0.042, tiltX: -0.26, tiltZ: 0.46, y: 3.14, z: -0.90, color: 0x7c2d12, emissive: 0xff3b1f },
+      { r: 2.66, tube: 0.038, tiltX: 0.30, tiltZ: -0.34, y: 3.10, z: -1.02, color: 0x4f443d, emissive: 0xff6b1a },
     ];
 
     const finGeo = this._getGeo('colossus_ring_fin', () => new THREE.BoxGeometry(0.18, 0.12, 0.16));
     for (let i = 0; i < ringConfigs.length; i++) {
       const cfg = ringConfigs[i];
       const ringGroup = new THREE.Group();
-      ringGroup.position.set(0, cfg.y, 0.04);
+      ringGroup.position.set(0, cfg.y, cfg.z);
       ringGroup.rotation.set(cfg.tiltX, i * 1.1, cfg.tiltZ);
       ringGroup.userData.baseRotation = new THREE.Euler(cfg.tiltX, i * 1.1, cfg.tiltZ);
 
@@ -3368,79 +4133,57 @@ class EnemyModelFactory {
       coreRings.push(ringGroup);
     }
 
-    // Phase-Surge Heated Industrial Blast Shield Shell (flares up on Phase 2/3 shieldPulse)
-    const bossShieldGeo = this._getGeo('colossus_phase_shield', () => {
-      return new THREE.CylinderGeometry(1.78, 1.85, 2.2, 24, 1, true);
-    });
-    const bossShieldMat = new THREE.MeshStandardMaterial({
-      color: 0xff7b24,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0xe63916),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 2.0,
-      transparent: true,
-      opacity: 0.0,
-      roughness: 0.38,
-      metalness: 0.45,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    bossShieldMat.userData.baseColor = bossShieldMat.color.clone();
-    bossShieldMat.userData.baseEmissive = bossShieldMat.emissive.clone();
-    bossShieldMat.userData.baseEmissiveIntensity = bossShieldMat.emissiveIntensity;
-    bossShieldMat.userData.baseOpacity = 0.72;
-    ownedMaterials.push(bossShieldMat);
-
-    const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
-    shieldMesh.position.set(0, 2.15, 0.04);
-    shieldMesh.visible = false;
-    shieldMesh.renderOrder = 7;
-    bodyGroup.add(shieldMesh);
-
-    // --- Orbital Sovereign Remodel: 6 Towering Seraphim Plasma Wings, Solar Crown Halo & Sovereign Shield ---
-    if (shieldMesh && shieldMesh.material) {
-      shieldMesh.material.color.setHex(0x38bdf8);
-      shieldMesh.material.emissive.setHex(0x0284c7);
-      if (shieldMesh.material.userData) {
-        shieldMesh.material.userData.baseColor = shieldMesh.material.color.clone();
-        shieldMesh.material.userData.baseEmissive = shieldMesh.material.emissive.clone();
-      }
-    }
-    const seraphWingGeo = this._getGeo('overlord_seraph_wing', () => new THREE.BoxGeometry(0.18, 2.35, 0.52));
-    const seraphGlowGeo = this._getGeo('overlord_seraph_glow', () => new THREE.PlaneGeometry(0.65, 2.45));
+    // --- Hell-Furnace Titan Overhaul: 6 Armored Siege Dorsal Cooling Vanes & Molten Reactor Halo ---
+    const siegeVaneGeo = this._makeExtrudedPoly(
+      'colossus_hell_vane',
+      [
+        [-0.08, 0.0],
+        [0.24, 0.22],
+        [0.34, 2.38],
+        [0.04, 2.75],
+        [-0.14, 1.40],
+      ],
+      0.16,
+      0.028,
+      0.022,
+      2
+    );
+    const vaneEmberGeo = this._getGeo('colossus_vane_ember', () => new THREE.BoxGeometry(0.06, 2.15, 0.22));
     for (const side of [-1, 1]) {
       for (let f = 0; f < 3; f++) {
-        const angleZ = side * (-0.38 - f * 0.34);
-        const wingSpine = new THREE.Mesh(seraphWingGeo, p.primaryArmor);
-        wingSpine.position.set(side * (1.25 + f * 0.58), 3.35 + (1 - f) * 0.45, -0.88 - f * 0.18);
-        wingSpine.rotation.set(-0.22, side * 0.16, angleZ);
-        bodyGroup.add(wingSpine);
+        const angleZ = side * (-0.34 - f * 0.30);
+        const vane = new THREE.Mesh(siegeVaneGeo, f === 1 ? p.coloredPlate : p.darkFrame);
+        vane.position.set(side * (1.10 + f * 0.50), 3.05 - f * 0.22, -0.78 - f * 0.16);
+        vane.scale.x = side;
+        vane.rotation.set(-0.24, side * 0.18, angleZ);
+        bodyGroup.add(vane);
 
-        const wingAura = new THREE.Mesh(seraphGlowGeo, p.holoEnergy);
-        wingAura.position.set(side * (1.42 + f * 0.65), 3.45 + (1 - f) * 0.45, -0.94 - f * 0.18);
-        wingAura.rotation.set(-0.22, side * 0.16, angleZ);
-        bodyGroup.add(wingAura);
+        const emberVein = new THREE.Mesh(vaneEmberGeo, p.accentGlow);
+        emberVein.position.set(side * (1.22 + f * 0.54), 3.72 - f * 0.22, -0.84 - f * 0.16);
+        emberVein.rotation.set(-0.24, side * 0.18, angleZ);
+        bodyGroup.add(emberVein);
       }
     }
-    const crownHalo = new THREE.Mesh(
-      this._getGeo('overlord_crown_halo', () => new THREE.TorusGeometry(0.95, 0.065, 10, 32)),
+
+    const hellCrownHalo = new THREE.Mesh(
+      this._getGeo('colossus_hell_halo', () => new THREE.TorusGeometry(0.96, 0.068, 10, 28)),
       p.accentGlow
     );
-    crownHalo.position.set(0, 4.35, -0.25);
-    crownHalo.rotation.x = 0.25;
-    bodyGroup.add(crownHalo);
-    coreRings.push(crownHalo);
+    hellCrownHalo.position.set(0, 4.35, -0.25);
+    hellCrownHalo.rotation.x = 0.25;
+    bodyGroup.add(hellCrownHalo);
+    coreRings.push(hellCrownHalo);
 
-    const sovereignRing = new THREE.Mesh(
-      this._getGeo('overlord_sovereign_ring', () => new THREE.TorusGeometry(2.35, 0.075, 10, 40)),
-      p.holoEnergy
+    const moltenSovereignRing = new THREE.Mesh(
+      this._getGeo('colossus_molten_ring', () => new THREE.TorusGeometry(2.38, 0.072, 10, 36)),
+      p.accentGlow
     );
-    sovereignRing.position.set(0, 2.85, -0.65);
-    sovereignRing.rotation.set(0.35, 0.2, 0);
-    bodyGroup.add(sovereignRing);
-    coreRings.push(sovereignRing);
+    moltenSovereignRing.position.set(0, 2.90, -0.65);
+    moltenSovereignRing.rotation.set(0.35, 0.2, 0);
+    bodyGroup.add(moltenSovereignRing);
+    coreRings.push(moltenSovereignRing);
 
-    return { shieldMesh, leftWeaponMuzzle };
+    return { shieldMesh, leftWeaponMuzzle: leftWeaponMuzzleReady };
   }
 
   /**
@@ -5748,5 +6491,8 @@ class EnemyModelFactory {
     if (this._textures.contactShadow) this._textures.contactShadow.dispose();
   }
 }
+EnemyModelFactory._glbCache = new Map();
+EnemyModelFactory._glbLoadPromise = null;
+EnemyModelFactory._colossusGltf = null;
   __exports.EnemyModelFactory = EnemyModelFactory;
 });

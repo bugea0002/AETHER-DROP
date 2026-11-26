@@ -55,10 +55,10 @@ class TutorialMapBuilder {
     ctx.strokeRect(4, 4, 504, 120);
     ctx.fillStyle = accentCss;
     ctx.fillRect(14, 18, 10, 92);
-    ctx.font = 'bold 24px monospace';
+    ctx.font = 'bold 24px "DungGeunMo", monospace';
     ctx.fillStyle = accentCss;
     ctx.fillText(code, 38, 50);
-    ctx.font = 'bold 34px sans-serif';
+    ctx.font = 'bold 34px "DungGeunMo", sans-serif';
     ctx.fillStyle = '#f8fafc';
     ctx.fillText(title, 38, 96);
     const tex = new THREE.CanvasTexture(c);

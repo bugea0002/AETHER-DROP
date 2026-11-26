@@ -1,5 +1,6 @@
 // AETHER DROP: RECLAIM EARTH — Zero-Build Modular Runtime Loader (GitHub Pages Ready)
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -7,6 +8,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 
 // Expose shared Three.js imports to modular game files
 globalThis.THREE = THREE;
+globalThis.GLTFLoader = GLTFLoader;
 globalThis.OutputPass = OutputPass;
 globalThis.UnrealBloomPass = UnrealBloomPass;
 globalThis.RenderPass = RenderPass;
@@ -67,8 +69,8 @@ const MODULE_FILES = [
 
 async function bootModularGame() {
   await Promise.all([
-    import("./firebase/FirebaseService.js?v=20261126l"),
-    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261126l")),
+    import("./firebase/FirebaseService.js?v=20261127c"),
+    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261127c")),
   ]);
   globalThis.__require("src/main.js");
 }

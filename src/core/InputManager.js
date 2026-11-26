@@ -50,6 +50,7 @@ const PREVENT_DEFAULT_CODES = new Set([
   'ArrowLeft',
   'ArrowRight',
   'Tab',
+  'Escape',
   'F1',
   'F2',
   'F3',
@@ -63,6 +64,7 @@ const PREVENT_DEFAULT_CODES = new Set([
 ]);
 
 const KEYBOARD_LOCK_CODES = [
+  'Escape',
   'KeyW',
   'KeyA',
   'KeyS',
@@ -102,6 +104,7 @@ class InputManager {
     this._canvas = canvas;
     this._radPerPx = BASE_MOUSE_RAD_PER_PX;
     this._sensitivityMultiplier = 1.0;
+    this._invertY = false;
 
     // Explicit 'auto' | 'pc' | 'touch' control mode + coarse-pointer default detection
     this._controlMode = 'auto';
@@ -208,7 +211,7 @@ class InputManager {
     }
 
     if (
-      (this.isPointerLocked() || this._isPlayingFallbackActive()) &&
+      (this.isPointerLocked() || this._isPlayingFallbackActive() || (code === 'Escape' && typeof document !== 'undefined' && document.fullscreenElement)) &&
       (PREVENT_DEFAULT_CODES.has(code) || e.ctrlKey || e.metaKey || e.altKey)
     ) {
       e.preventDefault();
@@ -332,8 +335,9 @@ class InputManager {
     if (Math.abs(mx) > MAX_SAFE_EVENT_PX) mx = Math.sign(mx) * MAX_SAFE_EVENT_PX;
     if (Math.abs(my) > MAX_SAFE_EVENT_PX) my = Math.sign(my) * MAX_SAFE_EVENT_PX;
 
+    const ySign = this._invertY ? -1 : 1;
     this._lookDeltaX += mx * this._radPerPx;
-    this._lookDeltaY += my * this._radPerPx;
+    this._lookDeltaY += my * ySign * this._radPerPx;
   }
 
   /** @private */
@@ -524,6 +528,21 @@ class InputManager {
    * @param {boolean} [requestFullscreen=false]
    */
   lockGameplayShortcuts(requestFullscreen = false) {
+    const lockKeys = () => {
+      try {
+        if (
+          typeof navigator !== 'undefined' &&
+          navigator.keyboard &&
+          typeof navigator.keyboard.lock === 'function'
+        ) {
+          const lockPromise = navigator.keyboard.lock(KEYBOARD_LOCK_CODES);
+          if (lockPromise && typeof lockPromise.catch === 'function') {
+            lockPromise.catch(() => {});
+          }
+        }
+      } catch {}
+    };
+
     try {
       if (
         requestFullscreen &&
@@ -533,38 +552,41 @@ class InputManager {
         typeof document.documentElement.requestFullscreen === 'function'
       ) {
         const fsPromise = document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        if (fsPromise && typeof fsPromise.catch === 'function') {
-          fsPromise.catch(() => {
+        if (fsPromise && typeof fsPromise.then === 'function') {
+          fsPromise.then(() => lockKeys()).catch(() => {
             try {
               const p2 = document.documentElement.requestFullscreen();
-              if (p2 && typeof p2.catch === 'function') p2.catch(() => {});
+              if (p2 && typeof p2.then === 'function') {
+                p2.then(() => lockKeys()).catch(() => {});
+              }
             } catch {}
           });
         }
       }
     } catch {}
 
+    lockKeys();
+  }
+
+  /**
+   * Release W3C Keyboard Lock (or keep Escape locked while in fullscreen) and optionally exit fullscreen.
+   * @param {boolean} [exitFullscreen=false]
+   * @param {boolean} [keepEscapeLocked=false]
+   */
+  unlockGameplayShortcuts(exitFullscreen = false, keepEscapeLocked = false) {
     try {
       if (
         typeof navigator !== 'undefined' &&
         navigator.keyboard &&
-        typeof navigator.keyboard.lock === 'function'
+        typeof navigator.keyboard.lock === 'function' &&
+        keepEscapeLocked &&
+        !exitFullscreen &&
+        typeof document !== 'undefined' &&
+        document.fullscreenElement
       ) {
-        const lockPromise = navigator.keyboard.lock(KEYBOARD_LOCK_CODES);
-        if (lockPromise && typeof lockPromise.catch === 'function') {
-          lockPromise.catch(() => {});
-        }
-      }
-    } catch {}
-  }
-
-  /**
-   * Release W3C Keyboard Lock (and optionally exit fullscreen).
-   * @param {boolean} [exitFullscreen=false]
-   */
-  unlockGameplayShortcuts(exitFullscreen = false) {
-    try {
-      if (
+        const lockEsc = navigator.keyboard.lock(['Escape']);
+        if (lockEsc && typeof lockEsc.catch === 'function') lockEsc.catch(() => {});
+      } else if (
         typeof navigator !== 'undefined' &&
         navigator.keyboard &&
         typeof navigator.keyboard.unlock === 'function'
@@ -607,6 +629,14 @@ class InputManager {
   }
 
   /**
+   * Toggle vertical look Y-axis inversion.
+   * @param {boolean} inverted
+   */
+  setInvertY(inverted) {
+    this._invertY = Boolean(inverted);
+  }
+
+  /**
    * Set virtual thumbstick movement vector (x: -1..1 right/left, y: -1..1 forward/back).
    * @param {number} x
    * @param {number} y
@@ -627,8 +657,9 @@ class InputManager {
   addTouchLook(dx, dy) {
     if (this._controlMode === 'auto') this._touchMode = true;
     const scale = this._radPerPx * TOUCH_LOOK_MULTIPLIER;
+    const ySign = this._invertY ? -1 : 1;
     this._lookDeltaX += (dx || 0) * scale;
-    this._lookDeltaY += (dy || 0) * scale;
+    this._lookDeltaY += (dy || 0) * ySign * scale;
   }
 
   /**
@@ -767,10 +798,10 @@ class InputManager {
       }
       if (this._cursorNormY < m) {
         const t = (m - this._cursorNormY) / m;
-        ly -= turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt;
+        ly -= turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt * (this._invertY ? -1 : 1);
       } else if (this._cursorNormY > 1 - m) {
         const t = (this._cursorNormY - (1 - m)) / m;
-        ly += turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt;
+        ly += turnSpeed * 0.65 * (0.35 + 0.65 * t) * stepDt * (this._invertY ? -1 : 1);
       }
     }
 

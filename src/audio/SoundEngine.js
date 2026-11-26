@@ -350,6 +350,7 @@ class SoundEngine {
     this._pannerCursor = 0;
 
     this._masterVolume = 0.78;
+    this._sfxVolume = 1.0;
     this._muted = false;
     this._musicEnabled = true;
     this._sceneMode = 'title'; // 'title' | 'playing' | 'paused' | 'result'
@@ -428,6 +429,9 @@ class SoundEngine {
     on(EVENTS.ENEMY_TELEPORT, (p) => this._playTeleportRift(p));
     on(EVENTS.ENEMY_OVERLOAD, (p) => this._playEnemyOverload(p));
     on(EVENTS.BOSS_TURRET_SHATTERED, (p) => this._playTurretShatter(p));
+    on(EVENTS.DROP_POD_PHASE, (p) => this._playDropPodPhase(p));
+    on(EVENTS.TRANSFER_GATE_OPEN, () => this._playTransferGateOpen());
+    on(EVENTS.TRANSFER_GATE_ENTERED, () => this._playTransferGateEnter());
   }
 
   /**
@@ -499,7 +503,7 @@ class SoundEngine {
     );
 
     this._sfxGain = ctx.createGain();
-    this._sfxGain.gain.setValueAtTime(0.66, ctx.currentTime);
+    this._sfxGain.gain.setValueAtTime(0.66 * this._sfxVolume, ctx.currentTime);
 
     // Music bus with scene-adaptive lowpass filter & dark canyon delay-reverb send
     this._musicGain = ctx.createGain();
@@ -680,6 +684,23 @@ class SoundEngine {
         this._masterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.02);
       } catch {
         this._masterGain.gain.value = target;
+      }
+    }
+  }
+
+  /**
+   * Set SFX sound effects relative volume multiplier (0..1).
+   * @param {number} vol
+   */
+  setSfxVolume(vol) {
+    const raw = Number(vol);
+    this._sfxVolume = Math.max(0, Math.min(1, Number.isFinite(raw) ? raw : 1));
+    if (this.ctx && this._sfxGain) {
+      const target = 0.66 * this._sfxVolume;
+      try {
+        this._sfxGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.02);
+      } catch {
+        this._sfxGain.gain.value = target;
       }
     }
   }
@@ -1662,6 +1683,65 @@ class SoundEngine {
       this._playHeavyPunch(dest, now, 0.80, 72, 22, 0.68);
       this._playNoiseBurst(dest, now, 0.72, 0.40, 'lowpass', 1300, 160, 1.0, true);
       this._playNoiseBurst(dest, now + 0.08, 0.34, 0.22, 'bandpass', 2200, 850, 2.2, false);
+    } catch {}
+  }
+
+  /** @private */
+  _playDropPodPhase(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const dest = this._sfxGain;
+      const phase = payload && payload.phase;
+
+      if (phase === 'descent') {
+        // Atmospheric re-entry roar, cockpit fuselage sub-rumble, and 3 proximity ticks
+        this._playTone(dest, 'sawtooth', now, 1.38, 64, 48, 0.24, 0.08, 220);
+        this._playNoiseBurst(dest, now, 1.35, 0.46, 'lowpass', 360, 2100, 1.2, true);
+        this._playNoiseBurst(dest, now + 0.12, 1.20, 0.28, 'bandpass', 900, 2900, 1.6, false);
+        for (let k = 0; k < 3; k++) {
+          const tickT = now + 0.16 + k * 0.39;
+          this._playTone(dest, 'triangle', tickT, 0.09, 980 - k * 110, 620, 0.16, 0.004, 2400);
+          this._playNoiseBurst(dest, tickT, 0.025, 0.18, 'bandpass', 2600, 1800, 4.5, false);
+        }
+      } else if (phase === 'impact') {
+        // Massive 120kg Orbital Drop Pod Crash Slam + Metallic Anvil + Debris Scatter
+        this._playHeavyPunch(dest, now, 0.88, 108, 18, 0.98);
+        this._playTone(dest, 'triangle', now, 0.52, 240, 44, 0.44, 0.003, 920);
+        this._playNoiseBurst(dest, now, 0.95, 0.78, 'lowpass', 2600, 125, 0.85, true);
+        this._playNoiseBurst(dest, now + 0.015, 0.36, 0.52, 'bandpass', 1950, 420, 1.5, false);
+      } else if (phase === 'unseal') {
+        // Heavy hydraulic solenoid release + pressurized steam hiss + weapon ready slide
+        this._playHeavyPunch(dest, now, 0.18, 138, 42, 0.56);
+        this._playNoiseBurst(dest, now + 0.05, 0.62, 0.42, 'bandpass', 3400, 780, 1.8, false);
+        this._playTone(dest, 'sawtooth', now + 0.06, 0.38, 175, 86, 0.22, 0.02, 480);
+        this._playNoiseBurst(dest, now + 0.34, 0.06, 0.26, 'bandpass', 2400, 3400, 3.2, false);
+      }
+    } catch {}
+  }
+
+  /** @private */
+  _playTransferGateOpen() {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const dest = this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.42, 88, 34, 0.52);
+      this._playTone(dest, 'sine', now, 0.55, 220, 440, 0.24, 0.04, 1800);
+      this._playTone(dest, 'triangle', now + 0.14, 0.48, 587, 880, 0.18, 0.03, 2800);
+      this._playNoiseBurst(dest, now + 0.05, 0.50, 0.26, 'bandpass', 1400, 2600, 2.2, false);
+    } catch {}
+  }
+
+  /** @private */
+  _playTransferGateEnter() {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const dest = this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.52, 95, 28, 0.66);
+      this._playTone(dest, 'sawtooth', now, 0.46, 140, 760, 0.26, 0.02, 2400);
+      this._playNoiseBurst(dest, now, 0.48, 0.46, 'bandpass', 1000, 3800, 1.5, false);
     } catch {}
   }
 

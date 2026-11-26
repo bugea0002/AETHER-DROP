@@ -199,6 +199,34 @@ class Interactables {
     this._zoneProgressMat = null;
     this._zoneFieldTex = null;
 
+    // Mid-run Sector Transfer Gate state & visuals (only opened between different mapIndex waves)
+    this._transferGate = {
+      active: false,
+      group: null,
+      ringOuter: null,
+      ringInner: null,
+      vortexDisc: null,
+      vortexMat: null,
+      beamMesh: null,
+      beamMat: null,
+      position: new THREE.Vector3(),
+      distToPlayer: 999,
+      canInteract: false,
+      shouldAutoEnter: false,
+      nextMapName: '',
+      nextMapCode: '',
+      openAge: 0,
+    };
+    this._transferGateSnapshot = {
+      active: false,
+      position: this._transferGate.position,
+      distToPlayer: 999,
+      canInteract: false,
+      shouldAutoEnter: false,
+      nextMapName: '',
+      nextMapCode: '',
+    };
+
     // Shared hazard texture for barrels & jump pad collars
     this._hazardCollarTex = this._trackTex(createBarrelHazardTexture());
 
@@ -244,6 +272,7 @@ class Interactables {
     this._buildShockwavePool();
     this._buildPickups();
     this._buildControlZone();
+    this._buildTransferGate();
     this._buildDynamicPools();
   }
 
@@ -1727,6 +1756,228 @@ class Interactables {
     this.root.add(zGroup);
   }
 
+  /**
+   * Build the Mid-Run Orbital Sector Transfer Gate anchored cleanly at controlZoneCenter.
+   * Remains invisible until activated between distinct campaign/endless map sectors.
+   * @private
+   */
+  _buildTransferGate() {
+    const center = this._zoneCenter || this.arenaData.controlZoneCenter || { x: 0, y: 0.25, z: 0 };
+    const gy = Number.isFinite(center.y) ? center.y : 0;
+    const tg = this._transferGate;
+    tg.position.set(center.x, gy, center.z);
+
+    const group = new THREE.Group();
+    group.position.set(center.x, gy, center.z);
+    group.visible = false;
+
+    const frameMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        metalness: 0.85,
+        roughness: 0.32,
+      })
+    );
+    const trimMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: new THREE.Color(0x0ea5e9),
+        emissiveIntensity: 2.2,
+        metalness: 0.4,
+        roughness: 0.2,
+      })
+    );
+    const baseMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x111827,
+        metalness: 0.72,
+        roughness: 0.48,
+      })
+    );
+
+    const plinth = new THREE.Mesh(
+      this._trackGeo(new THREE.CylinderGeometry(2.65, 3.05, 0.24, 8)),
+      baseMat
+    );
+    plinth.position.y = 0.12;
+    group.add(plinth);
+
+    const plinthRim = new THREE.Mesh(
+      this._trackGeo(new THREE.TorusGeometry(2.58, 0.06, 8, 24)),
+      trimMat
+    );
+    plinthRim.rotation.x = Math.PI * 0.5;
+    plinthRim.position.y = 0.26;
+    group.add(plinthRim);
+
+    const pillarGeo = this._trackGeo(new THREE.BoxGeometry(0.46, 4.4, 0.68));
+    for (let side = -1; side <= 1; side += 2) {
+      const pylon = new THREE.Mesh(pillarGeo, frameMat);
+      pylon.position.set(side * 2.15, 2.25, 0);
+      pylon.rotation.z = side * 0.08;
+      pylon.castShadow = true;
+      group.add(pylon);
+
+      const pylonStrip = new THREE.Mesh(
+        this._trackGeo(new THREE.BoxGeometry(0.10, 3.7, 0.14)),
+        trimMat
+      );
+      pylonStrip.position.set(side * 1.92, 2.25, 0);
+      pylonStrip.rotation.z = side * 0.08;
+      group.add(pylonStrip);
+    }
+
+    const archTop = new THREE.Mesh(
+      this._trackGeo(new THREE.BoxGeometry(4.35, 0.42, 0.78)),
+      frameMat
+    );
+    archTop.position.set(0, 4.42, 0);
+    group.add(archTop);
+
+    const ringOuter = new THREE.Mesh(
+      this._trackGeo(new THREE.TorusGeometry(1.78, 0.075, 10, 32)),
+      trimMat
+    );
+    ringOuter.position.set(0, 2.35, 0);
+    group.add(ringOuter);
+
+    const goldRingMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        emissive: new THREE.Color(0xf59e0b),
+        emissiveIntensity: 2.0,
+        metalness: 0.45,
+        roughness: 0.22,
+      })
+    );
+    const ringInner = new THREE.Mesh(
+      this._trackGeo(new THREE.TorusGeometry(1.44, 0.048, 8, 28)),
+      goldRingMat
+    );
+    ringInner.position.set(0, 2.35, 0);
+    group.add(ringInner);
+
+    const vortexMat = this._trackMat(
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.48,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    const vortexDisc = new THREE.Mesh(
+      this._trackGeo(new THREE.CircleGeometry(1.42, 28)),
+      vortexMat
+    );
+    vortexDisc.position.set(0, 2.35, 0);
+    group.add(vortexDisc);
+
+    // Tall vertical orbital beacon light beam visible across cover from anywhere in the map
+    const beamMat = this._trackMat(
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        map: this._zoneFieldTex,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    const beamMesh = new THREE.Mesh(
+      this._trackGeo(new THREE.CylinderGeometry(1.25, 1.85, 26.0, 20, 1, true)),
+      beamMat
+    );
+    beamMesh.position.set(0, 13.0, 0);
+    group.add(beamMesh);
+
+    this.root.add(group);
+    tg.group = group;
+    tg.ringOuter = ringOuter;
+    tg.ringInner = ringInner;
+    tg.vortexDisc = vortexDisc;
+    tg.vortexMat = vortexMat;
+    tg.beamMesh = beamMesh;
+    tg.beamMat = beamMat;
+  }
+
+  /**
+   * Activate or deactivate the mid-run sector Transfer Gate.
+   * @param {boolean} active
+   * @param {any} [nextMapMeta=null]
+   */
+  setTransferGateActive(active, nextMapMeta = null) {
+    const tg = this._transferGate;
+    const next = Boolean(active);
+    tg.active = next;
+    tg.openAge = 0;
+    tg.canInteract = false;
+    tg.shouldAutoEnter = false;
+    tg.distToPlayer = 999;
+    tg.nextMapName = nextMapMeta && nextMapMeta.name ? nextMapMeta.name : '다음 작전 구역';
+    tg.nextMapCode = nextMapMeta && nextMapMeta.code ? nextMapMeta.code : 'NEXT SECTOR';
+    if (tg.group) {
+      tg.group.visible = next;
+      tg.group.scale.setScalar(next ? 0.05 : 1);
+    }
+  }
+
+  /** @private */
+  _updateTransferGate(dt, t, playerController) {
+    const tg = this._transferGate;
+    if (!tg.active || !tg.group) return;
+
+    tg.openAge += dt;
+    const pop = Math.min(1, tg.openAge / 0.35);
+    const ease = 1 - Math.pow(1 - pop, 3);
+    tg.group.scale.setScalar(ease);
+
+    if (tg.ringOuter) {
+      tg.ringOuter.rotation.z = t * 1.4;
+    }
+    if (tg.ringInner) {
+      tg.ringInner.rotation.z = -t * 2.2;
+      tg.ringInner.rotation.y = Math.sin(t * 2.0) * 0.25;
+    }
+    if (tg.vortexMat) {
+      tg.vortexMat.opacity = 0.38 + 0.16 * Math.sin(t * 5.2);
+    }
+    if (tg.beamMat) {
+      tg.beamMat.opacity = 0.28 + 0.12 * Math.sin(t * 3.8);
+    }
+
+    if (playerController && playerController.position) {
+      const dx = playerController.position.x - tg.position.x;
+      const dz = playerController.position.z - tg.position.z;
+      const dy = Math.abs(playerController.position.y - tg.position.y);
+      const dist = Math.hypot(dx, dz);
+      tg.distToPlayer = dist;
+      // Short 0.65s spawn protection prevents accidentally auto-triggering the instant the wave finishes if standing at center
+      const gateArmed = tg.openAge >= 0.65 && dy <= 2.8;
+      tg.canInteract = gateArmed && dist <= 4.8;
+      tg.shouldAutoEnter = gateArmed && dist <= 2.35;
+    } else {
+      tg.distToPlayer = 999;
+      tg.canInteract = false;
+      tg.shouldAutoEnter = false;
+    }
+  }
+
+  getTransferGateState() {
+    const tg = this._transferGate;
+    const s = this._transferGateSnapshot;
+    s.active = tg.active;
+    s.position = tg.position;
+    s.distToPlayer = tg.distToPlayer;
+    s.canInteract = tg.canInteract;
+    s.shouldAutoEnter = tg.shouldAutoEnter;
+    s.nextMapName = tg.nextMapName;
+    s.nextMapCode = tg.nextMapCode;
+    return s;
+  }
+
   // ---------------------------------------------------------------------------
   // Per-Frame Update (Zero Heap Allocations!)
   // ---------------------------------------------------------------------------
@@ -1757,6 +2008,7 @@ class Interactables {
     this._updateShockwaves(safeDt);
     this._updatePickups(safeDt, t, playerController, weaponSystem);
     this._updateControlZone(safeDt, t, playerController, enemies);
+    this._updateTransferGate(safeDt, t, playerController);
     this._updateDynamicPools(safeDt, t, playerController, weaponSystem);
     if (playerController) {
       playerController.inZoneBuff = Boolean(this._zone.active && this._zone.playerInside);
@@ -3484,6 +3736,7 @@ class Interactables {
     this.setVoidGatesEnabled(0);
     this.setBossLowGravityOverride(false);
     this.clearBossTurrets();
+    this.setTransferGateActive(false);
 
     for (let i = 0; i < this._pickups.length; i++) {
       const p = this._pickups[i];
@@ -3557,6 +3810,17 @@ class Interactables {
     this._zoneProgressMesh = null;
     this._zoneProgressMat = null;
     this._zoneFieldTex = null;
+
+    if (this._transferGate) {
+      this._transferGate.active = false;
+      this._transferGate.group = null;
+      this._transferGate.ringOuter = null;
+      this._transferGate.ringInner = null;
+      this._transferGate.vortexDisc = null;
+      this._transferGate.vortexMat = null;
+      this._transferGate.beamMesh = null;
+      this._transferGate.beamMat = null;
+    }
     this._hazardCollarTex = null;
     this._lastPlayerController = null;
     this._lastEnemies = null;

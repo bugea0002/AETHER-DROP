@@ -1385,7 +1385,7 @@ class TextureGenerator {
     }
 
     ctx.fillStyle = '#181612';
-    ctx.font = 'bold 18px monospace';
+    ctx.font = 'bold 18px "DungGeunMo", monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText('AETHER-DROP // RECLAIM EARTH', 148, 60);
@@ -1420,10 +1420,10 @@ class TextureGenerator {
     // 5. Bold painted military stencil typography
     const titleStr = String(title || 'SECTOR-09').toUpperCase();
     let titleFontSize = 56;
-    ctx.font = `900 ${titleFontSize}px "Arial Black", Impact, sans-serif`;
+    ctx.font = `900 ${titleFontSize}px "DungGeunMo", sans-serif`;
     while (ctx.measureText(titleStr).width > 420 && titleFontSize > 24) {
       titleFontSize -= 3;
-      ctx.font = `900 ${titleFontSize}px "Arial Black", Impact, sans-serif`;
+      ctx.font = `900 ${titleFontSize}px "DungGeunMo", sans-serif`;
     }
 
     ctx.textAlign = 'center';
@@ -1444,17 +1444,17 @@ class TextureGenerator {
 
     const subStr = String(subtitle || 'RECLAMATION PROTOCOL').toUpperCase();
     let subFontSize = 21;
-    ctx.font = `700 ${subFontSize}px monospace`;
+    ctx.font = `700 ${subFontSize}px "DungGeunMo", monospace`;
     while (ctx.measureText(subStr).width > 395 && subFontSize > 11) {
       subFontSize -= 1;
-      ctx.font = `700 ${subFontSize}px monospace`;
+      ctx.font = `700 ${subFontSize}px "DungGeunMo", monospace`;
     }
     ctx.fillStyle = accentHex;
     ctx.fillText(subStr, 256, 294);
 
     // Bottom military logistics code & emblem bars
     ctx.fillStyle = 'rgba(218, 206, 184, 0.72)';
-    ctx.font = 'bold 15px monospace';
+    ctx.font = 'bold 15px "DungGeunMo", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('UNIT: VANGUARD-09 // AUTH: ORBITAL-CMD', 46, 378);
     ctx.fillText('GRID REF: 34.05N // 118.24W // RECLAMATION', 46, 404);

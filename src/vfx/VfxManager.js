@@ -1263,6 +1263,88 @@ class VfxManager {
     }
   }
 
+  /**
+   * Spawn an AAA-scale orbital Drop Pod crash touchdown crater blast:
+   * triple expanding dust/plasma shockwave rings, blazing ember debris shower,
+   * scorched ground decal, and bright flash point light.
+   * @param {THREE.Vector3} position
+   */
+  spawnDropPodLanding(position) {
+    if (!position) return;
+    this.spawnExplosion(position, 4.4, 0xff6b1a);
+    this._v3.set(0, 1, 0);
+    this._spawnRing(position, this._v3, 0xff8c2a, 0.55, 8.8, 0.52, false);
+    this._spawnRing(position, this._v3, 0xfbbf24, 0.35, 6.2, 0.40, false);
+    this._v3.set(0.18, 0.96, -0.18).normalize();
+    this._spawnRing(position, this._v3, 0xffd78a, 0.40, 4.8, 0.34, false);
+
+    const sparkCount = Math.max(18, Math.round(44 * this._particleScale));
+    for (let i = 0; i < sparkCount; i++) {
+      const ang = (i / sparkCount) * TWO_PI + (Math.random() - 0.5) * 0.28;
+      const spd = 6.5 + Math.random() * 14.0;
+      const vx = Math.cos(ang) * spd;
+      const vz = Math.sin(ang) * spd;
+      const vy = 2.6 + Math.random() * 7.8;
+      const cHex = i % 3 === 0 ? 0xfff0c2 : i % 2 === 0 ? 0xff9f2e : 0xff5a1f;
+      this._emitSpark(
+        position,
+        vx,
+        vy,
+        vz,
+        cHex,
+        0.48 + Math.random() * 0.44,
+        1.5 + Math.random() * 1.3,
+        18.0,
+        2.6
+      );
+    }
+
+    if (this._maxDynamicLights > 0) {
+      const slot = this._allocWorldLightSlot();
+      this._spawnDynamicLight(slot, position, 0xff8c2a, 24.0, 18.0, 0.65);
+    }
+  }
+
+  /**
+   * Spawn an energetic cyan-gold orbital Transfer Gate warp burst.
+   * @param {THREE.Vector3} position
+   */
+  spawnTransferWarp(position) {
+    if (!position) return;
+    this._v3.set(0, 1, 0);
+    this._spawnRing(position, this._v3, 0x38bdf8, 0.35, 5.2, 0.42, false);
+    this._spawnRing(
+      this._v4.set(position.x, (position.y || 0) + 1.15, position.z),
+      this._v3,
+      0xfbbf24,
+      0.28,
+      3.8,
+      0.34,
+      false
+    );
+    const sparkCount = Math.max(12, Math.round(28 * this._particleScale));
+    for (let i = 0; i < sparkCount; i++) {
+      const ang = (i / sparkCount) * TWO_PI;
+      const spd = 3.5 + Math.random() * 7.0;
+      const cHex = i % 2 === 0 ? 0x38bdf8 : 0xfde68a;
+      this._emitSpark(
+        position,
+        Math.cos(ang) * spd,
+        2.5 + Math.random() * 6.5,
+        Math.sin(ang) * spd,
+        cHex,
+        0.38 + Math.random() * 0.32,
+        1.25 + Math.random() * 0.9,
+        6.0,
+        1.8
+      );
+    }
+    if (this._maxDynamicLights > 0) {
+      const slot = this._allocWorldLightSlot();
+      this._spawnDynamicLight(slot, position, 0x38bdf8, 18.0, 14.0, 0.48);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Quality Scaling, Per-Frame Update, Reset & Disposal
   // ---------------------------------------------------------------------------

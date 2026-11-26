@@ -38,29 +38,193 @@ const EVENTS = Object.freeze({
   ENEMY_TELEPORT: 'enemy:teleport',
   ENEMY_OVERLOAD: 'enemy:overload',
   BOSS_TURRET_SHATTERED: 'boss:turret_shattered',
+  DROP_POD_PHASE: 'drop_pod:phase',
+  TRANSFER_GATE_OPEN: 'transfer_gate:open',
+  TRANSFER_GATE_ENTERED: 'transfer_gate:entered',
 });
 
 
 
 const HEAT_CONTRACTS = [
-  { level: 0, tier: '표준', label: '위협 0 · 표준', enemyHpMult: 1.00, enemyDmgMult: 1.00, goldMult: 1.00, desc: '기본 난이도 · 적 체력 100% · 적 공격력 100% · 골드 100%' },
-  { level: 1, tier: '경계', label: '위협 1 · 경계', enemyHpMult: 1.20, enemyDmgMult: 1.12, goldMult: 1.25, desc: '적 체력 +20% · 적 공격력 +12% → 골드 +25%' },
-  { level: 2, tier: '교전', label: '위협 2 · 교전', enemyHpMult: 1.45, enemyDmgMult: 1.25, goldMult: 1.55, desc: '적 체력 +45% · 적 공격력 +25% → 골드 +55%' },
-  { level: 3, tier: '격전', label: '위협 3 · 격전', enemyHpMult: 1.75, enemyDmgMult: 1.40, goldMult: 1.90, desc: '적 체력 +75% · 적 공격력 +40% → 골드 +90%' },
-  { level: 4, tier: '위험', label: '위협 4 · 위험', enemyHpMult: 2.10, enemyDmgMult: 1.58, goldMult: 2.30, desc: '적 체력 +110% · 적 공격력 +58% → 골드 +130%' },
-  { level: 5, tier: '극한', label: '위협 5 · 극한', enemyHpMult: 2.50, enemyDmgMult: 1.78, goldMult: 2.80, desc: '적 체력 +150% · 적 공격력 +78% → 골드 +180%' },
-  { level: 6, tier: '붕괴', label: '위협 6 · 붕괴', enemyHpMult: 2.95, enemyDmgMult: 2.00, goldMult: 3.40, desc: '적 체력 +195% · 적 공격력 +100% → 골드 +240%' },
-  { level: 7, tier: '심연', label: '위협 7 · 심연', enemyHpMult: 3.45, enemyDmgMult: 2.25, goldMult: 4.10, desc: '적 체력 +245% · 적 공격력 +125% → 골드 +310%' },
-  { level: 8, tier: '재앙', label: '위협 8 · 재앙', enemyHpMult: 4.00, enemyDmgMult: 2.52, goldMult: 4.90, desc: '적 체력 +300% · 적 공격력 +152% → 골드 +390%' },
-  { level: 9, tier: '소멸', label: '위협 9 · 소멸', enemyHpMult: 4.65, enemyDmgMult: 2.82, goldMult: 5.80, desc: '적 체력 +365% · 적 공격력 +182% → 골드 +480%' },
-  { level: 10, tier: '초월', label: '위협 10 · 초월', enemyHpMult: 5.40, enemyDmgMult: 3.15, goldMult: 7.00, desc: '적 체력 +440% · 적 공격력 +215% → 골드 +600%' },
+  { level: 0, tier: '표준', label: '위협 0 · 표준', enemyHpMult: 1.00, enemyDmgMult: 1.00, goldMult: 1.00, debuffTitle: '', debuffShort: '', debuffDesc: '', desc: '표준 전장 프로토콜 · 추가 제약 없음 · 골드 100%' },
+  { level: 1, tier: '경계', label: '위협 1 · 경계', enemyHpMult: 1.10, enemyDmgMult: 1.15, goldMult: 1.30, enemySpeedMult: 1.10, debuffTitle: '적 기동 가속', debuffShort: '적 이속 +10%', debuffDesc: '모든 적 이동 속도 +10%', desc: '적 체력 +10% · 공격력 +15% · [제약] 적 이동 속도 +10% → 골드 +30%' },
+  { level: 2, tier: '교전', label: '위협 2 · 교전', enemyHpMult: 1.22, enemyDmgMult: 1.32, goldMult: 1.65, reloadMult: 0.88, debuffTitle: '탄창 지연', debuffShort: '재장전 -12%', debuffDesc: '무기 재장전 속도 -12%', desc: '적 체력 +22% · 공격력 +32% · [제약] 재장전 속도 -12% → 골드 +65%' },
+  { level: 3, tier: '격전', label: '위협 3 · 격전', enemyHpMult: 1.35, enemyDmgMult: 1.52, goldMult: 2.05, dashCooldownMult: 1.30, debuffTitle: '추진기 과열', debuffShort: '대시 쿨 +30%', debuffDesc: '옴니 대시 재충전 시간 +30%', desc: '적 체력 +35% · 공격력 +52% · [제약] 대시 쿨다운 +30% → 골드 +105%' },
+  { level: 4, tier: '위험', label: '위협 4 · 위험', enemyHpMult: 1.50, enemyDmgMult: 1.75, goldMult: 2.55, eliteChance: 0.40, debuffTitle: '정예 증원', debuffShort: '정예율 40%', debuffDesc: '정예 변이 적 출현 확률 22% → 40%', desc: '적 체력 +50% · 공격력 +75% · [제약] 정예 출현율 40% → 골드 +155%' },
+  { level: 5, tier: '극한', label: '위협 5 · 극한', enemyHpMult: 1.65, enemyDmgMult: 2.00, goldMult: 3.15, healEfficiencyMult: 0.75, debuffTitle: '응급 수복 저하', debuffShort: '회복 효율 -25%', debuffDesc: '체력·실드 회복 및 거점 재생 효율 -25%', desc: '적 체력 +65% · 공격력 +100% · [제약] 회복 효율 -25% → 골드 +215%' },
+  { level: 6, tier: '붕괴', label: '위협 6 · 붕괴', enemyHpMult: 1.80, enemyDmgMult: 2.28, goldMult: 3.85, guardCostMult: 1.45, debuffTitle: '방어 부하 증대', debuffShort: '가드 소모 +45%', debuffDesc: '[E] 방어 에너지 방어 소모량 +45%', desc: '적 체력 +80% · 공격력 +128% · [제약] [E] 가드 소모 +45% → 골드 +285%' },
+  { level: 7, tier: '심연', label: '위협 7 · 심연', enemyHpMult: 1.95, enemyDmgMult: 2.60, goldMult: 4.65, spreadMult: 1.28, debuffTitle: '조준 교란장', debuffShort: '탄퍼짐 +28%', debuffDesc: '모든 무기 사격 분산(탄퍼짐) +28%', desc: '적 체력 +95% · 공격력 +160% · [제약] 탄퍼짐 +28% → 골드 +365%' },
+  { level: 8, tier: '재앙', label: '위협 8 · 재앙', enemyHpMult: 2.12, enemyDmgMult: 2.95, goldMult: 5.60, spawnIntervalMult: 0.80, enemySpeedMult: 1.20, debuffTitle: '파상 공세 & 가속', debuffShort: '증원 -20% · 이속 +20%', debuffDesc: '적 증원 간격 -20% 단축 및 적 이동 속도 총 +20%', desc: '적 체력 +112% · 공격력 +195% · [제약] 증원 -20% & 적 이속 +20% → 골드 +460%' },
+  { level: 9, tier: '소멸', label: '위협 9 · 소멸', enemyHpMult: 2.30, enemyDmgMult: 3.35, goldMult: 6.70, disableDoubleJump: true, shieldPenalty: 20, debuffTitle: '이단 점프 봉인 & 실드 손실', debuffShort: '2단점프 봉인 · 실드 -20', debuffDesc: '공중 2단 점프 사용 불가 및 최대 실드 -20', desc: '적 체력 +130% · 공격력 +235% · [제약] 2단 점프 봉인·실드 -20 → 골드 +570%' },
+  { level: 10, tier: '초월', label: '위협 10 · 초월', enemyHpMult: 2.50, enemyDmgMult: 3.85, goldMult: 8.20, disableSprint: true, disableSlide: true, ultChargeMult: 0.75, dashCap: 1, debuffTitle: '질주·슬라이드 봉인 & 출력 제한', debuffShort: '질주/슬라이드 봉인 · 대시1 · 궁-25%', debuffDesc: '질주(Shift)·슬라이드(C) 봉인, 대시 최대 1회 제한, 궁극기 충전 -25%', desc: '적 체력 +150% · 공격력 +285% · [제약] 질주·슬라이드 봉인·대시1회·궁-25% → 골드 +720%' },
 ];
 
+/**
+ * Aggregate HEAT_CONTRACTS[1..level] cumulative debuffs and action constraints.
+ * Higher tiers inherit all lower-tier constraints simultaneously.
+ */
+function getCumulativeHeatProfile(level) {
+  const lv = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, Math.floor(Number(level) || 0)));
+  const cfg = HEAT_CONTRACTS[lv] || HEAT_CONTRACTS[0];
+  const prof = {
+    level: lv,
+    cfg,
+    enemySpeedMult: 1.0,
+    reloadMult: 1.0,
+    dashCooldownMult: 1.0,
+    eliteChance: 0.22,
+    healEfficiencyMult: 1.0,
+    guardCostMult: 1.0,
+    spreadMult: 1.0,
+    spawnIntervalMult: 1.0,
+    shieldPenalty: 0,
+    ultChargeMult: 1.0,
+    disableDoubleJump: false,
+    disableSprint: false,
+    disableSlide: false,
+    dashCap: null,
+    debuffs: [],
+  };
+  for (let i = 1; i <= lv; i++) {
+    const h = HEAT_CONTRACTS[i];
+    if (!h) continue;
+    if (h.debuffTitle) {
+      prof.debuffs.push({
+        level: h.level,
+        tier: h.tier,
+        title: h.debuffTitle,
+        short: h.debuffShort,
+        desc: h.debuffDesc,
+      });
+    }
+    if (typeof h.enemySpeedMult === 'number') prof.enemySpeedMult = Math.max(prof.enemySpeedMult, h.enemySpeedMult);
+    if (typeof h.reloadMult === 'number') prof.reloadMult *= h.reloadMult;
+    if (typeof h.dashCooldownMult === 'number') prof.dashCooldownMult *= h.dashCooldownMult;
+    if (typeof h.eliteChance === 'number') prof.eliteChance = Math.max(prof.eliteChance, h.eliteChance);
+    if (typeof h.healEfficiencyMult === 'number') prof.healEfficiencyMult *= h.healEfficiencyMult;
+    if (typeof h.guardCostMult === 'number') prof.guardCostMult *= h.guardCostMult;
+    if (typeof h.spreadMult === 'number') prof.spreadMult *= h.spreadMult;
+    if (typeof h.spawnIntervalMult === 'number') prof.spawnIntervalMult *= h.spawnIntervalMult;
+    if (typeof h.shieldPenalty === 'number') prof.shieldPenalty += h.shieldPenalty;
+    if (typeof h.ultChargeMult === 'number') prof.ultChargeMult *= h.ultChargeMult;
+    if (h.disableDoubleJump) prof.disableDoubleJump = true;
+    if (h.disableSprint) prof.disableSprint = true;
+    if (h.disableSlide) prof.disableSlide = true;
+    if (typeof h.dashCap === 'number') {
+      prof.dashCap = prof.dashCap == null ? h.dashCap : Math.min(prof.dashCap, h.dashCap);
+    }
+  }
+  return prof;
+}
+
 const DAILY_MODIFIERS = [
-  { id: 'hyper_mobility', name: '고속 기동전', desc: '이동속도 +28% · 대시 쿨 -28%', speedMult: 1.28, dashCdMult: 0.72 },
-  { id: 'deadeye', name: '정밀 사격전', desc: '헤드샷 배율 +0.8x · 적 HP +25%', headshotBonus: 0.8, enemyHpMult: 1.25 },
-  { id: 'glass_cannon', name: '초화력 교전', desc: '무기 피해 +35% · 적 HP +35%', dmgMult: 1.35, enemyHpMult: 1.35 },
-  { id: 'vanguard_surge', name: '방호 돌파전', desc: '처치 쉴드 +22 · 최대 실드 +35', killShield: 22, shieldBonus: 35 },
+  {
+    dayOfWeek: 0,
+    dayShort: '일',
+    dayName: '일요일',
+    id: 'golden_sunday',
+    tag: 'GOLDEN RUSH',
+    name: '일요 황금 총력전',
+    concept: '주말 총력 보급전 — 화력과 생존력을 끌어올려 정예 부대를 돌파하고 200% 골드를 회수합니다.',
+    desc: '무기 피해 +25% · 최대 HP/실드 +30 · 골드 200% | 적 체력 +45% · 공격력 +30% · 정예율 38%',
+    dmgMult: 1.25,
+    hpBonus: 30,
+    shieldBonus: 30,
+    enemyHpMult: 1.45,
+    enemyDmgMult: 1.30,
+    eliteChance: 0.38,
+    goldMult: 2.00,
+  },
+  {
+    dayOfWeek: 1,
+    dayShort: '월',
+    dayName: '월요일',
+    id: 'blitz_monday',
+    tag: 'BLITZKRIEG',
+    name: '월요 기동 돌격전',
+    concept: '초고속 기동 돌파 — 극대화된 이동·대시·재장전 속도로 가속화된 적군과 추격전을 펼칩니다.',
+    desc: '이동 속도 +30% · 대시 쿨 -35% · 재장전 +20% · 골드 130% | 적 이동 속도 +15%',
+    speedMult: 1.30,
+    dashCdMult: 0.65,
+    reloadMult: 1.20,
+    enemySpeedMult: 1.15,
+    goldMult: 1.30,
+  },
+  {
+    dayOfWeek: 2,
+    dayShort: '화',
+    dayName: '화요일',
+    id: 'overdrive_tuesday',
+    tag: 'GLASS CANNON',
+    name: '화요 화력 과부하',
+    concept: '고위험 유리 대포 — 실드 용량을 희생하는 대신 압도적 화력과 연사 속도로 전선을 분쇄합니다.',
+    desc: '무기 피해 +45% · 연사력 +15% · 골드 140% | 최대 실드 -25 · 적 공격력 +35%',
+    dmgMult: 1.45,
+    fireRateMult: 1.15,
+    shieldPenalty: 25,
+    enemyDmgMult: 1.35,
+    goldMult: 1.40,
+  },
+  {
+    dayOfWeek: 3,
+    dayShort: '수',
+    dayName: '수요일',
+    id: 'weakpoint_wednesday',
+    tag: 'DEADEYE',
+    name: '수요 정밀 약점 사격',
+    concept: '외과수술 정밀 사격 — 높은 탄착 안정성과 치명적 약점 헤드샷 배율로 단단한 적을 관통합니다.',
+    desc: '헤드샷 배율 +1.35x · 탄퍼짐 -35% · 골드 135% | 적 체력 +35%',
+    headshotBonus: 1.35,
+    spreadMult: 0.65,
+    enemyHpMult: 1.35,
+    goldMult: 1.35,
+  },
+  {
+    dayOfWeek: 4,
+    dayShort: '목',
+    dayName: '목요일',
+    id: 'siphon_thursday',
+    tag: 'BLOOD SIPHON',
+    name: '목요 흡혈 강행군',
+    concept: '끊이지 않는 교전과 흡수 — 몰아치는 증원을 격파하며 처치 실드와 회복량으로 전장을 버텨냅니다.',
+    desc: '처치 실드 +25 · 드랍 회복 +40% · 골드 135% | 적 증원 주기 -18% · 적 체력 +20%',
+    killShield: 25,
+    dropHealMult: 1.40,
+    spawnIntervalMult: 0.82,
+    enemyHpMult: 1.20,
+    goldMult: 1.35,
+  },
+  {
+    dayOfWeek: 5,
+    dayShort: '금',
+    dayName: '금요일',
+    id: 'ult_friday',
+    tag: 'CORE SURGE',
+    name: '금요 코어 과충전',
+    concept: '초능력 & 방패 회전율 극대화 — 급속 충전되는 궁극기와 견고한 가드로 정예 부대에 맞섭니다.',
+    desc: '궁극기 충전 +85% · 가드 소모 -35% · 골드 145% | 정예 출현율 42% · 적 체력 +25%',
+    ultChargeMult: 1.85,
+    guardCostMult: 0.65,
+    eliteChance: 0.42,
+    enemyHpMult: 1.25,
+    goldMult: 1.45,
+  },
+  {
+    dayOfWeek: 6,
+    dayShort: '토',
+    dayName: '토요일',
+    id: 'zerog_saturday',
+    tag: 'ORBITAL ZERO-G',
+    name: '토요 궤도 공중전',
+    concept: '입체 기동 공중 화력전 — 추가 대시 횟수와 공중 피해 증폭으로 지면 위 위협을 제압합니다.',
+    desc: '공중 피해 +55% · 대시 +1회 · 이속 +15% · 골드 145% | 적 체력 +30% · 공격력 +20%',
+    airBonus: 0.55,
+    dashBonus: 1,
+    speedMult: 1.15,
+    enemyHpMult: 1.30,
+    enemyDmgMult: 1.20,
+    goldMult: 1.45,
+  },
 ];
 
 const ACHIEVEMENTS = [
@@ -91,10 +255,14 @@ const ACHIEVEMENTS = [
   { id: 'endless_15', cat: 'ops', catLabel: '작전', reward: 750, name: '심연의 생존자', desc: '무한 강하 15웨이브 도달' },
 ];
 
-function getTodayDailyModifier() {
-  const now = new Date();
-  const key = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
-  return DAILY_MODIFIERS[key % DAILY_MODIFIERS.length];
+function getDailyModifierForDay(dayIndex) {
+  const safeDay = ((Math.floor(Number(dayIndex) || 0) % 7) + 7) % 7;
+  return DAILY_MODIFIERS.find((d) => d.dayOfWeek === safeDay) || DAILY_MODIFIERS[safeDay] || DAILY_MODIFIERS[0];
+}
+
+function getTodayDailyModifier(dateObj = new Date()) {
+  const d = dateObj instanceof Date ? dateObj : new Date();
+  return getDailyModifierForDay(d.getDay());
 }
 
 const PILOT_FRAMES = [
@@ -215,6 +383,25 @@ const PILOT_FRAME_ART = {
   strider: "./assets/pilot-strider.webp",
   bastion: "./assets/pilot-bastion.webp",
   apex: "./assets/pilot-apex.webp",
+};
+
+const PILOT_FRAME_OUTCOME_ART = {
+  vanguard: {
+    victory: "./assets/pilot-vanguard-victory.webp",
+    defeat: "./assets/pilot-vanguard-defeat.webp",
+  },
+  strider: {
+    victory: "./assets/pilot-strider-victory.webp",
+    defeat: "./assets/pilot-strider-defeat.webp",
+  },
+  bastion: {
+    victory: "./assets/pilot-bastion-victory.webp",
+    defeat: "./assets/pilot-bastion-defeat.webp",
+  },
+  apex: {
+    victory: "./assets/pilot-apex-victory.webp",
+    defeat: "./assets/pilot-apex-defeat.webp",
+  },
 };
 
 const META_UPGRADES = [
@@ -903,7 +1090,9 @@ const SCORE_CONFIG = {
   __exports.TACTICAL_CARDS = TACTICAL_CARDS;
   __exports.PILOT_FRAMES = PILOT_FRAMES;
   __exports.PILOT_FRAME_ART = PILOT_FRAME_ART;
+  __exports.PILOT_FRAME_OUTCOME_ART = PILOT_FRAME_OUTCOME_ART;
   __exports.HEAT_CONTRACTS = HEAT_CONTRACTS;
+  __exports.getCumulativeHeatProfile = getCumulativeHeatProfile;
   __exports.DAILY_MODIFIERS = DAILY_MODIFIERS;
   __exports.ACHIEVEMENTS = ACHIEVEMENTS;
   __exports.PLAYER_TITLES = PLAYER_TITLES;
@@ -912,6 +1101,7 @@ const SCORE_CONFIG = {
   __exports.DAILY_QUEST_TEMPLATES = DAILY_QUEST_TEMPLATES;
   __exports.STREAK_REWARDS = STREAK_REWARDS;
   __exports.getTodayDailyModifier = getTodayDailyModifier;
+  __exports.getDailyModifierForDay = getDailyModifierForDay;
   __exports.getTodayDateKey = getTodayDateKey;
   __exports.getDailyQuestsForDate = getDailyQuestsForDate;
 });

@@ -93,6 +93,129 @@ function getLocalDateKey(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+const LEVEL_KEYS = ['firepower', 'hull', 'shield', 'thruster', 'reload', 'crit', 'siphon', 'salvage'];
+
+function clampInt(val, min, max, fallback = min) {
+  const n = Math.floor(Number(val));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function sanitizeCloudMeta(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const cleanLevels = {};
+  const rawLevels = src.levels && typeof src.levels === 'object' ? src.levels : {};
+  for (let i = 0; i < LEVEL_KEYS.length; i++) {
+    const k = LEVEL_KEYS[i];
+    cleanLevels[k] = clampInt(rawLevels[k], 0, 10, 0);
+  }
+
+  const rawOwnedFrames = Array.isArray(src.ownedFrames) ? src.ownedFrames : [];
+  const ownedFrames = Array.from(
+    new Set(['vanguard', ...rawOwnedFrames.filter((id) => VALID_FRAME_IDS.has(String(id)))])
+  ).slice(0, 16);
+  const rawEqFrame = String(src.equippedFrame || 'vanguard');
+  const equippedFrame = ownedFrames.includes(rawEqFrame) ? rawEqFrame : 'vanguard';
+
+  const achievements = Array.isArray(src.achievements)
+    ? Array.from(new Set(src.achievements.map((id) => String(id).slice(0, 48)).filter(Boolean))).slice(0, 64)
+    : [];
+
+  const claimedAchievements = {};
+  if (src.claimedAchievements && typeof src.claimedAchievements === 'object') {
+    const entries = Object.entries(src.claimedAchievements).slice(0, 64);
+    for (let i = 0; i < entries.length; i++) {
+      const [k, v] = entries[i];
+      if (k) claimedAchievements[String(k).slice(0, 48)] = clampInt(v, 0, 1000000, 0);
+    }
+  }
+
+  const rawUnlockedTitles = Array.isArray(src.unlockedTitles) ? src.unlockedTitles : [];
+  const unlockedTitles = Array.from(
+    new Set(['rookie_dropper', ...rawUnlockedTitles.map((id) => String(id).slice(0, 48)).filter(Boolean)])
+  ).slice(0, 64);
+  const rawEqTitle = String(src.equippedTitle || 'rookie_dropper');
+  const equippedTitle = VALID_TITLE_IDS.has(rawEqTitle) && unlockedTitles.includes(rawEqTitle)
+    ? rawEqTitle
+    : 'rookie_dropper';
+
+  const rawUnlockedSkins = Array.isArray(src.unlockedFrameSkins) ? src.unlockedFrameSkins : [];
+  const unlockedFrameSkins = Array.from(
+    new Set(['standard', ...rawUnlockedSkins.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)).filter(Boolean)])
+  ).slice(0, 32);
+  const rawEqSkin = String(src.equippedFrameSkin || 'standard').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  const equippedFrameSkin = unlockedFrameSkins.includes(rawEqSkin) && rawEqSkin ? rawEqSkin : 'standard';
+
+  const claimedHeatMilestones = {};
+  if (src.claimedHeatMilestones && typeof src.claimedHeatMilestones === 'object') {
+    const entries = Object.entries(src.claimedHeatMilestones).slice(0, 20);
+    for (let i = 0; i < entries.length; i++) {
+      const [k, v] = entries[i];
+      if (k) claimedHeatMilestones[String(k).slice(0, 16)] = Boolean(v);
+    }
+  }
+
+  const weaponStats = {};
+  const equippedWeaponSkins = {};
+  const rawWStats = src.weaponStats && typeof src.weaponStats === 'object' ? src.weaponStats : {};
+  const rawWSkins = src.equippedWeaponSkins && typeof src.equippedWeaponSkins === 'object' ? src.equippedWeaponSkins : {};
+  VALID_WEAPON_IDS.forEach((wid) => {
+    const st = rawWStats[wid] && typeof rawWStats[wid] === 'object' ? rawWStats[wid] : {};
+    weaponStats[wid] = {
+      kills: clampInt(st.kills, 0, 100000000, 0),
+      headshots: clampInt(st.headshots, 0, 100000000, 0),
+    };
+    const sk = String(rawWSkins[wid] || 'standard').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+    equippedWeaponSkins[wid] = sk || 'standard';
+  });
+
+  const rawDaily = src.dailyState && typeof src.dailyState === 'object' ? src.dailyState : {};
+  const cleanDailyProgress = {};
+  if (rawDaily.progress && typeof rawDaily.progress === 'object') {
+    Object.entries(rawDaily.progress).slice(0, 16).forEach(([k, v]) => {
+      if (k) cleanDailyProgress[String(k).slice(0, 48)] = clampInt(v, 0, 1000000, 0);
+    });
+  }
+  const cleanDailyClaimed = {};
+  if (rawDaily.claimed && typeof rawDaily.claimed === 'object') {
+    Object.entries(rawDaily.claimed).slice(0, 16).forEach(([k, v]) => {
+      if (k) cleanDailyClaimed[String(k).slice(0, 48)] = Boolean(v);
+    });
+  }
+
+  return {
+    gold: clampInt(src.gold, 0, 2000000000, 0),
+    levels: cleanLevels,
+    ownedFrames,
+    equippedFrame,
+    achievements,
+    claimedAchievements,
+    maxUnlockedHeat: clampInt(src.maxUnlockedHeat, 0, 10, 0),
+    bestEndlessWave: clampInt(src.bestEndlessWave, 0, 9999, 0),
+    totalKillsAllTime: clampInt(src.totalKillsAllTime, 0, 100000000, 0),
+    voidGatesDestroyed: clampInt(src.voidGatesDestroyed, 0, 10000000, 0),
+    callsign: sanitizeCallsign(src.callsign || 'PILOT', 'PILOT'),
+    equippedTitle,
+    unlockedTitles,
+    unlockedFrameSkins,
+    equippedFrameSkin,
+    claimedHeatMilestones,
+    weaponStats,
+    equippedWeaponSkins,
+    dailyState: {
+      dateKey: typeof rawDaily.dateKey === 'string' && rawDaily.dateKey.trim()
+        ? rawDaily.dateKey.trim().slice(0, 16)
+        : getLocalDateKey(),
+      progress: cleanDailyProgress,
+      claimed: cleanDailyClaimed,
+      streakCount: clampInt(rawDaily.streakCount, 0, 9999, 0),
+      lastAttendanceDate: typeof rawDaily.lastAttendanceDate === 'string'
+        ? rawDaily.lastAttendanceDate.trim().slice(0, 16)
+        : '',
+    },
+  };
+}
+
 function resolveBoardKey(mode, dateKey) {
   const safeMode = mode === 'endless' || mode === 'daily' ? mode : 'campaign';
   if (safeMode === 'daily') {
@@ -372,6 +495,81 @@ async function submitLeaderboardRecord(payload) {
   }
 }
 
+async function fetchCloudMetaState(fromServer = true) {
+  await initFirebase();
+  if (!_db || !_auth) {
+    throw new Error('클라우드 데이터베이스에 연결할 수 없습니다.');
+  }
+  const user = _auth.currentUser;
+  if (!user || !user.uid) {
+    throw new Error('Google 로그인이 필요합니다.');
+  }
+  const docPath = `users/${user.uid}/saves/meta`;
+  const docRef = doc(_db, 'users', user.uid, 'saves', 'meta');
+  try {
+    let snap;
+    if (fromServer) {
+      try {
+        snap = await getDocFromServer(docRef);
+      } catch (serverErr) {
+        const msg = serverErr && serverErr.message ? String(serverErr.message) : '';
+        if (msg.includes('client is offline')) {
+          snap = await getDoc(docRef);
+        } else {
+          throw serverErr;
+        }
+      }
+    } else {
+      snap = await getDoc(docRef);
+    }
+    if (!snap || !snap.exists()) {
+      return null;
+    }
+    const data = snap.data() || {};
+    const updatedAtMs =
+      data.updatedAt && typeof data.updatedAt.toMillis === 'function'
+        ? data.updatedAt.toMillis()
+        : null;
+    return {
+      meta: sanitizeCloudMeta(data.meta),
+      updatedAtMs,
+      schemaVersion: Number(data.schemaVersion) || 1,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, docPath);
+    return null;
+  }
+}
+
+async function saveCloudMetaState(metaPayload) {
+  await initFirebase();
+  if (!_db || !_auth) {
+    throw new Error('클라우드 데이터베이스에 연결할 수 없습니다.');
+  }
+  const user = _auth.currentUser;
+  if (!user || !user.uid) {
+    throw new Error('Google 로그인이 필요합니다.');
+  }
+  const docPath = `users/${user.uid}/saves/meta`;
+  const docRef = doc(_db, 'users', user.uid, 'saves', 'meta');
+  const cleanMeta = sanitizeCloudMeta(metaPayload);
+  try {
+    await setDoc(docRef, {
+      uid: user.uid,
+      schemaVersion: 1,
+      meta: cleanMeta,
+      updatedAt: serverTimestamp(),
+    });
+    return {
+      meta: cleanMeta,
+      updatedAtMs: Date.now(),
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, docPath);
+    return null;
+  }
+}
+
 const api = {
   OperationType,
   initFirebase,
@@ -382,6 +580,9 @@ const api = {
   signOutUser,
   fetchLeaderboard,
   submitLeaderboardRecord,
+  fetchCloudMetaState,
+  saveCloudMetaState,
+  sanitizeCloudMeta,
   getLocalDateKey,
   sanitizeCallsign,
 };

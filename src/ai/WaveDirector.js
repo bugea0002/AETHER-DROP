@@ -1,6 +1,6 @@
 // Module: src/ai/WaveDirector.js
 __define("src/ai/WaveDirector.js", (__exports, __require) => {
-const { EVENTS, SCORE_CONFIG, PLAYER_CONFIG, ARENA_CONFIG } = __require("src/config/constants.js");
+const { EVENTS, SCORE_CONFIG, PLAYER_CONFIG, ARENA_CONFIG, MAPS } = __require("src/config/constants.js");
 const { ENEMY_ARCHETYPES, WAVES } = __require("src/config/waves.js");
 const { EnemyModelFactory } = __require("src/ai/EnemyModelFactory.js");
 const { Enemy } = __require("src/ai/EnemyAI.js");
@@ -160,6 +160,8 @@ class WaveDirector {
     this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
     this._awaitingMapTransition = false;
+    this._awaitingTransferGate = false;
+    this._pendingTransitionPayload = null;
     this._spawnQueue = [];
     this._spawnTimer = 0;
     this._inIntermission = false;
@@ -172,6 +174,9 @@ class WaveDirector {
     this._bossEntity = null;
     this.globalEnemyHpMult = 1.0;
     this.globalEnemyDmgMult = 1.0;
+    this.globalEnemySpeedMult = 1.0;
+    this.globalEliteChance = 0.22;
+    this.globalSpawnIntervalMult = 1.0;
     this.endlessMode = false;
     this.endlessLoop = 0;
 
@@ -262,6 +267,8 @@ class WaveDirector {
       inIntermission: false,
       intermissionRemaining: 0,
       awaitingMapTransition: false,
+      awaitingTransferGate: false,
+      transferNextMapIndex: -1,
       mapIndex: this._currentMapIndex,
       victory: false,
       combatIntensity: 0,
@@ -463,6 +470,8 @@ class WaveDirector {
     this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
     this._awaitingMapTransition = false;
+    this._awaitingTransferGate = false;
+    this._pendingTransitionPayload = null;
     this._spawnQueue.length = 0;
     this._spawnTimer = 0;
     this._inIntermission = false;
@@ -505,7 +514,29 @@ class WaveDirector {
       if (typeof this._interactables.setBossLowGravityOverride === 'function') {
         this._interactables.setBossLowGravityOverride(false);
       }
+      if (typeof this._interactables.setTransferGateActive === 'function') {
+        this._interactables.setTransferGateActive(false);
+      }
     }
+  }
+
+  isAwaitingTransferGate() {
+    return Boolean(this._awaitingTransferGate && this._pendingTransitionPayload);
+  }
+
+  enterTransferGate() {
+    if (!this._awaitingTransferGate || !this._pendingTransitionPayload) return false;
+    const payload = this._pendingTransitionPayload;
+    this._awaitingTransferGate = false;
+    this._awaitingMapTransition = true;
+    if (this._interactables && typeof this._interactables.setTransferGateActive === 'function') {
+      this._interactables.setTransferGateActive(false);
+    }
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.TRANSFER_GATE_ENTERED, payload);
+      this.eventBus.emit(EVENTS.MAP_TRANSITION, payload);
+    }
+    return true;
   }
 
   /**
@@ -549,6 +580,8 @@ class WaveDirector {
         : fallbackMapIdx;
 
     this._awaitingMapTransition = false;
+    this._awaitingTransferGate = false;
+    this._pendingTransitionPayload = null;
 
     if (nextWaveIndex >= 0 && nextWaveIndex < WAVES.length) {
       this._startWave(nextWaveIndex);
@@ -986,8 +1019,8 @@ class WaveDirector {
       }
     }
 
-    // 2. Pause wave timer/spawns while awaiting 3-map campaign sector transition
-    if (this._awaitingMapTransition) {
+    // 2. Pause wave timer/spawns while awaiting Transfer Gate entry or 300ms sector transition
+    if (this._awaitingTransferGate || this._awaitingMapTransition) {
       this._combatIntensity += (0 - this._combatIntensity) * (1 - Math.exp(-3 * clampedDt));
       return;
     }
@@ -1005,13 +1038,19 @@ class WaveDirector {
           if (nextMapIndex !== this._currentMapIndex) {
             this._inIntermission = false;
             this._intermissionTimer = 0;
-            this._awaitingMapTransition = true;
+            this._awaitingTransferGate = true;
+            const nextMapMeta = MAPS[nextMapIndex] || null;
+            this._pendingTransitionPayload = {
+              nextWaveIndex,
+              nextMapIndex,
+              fromMapIndex: this._currentMapIndex,
+              nextMapMeta,
+            };
+            if (this._interactables && typeof this._interactables.setTransferGateActive === 'function') {
+              this._interactables.setTransferGateActive(true, nextMapMeta);
+            }
             if (this.eventBus) {
-              this.eventBus.emit(EVENTS.MAP_TRANSITION, {
-                nextWaveIndex,
-                nextMapIndex,
-                fromMapIndex: this._currentMapIndex,
-              });
+              this.eventBus.emit(EVENTS.TRANSFER_GATE_OPEN, this._pendingTransitionPayload);
             }
             return;
           }
@@ -1039,8 +1078,9 @@ class WaveDirector {
             spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
             spawned.hp = spawned.maxHp;
           }
-          // Wave 2+: 22% chance to promote non-boss enemy into an Elite Variant
-          if (!spawned.isBoss && this._currentWaveIndex >= 1 && Math.random() < 0.22) {
+          // Wave 2+: chance to promote non-boss enemy into an Elite Variant (scales with Threat tiers)
+          const eliteChance = Number.isFinite(this.globalEliteChance) ? this.globalEliteChance : 0.22;
+          if (!spawned.isBoss && this._currentWaveIndex >= 1 && Math.random() < eliteChance) {
             const affixes = [
               { id: 'overcharged', label: '[과충전]', hpMult: 1.35, color: 0xef4444 },
               { id: 'shield_link', label: '[실드링크]', hpMult: 1.30, color: 0x38bdf8 },
@@ -1094,7 +1134,7 @@ class WaveDirector {
         }
         // Fast initial wave population while field is sparse
         const cadenceScale = livingCount < Math.min(3, wave.maxConcurrent) ? 0.52 : 1.0;
-        this._spawnTimer = wave.spawnInterval * cadenceScale;
+        this._spawnTimer = wave.spawnInterval * cadenceScale * (this.globalSpawnIntervalMult || 1.0);
       }
     }
 
@@ -1137,7 +1177,7 @@ class WaveDirector {
         waveCleared = true;
       } else if (allQueuedSpawned && livingCount === 0) {
         // Player cleared all wave enemies before zone hit 100%:
-        // Accelerate capture 2.5x via interactables API AND spawn light reinforcement pairs (max 2)
+        // Accelerate capture 2.5x via interactables API AND spawn 4-unit reinforcement squads (max 2)
         if (
           activeInteractables &&
           typeof activeInteractables.setCaptureSpeedMultiplier === 'function'
@@ -1149,7 +1189,14 @@ class WaveDirector {
           if (this._reinforcementTimer >= 3.8) {
             this._reinforcementTimer = 0;
             this._reinforcementsSpawned++;
-            this._spawnQueue.push('rusher_drone', 'tactical_trooper');
+            const waveNum = wave.wave || 1;
+            const squad =
+              waveNum >= 11
+                ? ['volatile_rusher', 'void_warper', 'volatile_rusher', 'void_swarmer']
+                : waveNum >= 6
+                ? ['interceptor_drone', 'shock_breacher', 'tactical_trooper', 'vanguard_assassin']
+                : ['rusher_drone', 'tactical_trooper', 'rusher_drone', 'tactical_trooper'];
+            this._spawnQueue.push(...squad);
             this._spawnTimer = 0.25;
           }
         } else {
@@ -1474,6 +1521,7 @@ class WaveDirector {
     if (typeof enemy.setOverloadCallback === 'function') {
       enemy.setOverloadCallback(this._boundOnEnemyOverload);
     }
+    enemy.threatSpeedMult = this.globalEnemySpeedMult || 1.0;
 
     this._enemies.push(enemy);
     if (archetype.isBoss) {
@@ -1807,6 +1855,8 @@ class WaveDirector {
     s.inIntermission = this._inIntermission;
     s.intermissionRemaining = Math.max(0, this._intermissionTimer);
     s.awaitingMapTransition = this._awaitingMapTransition;
+    s.awaitingTransferGate = this._awaitingTransferGate;
+    s.transferNextMapIndex = this._pendingTransitionPayload ? this._pendingTransitionPayload.nextMapIndex : -1;
     s.mapIndex = this._currentMapIndex;
     s.victory = this._victory;
     s.combatIntensity = this._combatIntensity;

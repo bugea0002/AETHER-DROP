@@ -81,7 +81,7 @@ class PlayerController {
     this.isDashing = false;
     this.isAds = false;
 
-    this.dashCharges = PLAYER_CONFIG.dashMaxCharges;
+    this.dashCharges = this._getMaxDashCharges();
     this.dashCooldownProgress = 1.0;
 
     this.currentHeight = PLAYER_CONFIG.standHeight;
@@ -119,6 +119,8 @@ class PlayerController {
     this._recoilRecovery = DEFAULT_RECOIL_RECOVERY;
     this._shakeTrauma = 0;
     this._shakeTime = 0;
+    this._adsSensScale = 0.56;
+    this._screenShakeScale = 1.0;
 
     // Pre-allocated scratch vectors & payloads (zero-GC update loop)
     this._forward = new THREE.Vector3();
@@ -200,7 +202,7 @@ class PlayerController {
     const prevMaxHp = this.maxHealth;
     const prevMaxSh = this.maxShield;
     this.maxHealth = PLAYER_CONFIG.maxHealth + this.mods.maxHealthBonus;
-    this.maxShield = PLAYER_CONFIG.maxShield + this.mods.maxShieldBonus;
+    this.maxShield = Math.max(20, PLAYER_CONFIG.maxShield + this.mods.maxShieldBonus);
     const prevMaxG = this.maxGuardEnergy || 100;
     this.maxGuardEnergy = (this.mods && this.mods.guardMax) || 100;
     if (refillVitals) {
@@ -216,6 +218,10 @@ class PlayerController {
     } else {
       if (this.maxHealth > prevMaxHp) this.health = Math.min(this.maxHealth, this.health + (this.maxHealth - prevMaxHp));
       if (this.maxShield > prevMaxSh) this.shield = Math.min(this.maxShield, this.shield + (this.maxShield - prevMaxSh));
+    }
+    const maxDash = this._getMaxDashCharges();
+    if (this.dashCharges > maxDash) {
+      this.dashCharges = maxDash;
     }
   }
 
@@ -256,7 +262,7 @@ class PlayerController {
     this.isDashing = false;
     this.isAds = false;
 
-    this.dashCharges = PLAYER_CONFIG.dashMaxCharges;
+    this.dashCharges = this._getMaxDashCharges();
     this.dashCooldownProgress = 1.0;
 
     this.currentHeight = PLAYER_CONFIG.standHeight;
@@ -317,7 +323,7 @@ class PlayerController {
     // 1. Look input & ADS state
     this.isAds = allowAds && this.input.isDown('ads') && !this.isDashing;
     const look = this.input.consumeLookDelta(clampedDt);
-    const adsLookScale = this.isAds ? 0.56 : 1.0;
+    const adsLookScale = this.isAds ? this._adsSensScale : 1.0;
 
     this.yaw -= look.x * adsLookScale;
     this.pitch -= look.y * adsLookScale;
@@ -363,6 +369,7 @@ class PlayerController {
     const currentHorizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
 
     if (
+      !(this.mods && this.mods.disableSlide) &&
       !this.isSliding &&
       !this.isDashing &&
       this.isGrounded &&
@@ -405,6 +412,7 @@ class PlayerController {
 
     this.isSprinting =
       wantsSprint &&
+      !(this.mods && this.mods.disableSprint) &&
       move.y > 0.35 &&
       wishMag > 0.1 &&
       !this.isAds &&
@@ -446,7 +454,7 @@ class PlayerController {
         this._jumpBufferTimer = 0;
         this._jumpPayload.isDoubleJump = false;
         this.eventBus.emit(EVENTS.PLAYER_JUMP, this._jumpPayload);
-      } else if (this._doubleJumpAvailable) {
+      } else if (this._doubleJumpAvailable && !(this.mods && this.mods.disableDoubleJump)) {
         // Crisp mid-air double jump with directional air snap
         this.velocity.y = PLAYER_CONFIG.doubleJumpVelocity;
         if (wishMag > 0.15) {
@@ -763,12 +771,20 @@ class PlayerController {
   }
 
   /** @private */
+  _getMaxDashCharges() {
+    const baseMax = (this.mods && this.mods.dashMax) || PLAYER_CONFIG.dashMaxCharges;
+    const cap = (this.mods && this.mods.dashCap) || 99;
+    return Math.max(1, Math.min(baseMax, cap));
+  }
+
+  /** @private */
   _updateDashCharges(dt) {
     const effCooldown = Math.max(
       0.7,
       PLAYER_CONFIG.dashCooldown * (this.mods ? this.mods.dashCooldownMult : 1.0)
     );
-    const maxDashes = (this.mods && this.mods.dashMax) || PLAYER_CONFIG.dashMaxCharges;
+    const maxDashes = this._getMaxDashCharges();
+    if (this.dashCharges > maxDashes) this.dashCharges = maxDashes;
     if (this.dashCharges < maxDashes) {
       this._dashRechargeTimer += dt;
       if (this._dashRechargeTimer >= effCooldown) {
@@ -1001,12 +1017,34 @@ class PlayerController {
   }
 
   /**
+   * Set ADS mouse sensitivity multiplier relative to hipfire.
+   * @param {number} scale
+   */
+  setAdsSensitivityScale(scale) {
+    const n = Number(scale);
+    if (Number.isFinite(n)) {
+      this._adsSensScale = Math.max(0.25, Math.min(1.5, n));
+    }
+  }
+
+  /**
+   * Set global screen shake intensity multiplier (0..1.5).
+   * @param {number} scale
+   */
+  setScreenShakeScale(scale) {
+    const n = Number(scale);
+    if (Number.isFinite(n)) {
+      this._screenShakeScale = Math.max(0, Math.min(1.5, n));
+    }
+  }
+
+  /**
    * Add trauma-based damped screen shake intensity (0..1).
    * @param {number} intensity
    */
   addScreenShake(intensity) {
-    if (!Number.isFinite(intensity) || intensity <= 0) return;
-    this._shakeTrauma = Math.min(1.0, this._shakeTrauma + intensity);
+    if (!Number.isFinite(intensity) || intensity <= 0 || this._screenShakeScale <= 0) return;
+    this._shakeTrauma = Math.min(1.0, this._shakeTrauma + intensity * this._screenShakeScale);
   }
 
   /**
@@ -1120,7 +1158,7 @@ class PlayerController {
     const prevHp = this.health;
     const prevShield = this.shield;
 
-    const hMult = (this.mods && this.mods.dropHealMult) || 1.0;
+    const hMult = ((this.mods && this.mods.dropHealMult) || 1.0) * ((this.mods && this.mods.healEfficiencyMult) || 1.0);
     if (hpAmount > 0) {
       this.health = Math.min(this.maxHealth, this.health + hpAmount * hMult);
     }
@@ -1152,7 +1190,8 @@ class PlayerController {
    */
   onEnemyKill(isHeadshot = false) {
     this.addUltCharge(isHeadshot ? 7 : 5);
-    const killShield = (this.mods && this.mods.killShieldBonus) || 0;
+    const effKill = (this.mods && this.mods.healEfficiencyMult) || 1.0;
+    const killShield = Math.round(((this.mods && this.mods.killShieldBonus) || 0) * effKill);
     if (killShield > 0 && this.isAlive && this.shield < this.maxShield) {
       const prevShield = this.shield;
       this.shield = Math.min(this.maxShield, this.shield + killShield);
@@ -1223,7 +1262,7 @@ class PlayerController {
     s.isDashing = this.isDashing;
     s.isAds = this.isAds;
     s.dashCharges = this.dashCharges;
-    s.maxDashCharges = (this.mods && this.mods.dashMax) || PLAYER_CONFIG.dashMaxCharges;
+    s.maxDashCharges = this._getMaxDashCharges();
     s.dashCooldownProgress = this.dashCooldownProgress;
     s.speed = this.speed;
     s.currentFov = this.currentFov;

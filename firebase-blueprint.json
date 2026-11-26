@@ -95,6 +95,31 @@
           "type": "boolean"
         }
       }
+    },
+    "UserCloudSave": {
+      "title": "UserCloudSave",
+      "description": "Private player progression backup manually saved by the authenticated owner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated Firebase user UID"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "description": "Cloud save schema version"
+        },
+        "meta": {
+          "type": "object",
+          "description": "Player metaState progression snapshot (gold, upgrades, frames, achievements, titles, skins, stats)"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when cloud backup was manually saved"
+        }
+      },
+      "required": ["uid", "schemaVersion", "meta", "updatedAt"]
     }
   },
   "auth": {
@@ -107,6 +132,13 @@
         "$ref": "#/backend/entities/LeaderboardEntry"
       },
       "description": "Global leaderboard personal-best entries grouped by boardKey (campaign, endless, daily_YYYY-MM-DD)."
+    },
+    {
+      "path": "/users/{uid}/saves/{saveId}",
+      "schema": {
+        "$ref": "#/backend/entities/UserCloudSave"
+      },
+      "description": "Owner-only manual cloud progression backup document (/users/{uid}/saves/meta)."
     },
     {
       "path": "/test/{docId}",

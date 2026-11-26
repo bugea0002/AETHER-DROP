@@ -94,6 +94,21 @@ class HudManager {
     this._bannerTitle = byId('announcement-title');
     this._bannerSub = byId('announcement-sub');
 
+    this._dropIntroOverlay = byId('drop-intro-overlay');
+    this._dropStageLabel = byId('drop-stage-label');
+    this._dropAltVal = byId('drop-alt-val');
+    this._dropTempVal = byId('drop-temp-val');
+    this._dropCountdownNum = byId('drop-countdown-num');
+    this._dropSectorCode = byId('drop-sector-code');
+    this._dropSectorName = byId('drop-sector-name');
+    this._dropOpsMeta = byId('drop-ops-meta');
+
+    this._sectorArrCard = byId('sector-arrival-card');
+    this._sectorArrCode = byId('sector-arr-code');
+    this._sectorArrName = byId('sector-arr-name');
+    this._sectorArrSub = byId('sector-arr-sub');
+    this._sectorArrTimer = 0;
+
     // Step 1: 3D Beacon Waypoint, Sniper Lock Warning & Micro-Onboarding Tip
     this._beaconWaypoint = byId('beacon-waypoint');
     this._beaconDist = byId('beacon-dist');
@@ -163,12 +178,19 @@ class HudManager {
     this._endSubtitle = byId('end-subtitle');
     this._endRank = byId('end-rank');
     this._statScore = byId('stat-score');
+    this._statGoldEarned = byId('stat-gold-earned');
     this._statKills = byId('stat-kills');
+    this._statBosses = byId('stat-bosses');
     this._statHeadshots = byId('stat-headshots');
+    this._statHsRate = byId('stat-hs-rate');
     this._statAccuracy = byId('stat-accuracy');
+    this._statAccFill = byId('stat-acc-fill');
+    this._statHsFill = byId('stat-hs-fill');
     this._statCombo = byId('stat-combo');
     this._statWave = byId('stat-wave');
     this._statTime = byId('stat-time');
+    this._debriefProgressFill = byId('debrief-progress-fill');
+    this._debriefProgressLabel = byId('debrief-progress-label');
 
     // 4-Slot 360-Degree Directional Damage Arc Pool
     const arcEls = [
@@ -337,6 +359,7 @@ class HudManager {
     on(EVENTS.ZONE_PROGRESS, (p) => this._onZoneProgress(p));
     on(EVENTS.WAVE_STARTED, (p) => this._onWaveStarted(p));
     on(EVENTS.WAVE_CLEARED, (p) => this._onWaveCleared(p));
+    on(EVENTS.TRANSFER_GATE_OPEN, (p) => this._onTransferGateOpen(p));
     on(EVENTS.BOSS_PHASE, (p) => this._onBossPhase(p));
     on(EVENTS.BARREL_EXPLODED, (p) => {
       const label =
@@ -738,6 +761,64 @@ class HudManager {
   }
 
   /** @private */
+  _onTransferGateOpen(payload) {
+    const nextMeta =
+      (payload && payload.nextMapMeta) ||
+      (payload && typeof payload.nextMapIndex === 'number' && MAPS[payload.nextMapIndex]) ||
+      null;
+    const nextLabel = nextMeta ? nextMeta.name : '다음 작전 구역';
+    this.showAnnouncement(
+      '섹터 전송 게이트 가동',
+      '전송 게이트 개방',
+      `${nextLabel}(으)로 이동 가능 — 중앙 게이트로 진입하세요`,
+      'gate-alert',
+      4.5
+    );
+    this._pushKillfeed(
+      nextMeta ? `전송 게이트 개방 · ${nextMeta.code}` : '전송 게이트 개방',
+      'pickup'
+    );
+  }
+
+  updateDropIntroUI(state) {
+    if (!this._dropIntroOverlay) return;
+    if (!state || !state.active) {
+      this._dropIntroOverlay.classList.add('hidden');
+      this._dropIntroOverlay.classList.remove('impact-state', 'unseal-state');
+      return;
+    }
+    this._dropIntroOverlay.classList.remove('hidden');
+    this._dropIntroOverlay.classList.toggle('impact-state', state.phase === 'impact');
+    this._dropIntroOverlay.classList.toggle('unseal-state', state.phase === 'unseal');
+    if (this._dropStageLabel) this._dropStageLabel.textContent = state.stageLabel || '대기권 강하 중';
+    if (this._dropAltVal) this._dropAltVal.textContent = `${Math.max(0, Math.round(state.altitudeM || 0)).toLocaleString()} M`;
+    if (this._dropTempVal) this._dropTempVal.textContent = `${Math.max(80, Math.round(state.tempC || 120)).toLocaleString()} °C`;
+    if (this._dropCountdownNum) this._dropCountdownNum.textContent = state.countdown || '0';
+    if (this._dropSectorCode && state.sectorCode) this._dropSectorCode.textContent = state.sectorCode;
+    if (this._dropSectorName && state.sectorName) this._dropSectorName.textContent = state.sectorName;
+    if (this._dropOpsMeta && state.opsMeta) this._dropOpsMeta.textContent = state.opsMeta;
+  }
+
+  hideDropIntroUI() {
+    if (!this._dropIntroOverlay) return;
+    this._dropIntroOverlay.classList.add('hidden');
+    this._dropIntroOverlay.classList.remove('impact-state', 'unseal-state');
+  }
+
+  showSectorArrivalCard(mapMeta, metaTag = '', duration = 2.6) {
+    if (!this._sectorArrCard || !mapMeta) return;
+    if (this._sectorArrCode) {
+      const tagPart = metaTag ? ` // ${metaTag}` : ' // SECTOR DEPLOYED';
+      this._sectorArrCode.textContent = `${mapMeta.code || 'SECTOR'}${tagPart}`;
+    }
+    if (this._sectorArrName) this._sectorArrName.textContent = mapMeta.name || '작전 구역';
+    if (this._sectorArrSub) this._sectorArrSub.textContent = mapMeta.subtitle || '';
+    this._sectorArrTimer = duration;
+    this._sectorArrCard.classList.remove('hidden');
+    this._sectorArrCard.classList.add('visible');
+  }
+
+  /** @private */
   _onBossPhase(payload) {
     if (!payload) return;
     this.showAnnouncement(
@@ -782,11 +863,16 @@ class HudManager {
 
   showAnnouncement(kicker, title, subtitle = '', themeClass = '', duration = 1.8) {
     if (!this._banner) return;
+    if (this._sectorArrCard) {
+      this._sectorArrTimer = 0;
+      this._sectorArrCard.classList.remove('visible');
+      this._sectorArrCard.classList.add('hidden');
+    }
     if (this._bannerKicker) this._bannerKicker.textContent = kicker;
     if (this._bannerTitle) this._bannerTitle.textContent = title;
     if (this._bannerSub) this._bannerSub.textContent = subtitle;
 
-    this._banner.classList.remove('boss-alert', 'clear-alert');
+    this._banner.classList.remove('boss-alert', 'clear-alert', 'gate-alert');
     if (themeClass) this._banner.classList.add(themeClass);
     this._banner.classList.add('visible');
     this._bannerVisible = true;
@@ -910,7 +996,8 @@ class HudManager {
         }
       }
 
-      // 2 Omni-Dash charge pips with live refill bar
+      // Omni-Dash charge pips with live refill bar (respects dashMax / Heat dashCap)
+      const maxDash = Math.max(1, (player.maxDashCharges | 0) || 2);
       const charges = player.dashCharges | 0;
       const prog = clamp(player.dashCooldownProgress || 0, 0, 1);
       const p0 = charges >= 1 ? 100 : Math.round(prog * 100);
@@ -934,7 +1021,10 @@ class HudManager {
         c.dash1Ready = r1;
         if (this._dashPips[1]) this._dashPips[1].classList.toggle('ready', r1);
       }
-      const hasDash3 = (player.maxDashCharges || 2) >= 3;
+      if (this._dashPips[1]) {
+        this._dashPips[1].classList.toggle('hidden', maxDash < 2);
+      }
+      const hasDash3 = maxDash >= 3;
       if (this._dashPips[2]) {
         this._dashPips[2].classList.toggle('hidden', !hasDash3);
         if (hasDash3) {
@@ -1030,7 +1120,23 @@ class HudManager {
         if (this._waveName) this._waveName.textContent = wave.waveName || '궤도 강하 개시';
       }
 
-      if (wave.inIntermission) {
+      if (wave.awaitingTransferGate) {
+        const nextMeta =
+          wave.transferNextMapIndex >= 0 && MAPS[wave.transferNextMapIndex]
+            ? MAPS[wave.transferNextMapIndex]
+            : null;
+        const gLabel = '전송 게이트 가동 중';
+        const gObj = nextMeta
+          ? `중앙 전송 게이트 진입 → ${nextMeta.code}`
+          : '중앙 전송 게이트로 이동해 다음 구역 진입';
+        if (c.intermissionStr !== gLabel) {
+          c.intermissionStr = gLabel;
+          c.hostiles = -3;
+          c.objective = gObj;
+          if (this._hostilesCount) this._hostilesCount.textContent = gLabel;
+          if (this._objectiveText) this._objectiveText.textContent = gObj;
+        }
+      } else if (wave.inIntermission) {
         const interStr = `다음 강하까지 ${Math.ceil(wave.intermissionRemaining)}초`;
         if (c.intermissionStr !== interStr) {
           c.intermissionStr = interStr;
@@ -1178,7 +1284,14 @@ class HudManager {
       }
     }
 
-    // 10. Announcement Banner & Killfeed Timers
+    // 10. Announcement Banner & Sector Arrival Card Timers
+    if (this._sectorArrTimer > 0) {
+      this._sectorArrTimer -= clampedDt;
+      if (this._sectorArrTimer <= 0 && this._sectorArrCard) {
+        this._sectorArrCard.classList.remove('visible');
+        this._sectorArrCard.classList.add('hidden');
+      }
+    }
     if (this._bannerVisible) {
       this._bannerTimer -= clampedDt;
       if (this._bannerTimer <= 0) {
@@ -1257,16 +1370,22 @@ class HudManager {
       }
     }
     if (this._pickupPrompt) {
+      const tg = snapshot.transferGate;
       const near = snapshot.nearbyWeapon;
-      if (near && near.weapon) {
+      if (tg && tg.active && tg.canInteract) {
+        this._pickupPrompt.classList.remove('hidden', 'secondary-drop');
+        this._pickupPrompt.classList.add('gate-prompt');
+        this._pickupPrompt.textContent = `[F] / 진입 — ${tg.nextMapName} 전송`;
+      } else if (near && near.weapon) {
         const isSec = near.weapon.category === 'secondary';
         const isSame = near.isSame;
-        this._pickupPrompt.classList.remove('hidden');
+        this._pickupPrompt.classList.remove('hidden', 'gate-prompt');
         this._pickupPrompt.classList.toggle('secondary-drop', isSec);
         this._pickupPrompt.textContent = isSame
           ? `[F] ${near.weapon.name} 오버클럭 (+18%)`
           : `[F] ${near.weapon.name} 장착 (${near.currentName} 바닥에 드랍)`;
       } else {
+        this._pickupPrompt.classList.remove('gate-prompt');
         this._pickupPrompt.classList.add('hidden');
       }
     }
@@ -1287,8 +1406,8 @@ class HudManager {
       }
     }
 
-    // 11.5. Step 1: 3D Beacon Waypoint, Sniper Lock Warning & Micro-Onboarding Tip
-    this._updateWaypointsAndOnboarding(clampedDt, player, snapshot.enemies, zone);
+    // 11.5. Step 1: 3D Beacon / Transfer Gate Waypoint, Sniper Lock Warning & Micro-Onboarding Tip
+    this._updateWaypointsAndOnboarding(clampedDt, player, snapshot.enemies, zone, snapshot.transferGate);
 
     // 12. Real-Time 2D Canvas Tactical Minimap (~20Hz)
     this._radarTime += clampedDt;
@@ -1301,7 +1420,8 @@ class HudManager {
         snapshot.pickups,
         zone,
         snapshot.voidGates,
-        snapshot.lowGravityZones
+        snapshot.lowGravityZones,
+        snapshot.transferGate
       );
     }
   }
@@ -1518,7 +1638,7 @@ class HudManager {
   }
 
   /** @private */
-  _updateWaypointsAndOnboarding(dt, player, enemies, zone) {
+  _updateWaypointsAndOnboarding(dt, player, enemies, zone, transferGate = null) {
     // 1. Onboarding 1-line tip timer
     if (this._onboardingTimer > 0) {
       this._onboardingTimer = Math.max(0, this._onboardingTimer - dt);
@@ -1585,34 +1705,47 @@ class HudManager {
       this.eventBus.emit('SFX_SNIPER_LOCK', {});
     }
 
-    // 3. 3D->2D Projected Terra-Beacon Waypoint (clamped to viewport edge when off-screen)
+    // 3. 3D->2D Projected Transfer Gate OR Terra-Beacon Waypoint
     if (!this._beaconWaypoint || !this.camera) return;
-    const zoneActive = Boolean(zone && zone.active && !zone.captured);
-    if (!zoneActive || !this._arenaData || !this._arenaData.controlZoneCenter) {
+    const gateActive = Boolean(transferGate && transferGate.active && transferGate.position);
+    const zoneActive = Boolean(!gateActive && zone && zone.active && !zone.captured && this._arenaData && this._arenaData.controlZoneCenter);
+    if (!gateActive && !zoneActive) {
+      this._beaconWaypoint.classList.remove('gate-active');
       this._beaconWaypoint.classList.add('hidden');
       return;
     }
 
     this._beaconWaypoint.classList.remove('hidden');
-    const zc = this._arenaData.controlZoneCenter;
-    this._waypointVec.set(zc.x, (zc.y || 0) + 2.4, zc.z);
+    const targetPos = gateActive ? transferGate.position : this._arenaData.controlZoneCenter;
+    this._waypointVec.set(targetPos.x, (targetPos.y || 0) + (gateActive ? 2.5 : 2.4), targetPos.z);
 
     let dist = 0;
     if (player && player.position) {
       dist = Math.round(
-        Math.hypot(zc.x - player.position.x, zc.z - player.position.z)
+        Math.hypot(targetPos.x - player.position.x, targetPos.z - player.position.z)
       );
     }
-    if (this._beaconDist) {
-      this._beaconDist.textContent =
-        zone.contesting ? `경합 중 ${dist}M` : zone.owner === 'player' ? `점령 중 ${dist}M` : `테라비콘 ${dist}M`;
+    this._beaconWaypoint.classList.toggle('gate-active', gateActive);
+    if (gateActive) {
+      if (this._beaconDist) this._beaconDist.textContent = `전송 게이트 ${dist}M`;
+      this._beaconWaypoint.classList.remove('capturing', 'contested');
+    } else {
+      if (this._beaconDist) {
+        this._beaconDist.textContent =
+          zone.contesting ? `경합 중 ${dist}M` : zone.owner === 'player' ? `점령 중 ${dist}M` : `테라비콘 ${dist}M`;
+      }
+      this._beaconWaypoint.classList.toggle('capturing', zone.owner === 'player' && !zone.contesting);
+      this._beaconWaypoint.classList.toggle('contested', Boolean(zone.contesting || zone.owner === 'enemy'));
     }
-    this._beaconWaypoint.classList.toggle('capturing', zone.owner === 'player' && !zone.contesting);
-    this._beaconWaypoint.classList.toggle('contested', Boolean(zone.contesting || zone.owner === 'enemy'));
 
     this._waypointVec.project(this.camera);
-    const w = window.innerWidth || 1280;
-    const h = window.innerHeight || 720;
+    let uiScale = 1;
+    if (typeof document !== 'undefined' && document.body && document.body.classList.contains('ui-scale-desktop')) {
+      const parsed = parseFloat(document.documentElement.style.getPropertyValue('--ad-ui-scale'));
+      if (Number.isFinite(parsed) && parsed > 0) uiScale = parsed;
+    }
+    const w = (window.innerWidth || 1280) / uiScale;
+    const h = (window.innerHeight || 720) / uiScale;
     const behind = this._waypointVec.z > 1;
     let sx = (behind ? -this._waypointVec.x : this._waypointVec.x) * (w * 0.5) + w * 0.5;
     let sy = -(behind ? -this._waypointVec.y : this._waypointVec.y) * (h * 0.5) + h * 0.5;
@@ -1628,7 +1761,7 @@ class HudManager {
   }
 
   /** @private */
-  _renderMinimap(player, enemies, pickups, zone, voidGates, lowGravityZones) {
+  _renderMinimap(player, enemies, pickups, zone, voidGates, lowGravityZones, transferGate = null) {
     const ctx = this._minimapCtx;
     if (!ctx) return;
 
@@ -1715,6 +1848,27 @@ class HudManager {
       ctx.strokeStyle = stroke;
       ctx.lineWidth = isActive ? 1.8 : 1.0;
       ctx.stroke();
+    }
+
+    // 2.5. Active Sector Transfer Gate Minimap Beacon
+    if (transferGate && transferGate.active && transferGate.position) {
+      const gx = toMapX(transferGate.position.x);
+      const gy = toMapY(transferGate.position.z);
+      const pulse = 5.5 + Math.sin(this._radarTime * 8.0) * 1.6;
+      ctx.save();
+      ctx.translate(gx, gy);
+      ctx.beginPath();
+      ctx.arc(0, 0, pulse + 2.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.rotate(Math.PI * 0.25);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-pulse * 0.48, -pulse * 0.48, pulse * 0.96, pulse * 0.96);
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(-pulse * 0.48, -pulse * 0.48, pulse * 0.96, pulse * 0.96);
+      ctx.restore();
     }
 
     // 3. Active Orbital Supply Pickup Dots
@@ -1868,23 +2022,41 @@ class HudManager {
       }
     }
 
+    const wave = Math.max(1, s.wave || 1);
+    const totalWaves = Math.max(1, s.totalWaves || 15);
+    const sectorWave = s.mode === 'endless' ? (((wave - 1) % totalWaves) + 1) : Math.min(totalWaves, wave);
+    const progressPct = isVictory
+      ? 100
+      : Math.max(6, Math.min(100, Math.round((sectorWave / totalWaves) * 100)));
+
     if (this._endBadge) {
-      this._endBadge.textContent = isVictory
+      this._endBadge.textContent = s.isTutorial
+        ? (isVictory ? '전술 훈련 수료' : '전술 훈련 중단')
+        : isVictory
         ? '궤도 수복 작전 완수'
-        : 'VANGUARD-09 신호 두절';
+        : '기체 신호 두절 · 작전 실패';
       this._endBadge.classList.toggle('defeat', !isVictory);
     }
     if (this._endTitle) {
-      this._endTitle.textContent = isVictory ? '지구 수복 완료' : '작전 실패';
+      this._endTitle.textContent = s.isTutorial
+        ? (isVictory ? '훈련장 과정 완료' : '훈련 중단됨')
+        : isVictory
+        ? '지구 수복 완료'
+        : '작전 실패';
     }
     if (this._endSubtitle) {
-      this._endSubtitle.textContent = isVictory
-        ? (s.wave || 0) >= 15
+      const remWaves = Math.max(0, totalWaves - wave);
+      this._endSubtitle.textContent = s.isTutorial
+        ? (isVictory ? '모든 기초 기동 및 전술 교전 훈련을 통과했습니다.' : '전술 훈련장에서 언제든 재도전할 수 있습니다.')
+        : isVictory
+        ? wave >= 15
           ? 'TRANSCENDENT-OMEGA 격파 완료 — 궤도 심연 코어 완전 해방'
-          : (s.wave || 0) >= 10
+          : wave >= 10
           ? 'AEGIS-IX 격파 완료 — 이지스 궤도 성채 완전 탈환'
           : 'COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보'
-        : `${s.wave || 1}웨이브에서 기체 파괴 — 재투입 준비 완료`;
+        : s.mode === 'endless'
+        ? `무한 강하 ${wave}웨이브 교전 중 기체 손실 — 블랙박스 회수 완료`
+        : `${wave}웨이브 교전 중 신호 두절${remWaves > 0 ? ` · 목표 완수까지 ${remWaves}웨이브 남음` : ''}`;
     }
     if (this._endRank) {
       this._endRank.textContent = rank;
@@ -1892,12 +2064,24 @@ class HudManager {
     }
 
     if (this._statScore) this._statScore.textContent = formatScore(score);
+    if (this._statGoldEarned) this._statGoldEarned.textContent = `+${Math.max(0, Math.round(s.goldEarned || 0)).toLocaleString()} G`;
     if (this._statKills) this._statKills.textContent = String(kills);
+    if (this._statBosses) this._statBosses.textContent = `보스 ${Math.max(0, s.bossKills || 0)}`;
     if (this._statHeadshots) this._statHeadshots.textContent = String(headshots);
+    const hsPct = Math.round(hsRatio * 100);
+    if (this._statHsRate) this._statHsRate.textContent = `(${hsPct}%)`;
     if (this._statAccuracy) this._statAccuracy.textContent = `${accuracy}%`;
+    if (this._statAccFill) this._statAccFill.style.width = `${accuracy}%`;
+    if (this._statHsFill) this._statHsFill.style.width = `${Math.min(100, hsPct)}%`;
     if (this._statCombo) this._statCombo.textContent = `x${Math.max(1, s.maxCombo || 1)}`;
-    if (this._statWave) this._statWave.textContent = `${s.wave || 1} / ${s.totalWaves || 15}`;
+    if (this._statWave) this._statWave.textContent = s.mode === 'endless' ? `${wave}W` : `${wave} / ${totalWaves}W`;
     if (this._statTime) this._statTime.textContent = formatTime(s.elapsedSec || 0);
+    if (this._debriefProgressFill) this._debriefProgressFill.style.width = `${progressPct}%`;
+    if (this._debriefProgressLabel) {
+      this._debriefProgressLabel.textContent = s.mode === 'endless'
+        ? `무한 강하 ${wave}웨이브 도달 (루프 진행 ${Math.round((sectorWave / totalWaves) * 100)}%)`
+        : `${wave} / ${totalWaves} 웨이브 (${isVictory ? '100' : Math.round((sectorWave / totalWaves) * 100)}%)`;
+    }
 
     this._sceneResult.classList.toggle('victory', Boolean(isVictory));
     this._sceneResult.classList.toggle('defeat', !isVictory);
@@ -1941,9 +2125,18 @@ class HudManager {
       this._damageVignette.classList.remove('low-health', 'shield-hit');
     }
     if (this._healFlash) this._healFlash.style.opacity = '0';
-    if (this._banner) this._banner.classList.remove('visible', 'boss-alert', 'clear-alert');
+    if (this._banner) this._banner.classList.remove('visible', 'boss-alert', 'clear-alert', 'gate-alert');
+    this.hideDropIntroUI();
+    if (this._sectorArrCard) {
+      this._sectorArrCard.classList.remove('visible');
+      this._sectorArrCard.classList.add('hidden');
+    }
+    this._sectorArrTimer = 0;
     if (this._railgunScope) this._railgunScope.classList.remove('active');
-    if (this._beaconWaypoint) this._beaconWaypoint.classList.add('hidden');
+    if (this._beaconWaypoint) {
+      this._beaconWaypoint.classList.remove('gate-active');
+      this._beaconWaypoint.classList.add('hidden');
+    }
     if (this._sniperWarning) this._sniperWarning.classList.add('hidden');
     if (this._onboardingTip) this._onboardingTip.classList.remove('visible');
     if (this._pickupPrompt) this._pickupPrompt.classList.add('hidden');

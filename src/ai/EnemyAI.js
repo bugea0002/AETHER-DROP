@@ -149,9 +149,10 @@ class Enemy {
     this._losCheckTimer = Math.random() * 0.1;
     this._hasLOS = false;
 
-    // Boss phase dynamic combat multipliers
+    // Boss phase & Threat stage dynamic combat multipliers
     this._phaseSpeedMult = 1.0;
     this._phaseFireMult = 1.0;
+    this.threatSpeedMult = 1.0;
     this._phaseBurstCount = archetype.isBoss
       ? archetype.id === 'aegis_overlord_boss'
         ? 4
@@ -335,6 +336,7 @@ class Enemy {
 
     this._phaseSpeedMult = 1.0;
     this._phaseFireMult = 1.0;
+    this.threatSpeedMult = 1.0;
     this._phaseBurstCount = this.archetype.isBoss
       ? this.archetype.id === 'aegis_overlord_boss'
         ? 4
@@ -1024,7 +1026,7 @@ class Enemy {
     this._yaw += yawDiff * (1 - Math.exp(-turnRate * clampedDt));
 
     const overloadMult = this._overloadActive ? 1.42 : 1.0;
-    const moveSpeed = this.archetype.speed * this._phaseSpeedMult * overloadMult;
+    const moveSpeed = this.archetype.speed * this._phaseSpeedMult * overloadMult * (this.threatSpeedMult || 1.0);
     let desiredVx = 0;
     let desiredVz = 0;
 

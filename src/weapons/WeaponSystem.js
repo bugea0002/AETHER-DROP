@@ -485,10 +485,12 @@ class WeaponSystem {
       activeWeapon.moveSpreadBonus * speedRatio * airFactor * (1 - this._adsProgress * 0.72);
     const guardSpreadFactor = pc && pc.isGuarding ? (activeWeapon.guardSpreadMult || 1.35) : 1.0;
     const crouchSpreadFactor = pc && pc.isCrouching ? 0.5 : 1.0;
+    const threatSpreadFactor = pc && pc.mods && pc.mods.spreadMult ? pc.mods.spreadMult : 1.0;
     const currentSpread =
       (baseSpread + moveBonus + this._spreadBloom * (1 - this._adsProgress * 0.65)) *
       guardSpreadFactor *
-      crouchSpreadFactor;
+      crouchSpreadFactor *
+      threatSpreadFactor;
 
     // 7. Firing Input & Semi-Auto Buffer
     const fireDown = this.input.isDown('fire');
@@ -980,6 +982,17 @@ class WeaponSystem {
       this._swapTimer = 0;
       this._swapSwitched = false;
     }
+  }
+
+  /**
+   * Trigger a snappy upward weapon draw settle (used after exiting the orbital Drop Pod).
+   */
+  triggerDeployDraw() {
+    this._isSwapping = true;
+    this._swapSwitched = true;
+    this._pendingIndex = -1;
+    this._swapDuration = 0.44;
+    this._swapTimer = this._swapDuration * 0.46;
   }
 
   /** @private */

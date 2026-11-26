@@ -23,7 +23,8 @@
     }
   </script>
 
-  <link rel="stylesheet" href="./styles/main.css" />
+  <link rel="preload" href="./assets/DungGeunMo.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="stylesheet" href="./styles/main.css?v=20261127a" />
 </head>
 <body>
   <!-- ======================================================================
@@ -57,6 +58,38 @@
 
           <!-- AAA Left-Aligned Vertical Command Menu -->
           <nav id="title-menu-main" class="title-menu-card" aria-label="메인 메뉴">
+            <!-- Floating Diamond Tactical Mission Widget (Anchored Above Right Edge of Deploy Bar) -->
+            <aside id="title-mission-diamond" class="mission-diamond-widget" aria-label="오늘의 전술 임무">
+              <button
+                id="btn-mission-diamond-trigger"
+                class="mission-diamond-trigger"
+                type="button"
+                aria-expanded="false"
+                aria-controls="mission-diamond-flyout"
+              >
+                <span class="mission-diamond-frame" aria-hidden="true"></span>
+                <span class="mission-diamond-inner">
+                  <svg class="mission-diamond-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                  <span class="mission-diamond-label">전술 임무</span>
+                  <span id="diamond-quest-count" class="mission-diamond-count">0/3</span>
+                </span>
+              </button>
+
+              <div id="mission-diamond-flyout" class="mission-diamond-flyout" role="region" aria-label="오늘의 전술 임무 목록">
+                <div class="mission-flyout-head">
+                  <div>
+                    <span class="mission-flyout-kicker">DAILY TACTICAL OPS</span>
+                    <h3 class="mission-flyout-title">오늘의 전술 임무 (3종)</h3>
+                  </div>
+                  <button id="btn-open-attendance-popup" class="mission-attendance-link" type="button">연속 출석</button>
+                </div>
+                <div id="daily-quests-grid" class="daily-quests-grid diamond-quests-stack"></div>
+              </div>
+            </aside>
+
             <button id="btn-deploy" class="mil-btn primary deploy-btn" type="button">
               <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v12"/><path d="M7 9l5 5 5-5"/><path d="M5 17l2 4h10l2-4"/><path d="M4 21h16"/></svg>
               <span>작전 개시</span>
@@ -114,66 +147,44 @@
           </nav>
         </div>
 
-        <!-- Floating Right-Side Diamond Tactical Mission Widget (Main Title Only) -->
-        <aside id="title-mission-diamond" class="mission-diamond-widget" aria-label="오늘의 전술 임무">
-          <button
-            id="btn-mission-diamond-trigger"
-            class="mission-diamond-trigger"
-            type="button"
-            aria-expanded="false"
-            aria-controls="mission-diamond-flyout"
-          >
-            <span class="mission-diamond-frame" aria-hidden="true"></span>
-            <span class="mission-diamond-inner">
-              <svg class="mission-diamond-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M9 11l3 3L22 4"/>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-              </svg>
-              <span class="mission-diamond-label">전술 임무</span>
-              <span id="diamond-quest-count" class="mission-diamond-count">0/3</span>
-            </span>
-          </button>
-
-          <div id="mission-diamond-flyout" class="mission-diamond-flyout" role="region" aria-label="오늘의 전술 임무 목록">
-            <div class="mission-flyout-head">
-              <div>
-                <span class="mission-flyout-kicker">DAILY TACTICAL OPS</span>
-                <h3 class="mission-flyout-title">오늘의 전술 임무 (3종)</h3>
-              </div>
-              <button id="btn-open-attendance-popup" class="mission-attendance-link" type="button">연속 출석</button>
-            </div>
-            <div id="daily-quests-grid" class="daily-quests-grid diamond-quests-stack"></div>
-          </div>
-        </aside>
-
-        <!-- Sub-Panel Deploy: Mission Mode & HEAT 0-10 Selector -->
+        <!-- Sub-Panel Deploy: Two-Column Mode Selector & Threat 0-10 / Daily Ops -->
         <section id="title-panel-deploy" class="title-subpanel hidden" aria-label="작전 개시 설정">
           <div class="subpanel-header">
             <div>
-              <span class="subpanel-kicker">작전 모드 및 위협 단계 선택</span>
+              <span class="subpanel-kicker">전술 출격 브리핑 · 모드 및 위협 프로토콜</span>
               <h2 class="subpanel-title">작전 개시</h2>
             </div>
             <button id="btn-deploy-back" class="mil-btn small" type="button">뒤로</button>
           </div>
 
           <div class="deploy-body">
-            <div class="deploy-section">
+            <!-- Left Column: Vertical 3-Row Mode Stack -->
+            <div class="deploy-section deploy-left-col">
               <div class="deploy-section-head">
-                <span class="deploy-section-label">1. 작전 모드 선택</span>
+                <span class="deploy-section-label">1. 작전 모드</span>
                 <span id="deploy-mode-badge" class="deploy-section-meta">표준 · 15웨이브</span>
               </div>
               <div class="deploy-mode-tabs" role="tablist" aria-label="작전 모드">
                 <button id="mode-campaign" class="deploy-mode-tab active" type="button" role="tab">
-                  <strong class="deploy-mode-title">캠페인</strong>
-                  <span class="deploy-mode-sub">1~15 웨이브 · 3대 보스 토벌</span>
+                  <div class="deploy-mode-row">
+                    <strong class="deploy-mode-title">캠페인</strong>
+                    <span class="deploy-mode-tag">CAMPAIGN</span>
+                  </div>
+                  <span class="deploy-mode-sub">1~15 웨이브 · 3대 거대 보스 순차 토벌</span>
                 </button>
-                <button id="mode-endless" class="deploy-mode-tab" type="button" role="tab">
-                  <strong class="deploy-mode-title">무한 강하</strong>
-                  <span class="deploy-mode-sub">15웨이브 순환 · 무한 위협 증폭</span>
+                <button id="mode-endless" class="deploy-mode-tab is-endless" type="button" role="tab">
+                  <div class="deploy-mode-row">
+                    <strong class="deploy-mode-title">무한 강하</strong>
+                    <span class="deploy-mode-tag">ENDLESS</span>
+                  </div>
+                  <span class="deploy-mode-sub">15웨이브 순환 루프 · 무한 위협 증폭 도전</span>
                 </button>
-                <button id="mode-daily" class="deploy-mode-tab" type="button" role="tab">
-                  <strong class="deploy-mode-title">오늘의 작전</strong>
-                  <span class="deploy-mode-sub">일일 특수 전장 규칙 적용</span>
+                <button id="mode-daily" class="deploy-mode-tab is-daily" type="button" role="tab">
+                  <div class="deploy-mode-row">
+                    <strong class="deploy-mode-title">오늘의 작전</strong>
+                    <span class="deploy-mode-tag">SPECIAL OPS</span>
+                  </div>
+                  <span class="deploy-mode-sub">일일 특수 전장 변이 규칙 · 공정 글로벌 랭킹</span>
                 </button>
               </div>
               <div id="deploy-mode-detail" class="deploy-mode-detail">
@@ -181,32 +192,86 @@
               </div>
             </div>
 
-            <div class="deploy-section">
-              <div class="deploy-section-head">
-                <span class="deploy-section-label">2. 위협 단계 (0 ~ 10)</span>
-                <span id="deploy-heat-unlock-status" class="deploy-section-meta">해금 단계: 0 / 10</span>
+            <!-- Right Column: Dynamic Threat 0-10 Selector OR Daily Special Ops Briefing -->
+            <div class="deploy-section deploy-right-col">
+              <div id="deploy-heat-pane" class="deploy-right-pane">
+                <div class="deploy-section-head">
+                  <span class="deploy-section-label">2. 위협 단계 및 누적 제약 (0 ~ 10)</span>
+                  <span id="deploy-heat-unlock-status" class="deploy-section-meta">해금 단계: 0 / 10</span>
+                </div>
+                <div id="deploy-heat-grid" class="deploy-heat-grid" role="radiogroup" aria-label="위협 단계"></div>
+                <div class="deploy-heat-stats">
+                  <div class="deploy-stat-box">
+                    <span class="deploy-stat-k">선택 위협 단계</span>
+                    <strong id="deploy-stat-tier" class="deploy-stat-v">위협 0 · 표준</strong>
+                  </div>
+                  <div class="deploy-stat-box danger">
+                    <span class="deploy-stat-k">적 체력 배율</span>
+                    <strong id="deploy-stat-hp" class="deploy-stat-v">100%</strong>
+                  </div>
+                  <div class="deploy-stat-box warn">
+                    <span class="deploy-stat-k">적 공격력 배율</span>
+                    <strong id="deploy-stat-dmg" class="deploy-stat-v">100%</strong>
+                  </div>
+                  <div class="deploy-stat-box accent">
+                    <span class="deploy-stat-k">골드 보상 배율</span>
+                    <strong id="deploy-stat-gold" class="deploy-stat-v">100%</strong>
+                  </div>
+                </div>
+                <div class="deploy-debuffs-wrap">
+                  <div class="deploy-debuffs-head">
+                    <span class="deploy-debuffs-title">활성 위협 디버프 &amp; 행동 제약 (누적 중첩)</span>
+                    <span id="deploy-debuffs-count" class="deploy-debuffs-count">0개 활성</span>
+                  </div>
+                  <div id="deploy-heat-debuffs" class="deploy-heat-debuffs"></div>
+                </div>
+                <div id="deploy-heat-hint" class="deploy-heat-hint">
+                  현재 해금된 최고 위협 단계를 클리어하면 다음 단계가 자동으로 개방됩니다.
+                </div>
               </div>
-              <div id="deploy-heat-grid" class="deploy-heat-grid" role="radiogroup" aria-label="위협 단계"></div>
-              <div class="deploy-heat-stats">
-                <div class="deploy-stat-box">
-                  <span class="deploy-stat-k">선택 단계</span>
-                  <strong id="deploy-stat-tier" class="deploy-stat-v">위협 0 · 표준</strong>
+
+              <div id="deploy-daily-pane" class="deploy-right-pane deploy-daily-pane hidden" aria-label="오늘의 작전 브리핑">
+                <div class="deploy-daily-week-wrap">
+                  <div class="deploy-daily-week-head">
+                    <span class="deploy-daily-kicker">WEEKLY ROTATION · 요일별 특수 작전 (일 ~ 토)</span>
+                    <span id="deploy-daily-state-badge" class="deploy-daily-date">오늘의 전장</span>
+                  </div>
+                  <div id="deploy-daily-week-strip" class="deploy-daily-week-strip" role="tablist" aria-label="요일별 특수 작전 로테이션"></div>
                 </div>
-                <div class="deploy-stat-box">
-                  <span class="deploy-stat-k">적 체력</span>
-                  <strong id="deploy-stat-hp" class="deploy-stat-v">100%</strong>
+                <div class="deploy-daily-header">
+                  <div>
+                    <span id="deploy-daily-tag" class="deploy-daily-kicker">CORE SURGE · 금요일 작전</span>
+                    <h3 id="deploy-daily-name" class="deploy-daily-title">금요 코어 과충전</h3>
+                  </div>
+                  <span id="deploy-daily-date" class="deploy-daily-date">오늘 · 2026-11-27</span>
                 </div>
-                <div class="deploy-stat-box">
-                  <span class="deploy-stat-k">적 공격력</span>
-                  <strong id="deploy-stat-dmg" class="deploy-stat-v">100%</strong>
+                <p id="deploy-daily-concept" class="deploy-daily-concept">
+                  초능력 &amp; 방패 회전율 극대화 — 급속 충전되는 궁극기와 견고한 가드로 정예 부대에 맞섭니다.
+                </p>
+                <p id="deploy-daily-desc" class="deploy-daily-desc">
+                  일일 특수 전장 변이 규칙이 적용된 15웨이브 수복 작전입니다.
+                </p>
+                <div class="deploy-daily-grid">
+                  <div class="deploy-daily-stat">
+                    <span class="deploy-stat-k">기준 위협 규칙</span>
+                    <strong class="deploy-stat-v">위협 0 · 표준</strong>
+                  </div>
+                  <div class="deploy-daily-stat">
+                    <span class="deploy-stat-k">적 체력 보정</span>
+                    <strong id="deploy-daily-enemy-hp" class="deploy-stat-v">100%</strong>
+                  </div>
+                  <div class="deploy-daily-stat">
+                    <span class="deploy-stat-k">작전 골드 보상</span>
+                    <strong id="deploy-daily-gold" class="deploy-stat-v">145%</strong>
+                  </div>
+                  <div class="deploy-daily-stat">
+                    <span class="deploy-stat-k">목표 프로토콜</span>
+                    <strong class="deploy-stat-v">15 웨이브 완주</strong>
+                  </div>
                 </div>
-                <div class="deploy-stat-box accent">
-                  <span class="deploy-stat-k">골드 보상</span>
-                  <strong id="deploy-stat-gold" class="deploy-stat-v">100%</strong>
+                <div class="deploy-daily-note">
+                  오늘의 작전은 요일(일~토)마다 고유 콘셉트와 전장 규칙으로 자동 전환되며, 출격 시 항상 오늘 날짜의 특수 작전과 전용 일일 랭킹이 적용됩니다.
                 </div>
-              </div>
-              <div id="deploy-heat-hint" class="deploy-heat-hint">
-                현재 해금된 최고 위협 단계를 클리어하면 다음 단계가 자동으로 개방됩니다.
               </div>
             </div>
           </div>
@@ -569,86 +634,157 @@
           </div>
 
           <div class="settings-list">
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-quality">그래픽 품질</label>
-              <div class="setting-control">
-                <select id="title-setting-quality" class="mil-select">
-                  <option value="low">낮음 (최대 프레임)</option>
-                  <option value="medium" selected>보통 (권장)</option>
-                  <option value="high">높음 (고품질)</option>
-                </select>
+            <div class="setting-cluster">
+              <div class="setting-row setting-row-auth">
+                <span class="setting-label">화면 모드</span>
+                <div class="setting-control setting-auth-control">
+                  <span id="title-setting-fullscreen-status" class="setting-auth-status">창 모드</span>
+                  <button id="btn-title-setting-fullscreen" class="mil-btn small" type="button">전체화면 전환</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-quality">그래픽 품질</label>
+                <div class="setting-control">
+                  <select id="title-setting-quality" class="mil-select">
+                    <option value="low">낮음 (최대 프레임)</option>
+                    <option value="medium" selected>보통 (권장)</option>
+                    <option value="high">높음 (고품질)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-fov">시야각 (FOV)</label>
+                <div class="setting-control">
+                  <input id="title-setting-fov" class="mil-range" type="range" min="70" max="110" step="1" value="80" />
+                  <span id="title-setting-fov-val" class="setting-val">80°</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-shake">화면 흔들림 강도</label>
+                <div class="setting-control">
+                  <input id="title-setting-shake" class="mil-range" type="range" min="0" max="100" step="5" value="100" />
+                  <span id="title-setting-shake-val" class="setting-val">100%</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-fps">FPS 표시</label>
+                <div class="setting-control">
+                  <input id="title-setting-fps" class="mil-check" type="checkbox" />
+                </div>
               </div>
             </div>
 
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-controls">조작 방식</label>
-              <div class="setting-control">
-                <select id="title-setting-controls" class="mil-select">
-                  <option value="auto" selected>자동 감지</option>
-                  <option value="pc">PC (키보드 + 마우스)</option>
-                  <option value="touch">터치 (모바일 / 태블릿)</option>
-                </select>
+            <div class="setting-cluster">
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-controls">조작 방식</label>
+                <div class="setting-control">
+                  <select id="title-setting-controls" class="mil-select">
+                    <option value="auto" selected>자동 감지</option>
+                    <option value="pc">PC (키보드 + 마우스)</option>
+                    <option value="touch">터치 (모바일 / 태블릿)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-sensitivity">조준 감도</label>
+                <div class="setting-control">
+                  <input
+                    id="title-setting-sensitivity"
+                    class="mil-range"
+                    type="range"
+                    min="0.01"
+                    max="2.49"
+                    step="0.01"
+                    value="1.00"
+                  />
+                  <input
+                    id="title-setting-sensitivity-val"
+                    class="setting-val setting-val-input"
+                    type="text"
+                    inputmode="decimal"
+                    value="1.00x"
+                    aria-label="조준 감도 직접 입력"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-ads-sens">정조준(ADS) 감도 배율</label>
+                <div class="setting-control">
+                  <input id="title-setting-ads-sens" class="mil-range" type="range" min="0.25" max="1.50" step="0.02" value="0.56" />
+                  <span id="title-setting-ads-sens-val" class="setting-val">0.56x</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-invert-y">Y축 시점 반전</label>
+                <div class="setting-control">
+                  <input id="title-setting-invert-y" class="mil-check" type="checkbox" />
+                </div>
               </div>
             </div>
 
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-sensitivity">조준 감도</label>
-              <div class="setting-control">
-                <input
-                  id="title-setting-sensitivity"
-                  class="mil-range"
-                  type="range"
-                  min="0.01"
-                  max="2.49"
-                  step="0.01"
-                  value="1.00"
-                />
-                <input
-                  id="title-setting-sensitivity-val"
-                  class="setting-val setting-val-input"
-                  type="text"
-                  inputmode="decimal"
-                  value="1.00x"
-                  aria-label="조준 감도 직접 입력"
-                />
+            <div class="setting-cluster">
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-volume">마스터 볼륨</label>
+                <div class="setting-control">
+                  <input
+                    id="title-setting-volume"
+                    class="mil-range"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="78"
+                  />
+                  <span id="title-setting-volume-val" class="setting-val">78%</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-sfx-volume">효과음(SFX) 볼륨</label>
+                <div class="setting-control">
+                  <input id="title-setting-sfx-volume" class="mil-range" type="range" min="0" max="100" step="1" value="100" />
+                  <span id="title-setting-sfx-volume-val" class="setting-val">100%</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label" for="title-setting-music">메인 배경음 (BGM)</label>
+                <div class="setting-control">
+                  <input id="title-setting-music" class="mil-check" type="checkbox" checked />
+                </div>
               </div>
             </div>
 
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-volume">마스터 볼륨</label>
-              <div class="setting-control">
-                <input
-                  id="title-setting-volume"
-                  class="mil-range"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="78"
-                />
-                <span id="title-setting-volume-val" class="setting-val">78%</span>
+            <div class="setting-cluster">
+              <div class="setting-row setting-row-auth">
+                <span class="setting-label">구글 계정 연동</span>
+                <div class="setting-control setting-auth-control">
+                  <span id="title-setting-auth-status" class="setting-auth-status">미연동</span>
+                  <button id="btn-title-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
+                </div>
               </div>
-            </div>
 
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-music">메인 배경음 (BGM)</label>
-              <div class="setting-control">
-                <input id="title-setting-music" class="mil-check" type="checkbox" checked />
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label" for="title-setting-fps">FPS 표시</label>
-              <div class="setting-control">
-                <input id="title-setting-fps" class="mil-check" type="checkbox" />
-              </div>
-            </div>
-
-            <div class="setting-row setting-row-auth">
-              <span class="setting-label">구글 계정 연동</span>
-              <div class="setting-control setting-auth-control">
-                <span id="title-setting-auth-status" class="setting-auth-status">미연동</span>
-                <button id="btn-title-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
+              <div class="setting-row setting-row-cloud">
+                <div class="setting-cloud-top">
+                  <div class="setting-cloud-label-group">
+                    <span class="setting-label">클라우드 백업 · 복구</span>
+                    <span id="title-setting-cloud-status" class="setting-cloud-status">Google 로그인 필요</span>
+                  </div>
+                  <div class="setting-control setting-cloud-actions">
+                    <button id="btn-title-setting-cloud-save" class="mil-btn small primary" type="button">저장하기</button>
+                    <button id="btn-title-setting-cloud-load" class="mil-btn small" type="button">불러오기</button>
+                  </div>
+                </div>
+                <p class="setting-cloud-note">
+                  ※ 진행 내역(골드·강화·기체·칭호·스킨·도전과제)은 자동 저장되지 않으며, 설정에서 <strong>저장하기</strong> 버튼을 눌렀을 때만 Google 계정에 저장됩니다. 연동된 계정으로 로그인 후 <strong>불러오기</strong>를 누르면 언제든 복구할 수 있습니다.
+                </p>
               </div>
             </div>
           </div>
@@ -711,6 +847,33 @@
             <button id="btn-attendance-later" class="mil-btn small" type="button">닫기</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 3D Interactive Weapon Briefing Inspector Modal -->
+    <div id="weapon-inspector-modal" class="weapon-inspector-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="weapon-inspector-name">
+      <div class="weapon-inspector-card">
+        <div class="weapon-inspector-head">
+          <div>
+            <span id="weapon-inspector-slot" class="weapon-inspector-kicker">주무기 · 기본</span>
+            <h2 id="weapon-inspector-name" class="weapon-inspector-title">M41-A 펄스 라이플</h2>
+          </div>
+          <div class="weapon-inspector-head-actions">
+            <button id="btn-weapon-inspector-reset" class="mil-btn small" type="button">15° 각도 초기화</button>
+            <button id="btn-weapon-inspector-close" class="attendance-close-btn" type="button" aria-label="무기 상세 보기 닫기">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="weapon-inspector-stage" class="weapon-inspector-stage">
+          <canvas id="weapon-inspector-canvas" class="weapon-inspector-canvas"></canvas>
+          <span class="weapon-inspector-drag-hint">마우스 · 터치 드래그로 360° 회전 / 휠 확대·축소</span>
+        </div>
+
+        <div id="weapon-inspector-skins" class="weapon-inspector-skins"></div>
+        <div id="weapon-inspector-stats" class="arsenal-stats weapon-inspector-stats"></div>
+        <p id="weapon-inspector-desc" class="weapon-inspector-desc"></p>
       </div>
     </div>
 
@@ -870,6 +1033,43 @@
         <span id="announcement-kicker">작전 경보</span>
         <div id="announcement-title">궤도 강하 개시</div>
         <span id="announcement-sub">착륙 지점 확보 완료 — 정찰 기계를 섬멸하세요</span>
+      </div>
+
+      <!-- Orbital Drop Pod Cockpit Insertion HUD Overlay (Intro Option B) -->
+      <div id="drop-intro-overlay" class="hidden" aria-hidden="true">
+        <div class="drop-visor-frame">
+          <div class="drop-visor-top">
+            <span class="drop-pod-tag">ORBITAL DROP POD // 09-VANGUARD</span>
+            <span id="drop-stage-label" class="drop-stage-pill">대기권 돌입 중</span>
+          </div>
+          <div class="drop-visor-center">
+            <div class="drop-telemetry-col left">
+              <span class="drop-tele-k">고도 ALT</span>
+              <strong id="drop-alt-val" class="drop-tele-v">2,400 M</strong>
+            </div>
+            <div class="drop-reticle-core">
+              <div class="drop-reticle-ring"></div>
+              <span id="drop-countdown-num" class="drop-countdown-num">3</span>
+            </div>
+            <div class="drop-telemetry-col right">
+              <span class="drop-tele-k">선체 열기 TEMP</span>
+              <strong id="drop-temp-val" class="drop-tele-v">1,420 °C</strong>
+            </div>
+          </div>
+          <div class="drop-sector-strip">
+            <div class="drop-sector-code" id="drop-sector-code">SECTOR-09</div>
+            <div class="drop-sector-name" id="drop-sector-name">제09구역 · 폐허 메트로폴리스</div>
+            <div class="drop-ops-meta" id="drop-ops-meta">캠페인 · 표준 위협 0</div>
+          </div>
+          <div class="drop-skip-hint">[SPACE / 클릭] 강하 시퀀스 스킵</div>
+        </div>
+      </div>
+
+      <!-- Mid-Run Sector Arrival Briefing Card -->
+      <div id="sector-arrival-card" class="hidden" aria-live="polite">
+        <span id="sector-arr-code" class="sector-arr-kicker">SECTOR-14 // 궤도 전송 완료</span>
+        <h2 id="sector-arr-name" class="sector-arr-title">제14구역 · 가라앉은 정유소</h2>
+        <p id="sector-arr-sub" class="sector-arr-sub">매연이 가득한 산업 용광로 구역</p>
       </div>
 
       <!-- Top-Right: Score, Combo Multiplier, Pause Button & Fixed 4-Slot Killfeed -->
@@ -1091,86 +1291,157 @@
         </div>
 
         <div class="settings-list">
-          <div class="setting-row">
-            <label class="setting-label" for="setting-quality">그래픽 품질</label>
-            <div class="setting-control">
-              <select id="setting-quality" class="mil-select">
-                <option value="low">낮음 (최대 프레임)</option>
-                <option value="medium" selected>보통 (권장)</option>
-                <option value="high">높음 (고품질)</option>
-              </select>
+          <div class="setting-cluster">
+            <div class="setting-row setting-row-auth">
+              <span class="setting-label">화면 모드</span>
+              <div class="setting-control setting-auth-control">
+                <span id="pause-setting-fullscreen-status" class="setting-auth-status">창 모드</span>
+                <button id="btn-pause-setting-fullscreen" class="mil-btn small" type="button">전체화면 전환</button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-quality">그래픽 품질</label>
+              <div class="setting-control">
+                <select id="setting-quality" class="mil-select">
+                  <option value="low">낮음 (최대 프레임)</option>
+                  <option value="medium" selected>보통 (권장)</option>
+                  <option value="high">높음 (고품질)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-fov">시야각 (FOV)</label>
+              <div class="setting-control">
+                <input id="setting-fov" class="mil-range" type="range" min="70" max="110" step="1" value="80" />
+                <span id="setting-fov-val" class="setting-val">80°</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-shake">화면 흔들림 강도</label>
+              <div class="setting-control">
+                <input id="setting-shake" class="mil-range" type="range" min="0" max="100" step="5" value="100" />
+                <span id="setting-shake-val" class="setting-val">100%</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-fps">FPS 표시</label>
+              <div class="setting-control">
+                <input id="setting-fps" class="mil-check" type="checkbox" />
+              </div>
             </div>
           </div>
 
-          <div class="setting-row">
-            <label class="setting-label" for="setting-controls">조작 방식</label>
-            <div class="setting-control">
-              <select id="setting-controls" class="mil-select">
-                <option value="auto" selected>자동 감지</option>
-                <option value="pc">PC (키보드 + 마우스)</option>
-                <option value="touch">터치 (모바일 / 태블릿)</option>
-              </select>
+          <div class="setting-cluster">
+            <div class="setting-row">
+              <label class="setting-label" for="setting-controls">조작 방식</label>
+              <div class="setting-control">
+                <select id="setting-controls" class="mil-select">
+                  <option value="auto" selected>자동 감지</option>
+                  <option value="pc">PC (키보드 + 마우스)</option>
+                  <option value="touch">터치 (모바일 / 태블릿)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-sensitivity">조준 감도</label>
+              <div class="setting-control">
+                <input
+                  id="setting-sensitivity"
+                  class="mil-range"
+                  type="range"
+                  min="0.01"
+                  max="2.49"
+                  step="0.01"
+                  value="1.00"
+                />
+                <input
+                  id="setting-sensitivity-val"
+                  class="setting-val setting-val-input"
+                  type="text"
+                  inputmode="decimal"
+                  value="1.00x"
+                  aria-label="조준 감도 직접 입력"
+                />
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-ads-sens">정조준(ADS) 감도 배율</label>
+              <div class="setting-control">
+                <input id="setting-ads-sens" class="mil-range" type="range" min="0.25" max="1.50" step="0.02" value="0.56" />
+                <span id="setting-ads-sens-val" class="setting-val">0.56x</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-invert-y">Y축 시점 반전</label>
+              <div class="setting-control">
+                <input id="setting-invert-y" class="mil-check" type="checkbox" />
+              </div>
             </div>
           </div>
 
-          <div class="setting-row">
-            <label class="setting-label" for="setting-sensitivity">조준 감도</label>
-            <div class="setting-control">
-              <input
-                id="setting-sensitivity"
-                class="mil-range"
-                type="range"
-                min="0.01"
-                max="2.49"
-                step="0.01"
-                value="1.00"
-              />
-              <input
-                id="setting-sensitivity-val"
-                class="setting-val setting-val-input"
-                type="text"
-                inputmode="decimal"
-                value="1.00x"
-                aria-label="조준 감도 직접 입력"
-              />
+          <div class="setting-cluster">
+            <div class="setting-row">
+              <label class="setting-label" for="setting-volume">마스터 볼륨</label>
+              <div class="setting-control">
+                <input
+                  id="setting-volume"
+                  class="mil-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="78"
+                />
+                <span id="setting-volume-val" class="setting-val">78%</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-sfx-volume">효과음(SFX) 볼륨</label>
+              <div class="setting-control">
+                <input id="setting-sfx-volume" class="mil-range" type="range" min="0" max="100" step="1" value="100" />
+                <span id="setting-sfx-volume-val" class="setting-val">100%</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" for="setting-music">메인 배경음 (BGM)</label>
+              <div class="setting-control">
+                <input id="setting-music" class="mil-check" type="checkbox" checked />
+              </div>
             </div>
           </div>
 
-          <div class="setting-row">
-            <label class="setting-label" for="setting-volume">마스터 볼륨</label>
-            <div class="setting-control">
-              <input
-                id="setting-volume"
-                class="mil-range"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value="78"
-              />
-              <span id="setting-volume-val" class="setting-val">78%</span>
+          <div class="setting-cluster">
+            <div class="setting-row setting-row-auth">
+              <span class="setting-label">구글 계정 연동</span>
+              <div class="setting-control setting-auth-control">
+                <span id="pause-setting-auth-status" class="setting-auth-status">미연동</span>
+                <button id="btn-pause-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
+              </div>
             </div>
-          </div>
 
-          <div class="setting-row">
-            <label class="setting-label" for="setting-music">메인 배경음 (BGM)</label>
-            <div class="setting-control">
-              <input id="setting-music" class="mil-check" type="checkbox" checked />
-            </div>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label" for="setting-fps">FPS 표시</label>
-            <div class="setting-control">
-              <input id="setting-fps" class="mil-check" type="checkbox" />
-            </div>
-          </div>
-
-          <div class="setting-row setting-row-auth">
-            <span class="setting-label">구글 계정 연동</span>
-            <div class="setting-control setting-auth-control">
-              <span id="pause-setting-auth-status" class="setting-auth-status">미연동</span>
-              <button id="btn-pause-setting-auth" class="mil-btn small" type="button">Google 로그인</button>
+            <div class="setting-row setting-row-cloud">
+              <div class="setting-cloud-top">
+                <div class="setting-cloud-label-group">
+                  <span class="setting-label">클라우드 백업 · 복구</span>
+                  <span id="pause-setting-cloud-status" class="setting-cloud-status">Google 로그인 필요</span>
+                </div>
+                <div class="setting-control setting-cloud-actions">
+                  <button id="btn-pause-setting-cloud-save" class="mil-btn small primary" type="button">저장하기</button>
+                  <button id="btn-pause-setting-cloud-load" class="mil-btn small" type="button">불러오기</button>
+                </div>
+              </div>
+              <p class="setting-cloud-note">
+                ※ 진행 내역은 자동 저장되지 않으며, 설정에서 <strong>저장하기</strong> 버튼을 눌렀을 때만 Google 계정에 저장됩니다. 연동된 계정으로 로그인 후 <strong>불러오기</strong>를 누르면 언제든 복구할 수 있습니다.
+              </p>
             </div>
           </div>
         </div>
@@ -1190,84 +1461,152 @@
        SCENE 3: INDEPENDENT OPAQUE RESULT / DEBRIEF SCENE (ZERO WEBGL / ZERO rAF)
        ====================================================================== -->
   <section id="scene-result" class="scene-screen hidden" aria-label="작전 결과 보고">
-    <div class="result-shell">
-      <div class="modal-card debrief-card">
-        <div class="debrief-layout">
-          <div class="result-pilot-col">
-            <img id="result-pilot-img" class="result-pilot-img" src="" alt="출격 기체 일러스트" />
-            <div class="result-pilot-overlay">
-              <span id="result-pilot-tier" class="result-pilot-tier">표준형</span>
-              <span id="result-pilot-name" class="result-pilot-name">VANGUARD-09</span>
+    <div class="debrief-ambient" aria-hidden="true"></div>
+    <div class="debrief-watermark" aria-hidden="true"></div>
+    <div class="result-shell debrief-fullbleed">
+      <!-- Left Full-Bleed Atmospheric Pilot Stage (Depth-Layered Backdrop Behind Cutout) -->
+      <div class="debrief-pilot-stage">
+        <div class="debrief-stage-beam" aria-hidden="true"></div>
+        <div id="debrief-stage-watermark" class="debrief-stage-watermark" aria-hidden="true">VANGUARD-09</div>
+        <svg class="debrief-stage-reticle" viewBox="0 0 420 420" fill="none" aria-hidden="true">
+          <circle cx="210" cy="210" r="184" stroke="currentColor" stroke-width="1.5" stroke-dasharray="10 8" opacity="0.48"/>
+          <circle cx="210" cy="210" r="146" stroke="currentColor" stroke-width="2" opacity="0.72"/>
+          <circle cx="210" cy="210" r="108" stroke="currentColor" stroke-width="1" stroke-dasharray="3 6" opacity="0.45"/>
+          <path d="M210 10V42M210 378V410M10 210H42M378 210H410" stroke="currentColor" stroke-width="2" opacity="0.75"/>
+          <path class="reticle-break" d="M62 62L118 118M358 62L302 118M62 358L118 302M358 358L302 302" stroke="currentColor" stroke-width="2" opacity="0.65"/>
+        </svg>
+        <div class="debrief-stage-floor" aria-hidden="true"></div>
+        <img id="result-pilot-img" class="result-pilot-img" src="" alt="출격 기체 일러스트" />
+        <div class="debrief-stage-glitch" aria-hidden="true"></div>
+        <div class="debrief-pilot-caption">
+          <span id="result-pilot-tier" class="result-pilot-tier">표준형</span>
+          <span id="result-pilot-name" class="result-pilot-name">VANGUARD-09</span>
+          <div class="debrief-pilot-rule"></div>
+          <div class="debrief-pilot-subkicker">작전 무장 전적</div>
+          <div id="debrief-weapons-list" class="debrief-weapons-list"></div>
+        </div>
+      </div>
+
+      <!-- Right Open War-Room Telemetry Canvas (Zero Box Borders) -->
+      <div class="debrief-intel-stage">
+        <!-- 1. Giant Outcome Banner + Corner-Bracket Rank Crest -->
+        <header class="debrief-top">
+          <div class="debrief-hero-text">
+            <div class="debrief-badge-row">
+              <span id="end-badge">궤도 수복 작전 완수</span>
+              <span class="debrief-kicker-slash">//</span>
+              <span id="debrief-threat-badge" class="debrief-threat-badge">캠페인 · 위협 0 표준</span>
+            </div>
+            <h2 id="end-title">지구 수복 완료</h2>
+            <p id="end-subtitle">TRANSCENDENT-OMEGA 격파 완료 — 궤도 심연 코어 완전 해방</p>
+          </div>
+          <div class="rank-stamp-box" aria-label="작전 평가 등급">
+            <span class="rank-stamp-label">OPERATION RANK</span>
+            <div id="end-rank">S+</div>
+          </div>
+        </header>
+
+        <!-- 2. Edge-to-Edge Sector Progress Ruler -->
+        <div class="debrief-progress-box">
+          <div class="debrief-progress-top">
+            <span class="debrief-progress-title">SECTOR PROGRESSION // 구역 돌파율</span>
+            <span id="debrief-progress-label" class="debrief-progress-label">15 / 15 웨이브 (100%)</span>
+          </div>
+          <div class="debrief-progress-track">
+            <div id="debrief-progress-fill" class="debrief-progress-fill" style="width:100%"></div>
+            <span class="debrief-milestone m5" title="5W COLOSSUS-IV">5W BOSS</span>
+            <span class="debrief-milestone m10" title="10W AEGIS-IX">10W BOSS</span>
+            <span class="debrief-milestone m15" title="15W OMEGA">15W CORE</span>
+          </div>
+        </div>
+
+        <!-- 3. Oversized Hero Numeric Strip (Vertical Hairlines Only) -->
+        <div class="debrief-kpi-row">
+          <div class="stat-tile kpi-score">
+            <span class="stat-k">FINAL SCORE · 전투 점수</span>
+            <span id="stat-score" class="stat-v">000,000</span>
+          </div>
+          <div class="stat-tile kpi-gold">
+            <span class="stat-k">CREDITS · 획득 골드</span>
+            <span id="stat-gold-earned" class="stat-v">+0 G</span>
+          </div>
+          <div class="stat-tile kpi-kills">
+            <span class="stat-k">HOSTILES · 격파 / 보스</span>
+            <div class="kpi-split-val">
+              <span id="stat-kills" class="stat-v">0</span>
+              <span id="stat-bosses" class="kpi-sub-text">보스 0</span>
+            </div>
+          </div>
+          <div class="stat-tile kpi-time">
+            <span class="stat-k">ELAPSED · 시간 / 웨이브</span>
+            <div class="kpi-split-val">
+              <span id="stat-time" class="stat-v">00:00</span>
+              <span id="stat-wave" class="kpi-sub-text">15 / 15W</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Open Two-Column Analytical Breakdown -->
+        <div class="debrief-analytics-grid">
+          <div class="debrief-col">
+            <div class="debrief-col-head">
+              <span class="debrief-panel-kicker">PRECISION &amp; STYLE // 전투 정밀도</span>
+              <div class="debrief-style-pair">
+                <span id="debrief-persona-title" class="debrief-persona-text">[강철의 선봉장]</span>
+                <span id="debrief-style-pill" class="debrief-style-pill">STYLE D</span>
+              </div>
+            </div>
+            <div class="debrief-meter-list">
+              <div class="debrief-meter-row">
+                <div class="debrief-meter-meta">
+                  <span>사격 명중률</span>
+                  <strong id="stat-accuracy" class="debrief-meter-val">0%</strong>
+                </div>
+                <div class="debrief-meter-track"><div id="stat-acc-fill" class="debrief-meter-fill acc" style="width:0%"></div></div>
+              </div>
+              <div class="debrief-meter-row">
+                <div class="debrief-meter-meta">
+                  <span>치명 헤드샷</span>
+                  <span class="debrief-meter-pair"><strong id="stat-headshots" class="debrief-meter-val">0</strong> <em id="stat-hs-rate">(0%)</em></span>
+                </div>
+                <div class="debrief-meter-track"><div id="stat-hs-fill" class="debrief-meter-fill hs" style="width:0%"></div></div>
+              </div>
+            </div>
+            <div class="debrief-telemetry-line">
+              <span class="debrief-combo-inline">최대 콤보 <strong id="stat-combo">x1</strong></span>
+              <div id="debrief-special-kills" class="debrief-chips-row"></div>
             </div>
           </div>
 
-          <div class="debrief-main-col">
-            <div class="debrief-top">
-              <div>
-                <span id="end-badge">궤도 수복 작전 완수</span>
-                <h2 id="end-title">지구 수복 완료</h2>
-                <p id="end-subtitle">COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보</p>
-              </div>
-              <div class="rank-stamp-box" aria-label="작전 평가 등급">
-                <span class="rank-stamp-label">등급</span>
-                <div id="end-rank">S+</div>
-              </div>
+          <div class="debrief-col">
+            <div class="debrief-col-head">
+              <span class="debrief-panel-kicker">BUILD &amp; PROTOCOL // 빌드 및 규칙</span>
+              <span id="debrief-build-summary" class="debrief-build-sub">스타일 D · 주력 M41-A</span>
             </div>
+            <div id="debrief-build-tags" class="debrief-build-tags"></div>
+            <div id="debrief-threat-effects" class="debrief-threat-effects"></div>
+          </div>
+        </div>
 
-            <div class="debrief-title-banner">
-              <span id="debrief-persona-title">[강철의 선봉장]</span>
-              <span id="debrief-build-summary">최고 스타일 D · 핵심 무장 M41-A</span>
-            </div>
-
-            <div class="stats-grid">
-              <div class="stat-tile span-full">
-                <span class="stat-k">최종 전투 점수</span>
-                <span id="stat-score" class="stat-v">000,000</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">격파 수</span>
-                <span id="stat-kills" class="stat-v">0</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">헤드샷</span>
-                <span id="stat-headshots" class="stat-v">0</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">명중률</span>
-                <span id="stat-accuracy" class="stat-v">0%</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">최대 콤보</span>
-                <span id="stat-combo" class="stat-v">x1</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">도달 웨이브</span>
-                <span id="stat-wave" class="stat-v">1 / 15</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-k">작전 시간</span>
-                <span id="stat-time" class="stat-v">00:00</span>
-              </div>
-            </div>
-
-            <div id="result-rewards-toast" class="result-rewards-toast hidden"></div>
-
+        <!-- 5. Anchored Bottom Action & Leaderboard Dock -->
+        <footer class="debrief-footer">
+          <div id="result-rewards-toast" class="result-rewards-toast hidden"></div>
+          <div class="debrief-bottom-row">
             <div id="result-rank-submit-box" class="result-rank-submit-box">
               <div class="result-rank-row">
                 <span id="result-rank-title-badge" class="title-plate-slot"></span>
                 <input id="result-callsign-input" class="lb-callsign-input" type="text" maxlength="18" placeholder="호출부호 입력" aria-label="랭킹 등록 호출부호" />
-                <button id="btn-submit-leaderboard" class="mil-btn small primary" type="button">글로벌 랭킹 등록</button>
-                <button id="btn-result-open-lb" class="mil-btn small" type="button">랭킹 보기</button>
+                <button id="btn-submit-leaderboard" class="mil-btn small" type="button">랭킹 등록</button>
+                <button id="btn-result-open-lb" class="mil-btn small" type="button">순위표</button>
               </div>
-              <div id="result-leaderboard-status" class="result-leaderboard-status">호출부호와 장착 칭호를 포함해 글로벌 랭킹에 기록을 등록합니다.</div>
+              <div id="result-leaderboard-status" class="result-leaderboard-status">호출부호와 칭호를 포함해 글로벌 랭킹에 기록을 등록합니다.</div>
             </div>
-
             <div class="modal-actions">
-              <button id="btn-redeploy" class="mil-btn primary" type="button">다시 출격</button>
-              <button id="btn-end-title" class="mil-btn" type="button">타이틀로</button>
+              <button id="btn-end-title" class="mil-btn debrief-btn-sec" type="button">타이틀로</button>
+              <button id="btn-redeploy" class="mil-btn primary debrief-btn-cta" type="button">다시 출격</button>
             </div>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   </section>
@@ -1285,6 +1624,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/runtime.js?v=20261126o"></script>
+  <script type="module" src="./src/runtime.js?v=20261127c"></script>
 </body>
 </html>

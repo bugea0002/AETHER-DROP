@@ -152,10 +152,66 @@ service cloud.firestore {
         && hasValidLeaderboardFields(incoming(), uid);
     }
 
+    function isValidCloudMeta(m) {
+      return m is map
+        && m.keys().size() <= 24
+        && m.keys().hasAll([
+          'gold', 'levels', 'ownedFrames', 'equippedFrame',
+          'achievements', 'claimedAchievements', 'maxUnlockedHeat',
+          'bestEndlessWave', 'totalKillsAllTime', 'voidGatesDestroyed',
+          'callsign', 'equippedTitle', 'unlockedTitles',
+          'unlockedFrameSkins', 'equippedFrameSkin', 'claimedHeatMilestones',
+          'weaponStats', 'equippedWeaponSkins', 'dailyState'
+        ])
+        && m.gold is int && m.gold >= 0 && m.gold <= 2000000000
+        && m.levels is map && m.levels.keys().size() <= 16
+        && m.ownedFrames is list && m.ownedFrames.size() >= 1 && m.ownedFrames.size() <= 16
+        && m.equippedFrame is string && isValidFrameId(m.equippedFrame)
+        && m.achievements is list && m.achievements.size() <= 64
+        && m.claimedAchievements is map && m.claimedAchievements.keys().size() <= 64
+        && m.maxUnlockedHeat is int && m.maxUnlockedHeat >= 0 && m.maxUnlockedHeat <= 10
+        && m.bestEndlessWave is int && m.bestEndlessWave >= 0 && m.bestEndlessWave <= 9999
+        && m.totalKillsAllTime is int && m.totalKillsAllTime >= 0 && m.totalKillsAllTime <= 100000000
+        && m.voidGatesDestroyed is int && m.voidGatesDestroyed >= 0 && m.voidGatesDestroyed <= 10000000
+        && m.callsign is string && m.callsign.size() >= 1 && m.callsign.size() <= 18
+        && m.equippedTitle is string && isValidTitleId(m.equippedTitle)
+        && m.unlockedTitles is list && m.unlockedTitles.size() >= 1 && m.unlockedTitles.size() <= 64
+        && m.unlockedFrameSkins is list && m.unlockedFrameSkins.size() >= 1 && m.unlockedFrameSkins.size() <= 32
+        && m.equippedFrameSkin is string && isValidId(m.equippedFrameSkin)
+        && m.claimedHeatMilestones is map && m.claimedHeatMilestones.keys().size() <= 20
+        && m.weaponStats is map && m.weaponStats.keys().size() <= 20
+        && m.equippedWeaponSkins is map && m.equippedWeaponSkins.keys().size() <= 20
+        && m.dailyState is map && m.dailyState.keys().size() <= 12;
+    }
+
+    function isValidCloudSaveWrite(uid) {
+      return incoming().keys().hasAll(['uid', 'schemaVersion', 'meta', 'updatedAt'])
+        && incoming().keys().hasOnly(['uid', 'schemaVersion', 'meta', 'updatedAt'])
+        && incoming().uid is string
+        && incoming().uid == uid
+        && incoming().uid == request.auth.uid
+        && incoming().schemaVersion == 1
+        && incoming().updatedAt == request.time
+        && isValidCloudMeta(incoming().meta);
+    }
+
     // Startup connectivity check document (/test/connection)
     match /test/{docId} {
       allow get: if docId == 'connection';
       allow list, create, update, delete: if false;
+    }
+
+    // Owner-only manual cloud progression save (/users/{uid}/saves/meta)
+    match /users/{uid}/saves/{saveId} {
+      allow get: if isOwner(uid) && isValidId(uid) && saveId == 'meta';
+      allow list: if false;
+      allow create: if isOwner(uid) && isValidId(uid) && saveId == 'meta' && isValidCloudSaveWrite(uid);
+      allow update: if isOwner(uid)
+        && isValidId(uid)
+        && saveId == 'meta'
+        && incoming().uid == existing().uid
+        && isValidCloudSaveWrite(uid);
+      allow delete: if isOwner(uid) && isValidId(uid) && saveId == 'meta';
     }
 
     // Global shared competitive leaderboard (public read, zero PII, verified owner write)
