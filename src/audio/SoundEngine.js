@@ -41,6 +41,7 @@ class SoundEngine {
     this._masterGain = null;
     this._sfxGain = null;
     this._musicGain = null;
+    this._subFilter = null;
     this._compressor = null;
     this._whiteNoiseBuffer = null;
     this._pinkNoiseBuffer = null;
@@ -63,6 +64,7 @@ class SoundEngine {
     this._lastHitmarkerTime = -1;
     this._lastHeadshotTime = -1;
     this._lastKillSoundTime = -1;
+    this._lastPlayerDamagedTime = -1;
     this._lastHealTime = -1;
     this._lastEnemyShotTime = -1;
     this._lastFootstepTime = -1;
@@ -115,6 +117,10 @@ class SoundEngine {
     on('SFX_DASH_READY', () => this._playDashReady());
     on('SFX_RANK_UP', (p) => this._playRankUp(p));
     on('SFX_SYNERGY', () => this._playSynergy());
+    on(EVENTS.VOID_GATE_SHATTERED, (p) => this._playVoidGateShatter(p));
+    on(EVENTS.ENEMY_TELEPORT, (p) => this._playTeleportRift(p));
+    on(EVENTS.ENEMY_OVERLOAD, (p) => this._playEnemyOverload(p));
+    on(EVENTS.BOSS_TURRET_SHATTERED, (p) => this._playTurretShatter(p));
   }
 
   /**
@@ -152,12 +158,17 @@ class SoundEngine {
   /** @private */
   _buildAudioGraph() {
     const ctx = this.ctx;
+    this._subFilter = ctx.createBiquadFilter();
+    this._subFilter.type = 'highpass';
+    this._subFilter.frequency.setValueAtTime(32, ctx.currentTime);
+    this._subFilter.Q.setValueAtTime(0.7, ctx.currentTime);
+
     this._compressor = ctx.createDynamicsCompressor();
-    this._compressor.threshold.setValueAtTime(-14, ctx.currentTime);
-    this._compressor.knee.setValueAtTime(12, ctx.currentTime);
-    this._compressor.ratio.setValueAtTime(4.0, ctx.currentTime);
-    this._compressor.attack.setValueAtTime(0.003, ctx.currentTime);
-    this._compressor.release.setValueAtTime(0.14, ctx.currentTime);
+    this._compressor.threshold.setValueAtTime(-8, ctx.currentTime);
+    this._compressor.knee.setValueAtTime(10, ctx.currentTime);
+    this._compressor.ratio.setValueAtTime(3.0, ctx.currentTime);
+    this._compressor.attack.setValueAtTime(0.004, ctx.currentTime);
+    this._compressor.release.setValueAtTime(0.085, ctx.currentTime);
 
     this._masterGain = ctx.createGain();
     this._masterGain.gain.setValueAtTime(
@@ -166,14 +177,15 @@ class SoundEngine {
     );
 
     this._sfxGain = ctx.createGain();
-    this._sfxGain.gain.setValueAtTime(1.0, ctx.currentTime);
+    this._sfxGain.gain.setValueAtTime(0.66, ctx.currentTime);
 
     this._musicGain = ctx.createGain();
-    this._musicGain.gain.setValueAtTime(this._musicEnabled ? 0.24 : 0.0, ctx.currentTime);
+    this._musicGain.gain.setValueAtTime(this._musicEnabled ? 0.18 : 0.0, ctx.currentTime);
 
     this._sfxGain.connect(this._masterGain);
     this._musicGain.connect(this._masterGain);
-    this._masterGain.connect(this._compressor);
+    this._masterGain.connect(this._subFilter);
+    this._subFilter.connect(this._compressor);
     this._compressor.connect(ctx.destination);
   }
 
@@ -280,7 +292,7 @@ class SoundEngine {
   setMusicEnabled(enabled) {
     this._musicEnabled = Boolean(enabled);
     if (this.ctx && this._musicGain) {
-      const target = this._musicEnabled && this._inGameplay ? 0.24 : 0.0;
+      const target = this._musicEnabled && this._inGameplay ? 0.18 : 0.0;
       try {
         this._musicGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.08);
       } catch {
@@ -294,7 +306,7 @@ class SoundEngine {
     const state = typeof payload === 'string' ? payload : payload && payload.state;
     this._inGameplay = state === 'playing';
     if (this.ctx && this._musicGain) {
-      const target = this._musicEnabled && this._inGameplay ? 0.24 : 0.0;
+      const target = this._musicEnabled && this._inGameplay ? 0.18 : 0.0;
       try {
         this._musicGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.12);
       } catch {
@@ -479,7 +491,7 @@ class SoundEngine {
     const curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const x = (i * 2) / n - 1;
-      curve[i] = Math.tanh(x * 3.8);
+      curve[i] = Math.tanh(x * 2.5);
     }
     this._driveCurve = curve;
     return curve;
@@ -497,12 +509,12 @@ class SoundEngine {
     const g = ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(Math.max(24, startHz), startTime);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(18, endHz), startTime + Math.min(duration, 0.055));
+    osc.frequency.setValueAtTime(Math.max(28, startHz), startTime);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(24, endHz), startTime + Math.min(duration, 0.055));
 
     shaper.curve = this._getDriveCurve();
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(420, startTime);
+    lp.frequency.setValueAtTime(380, startTime);
 
     g.gain.setValueAtTime(0.0001, startTime);
     g.gain.linearRampToValueAtTime(gainVal, startTime + 0.0015);
@@ -512,6 +524,15 @@ class SoundEngine {
     shaper.connect(lp);
     lp.connect(g);
     g.connect(dest);
+
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        shaper.disconnect();
+        lp.disconnect();
+        g.disconnect();
+      } catch {}
+    };
 
     osc.start(startTime);
     osc.stop(startTime + duration + 0.02);
@@ -530,63 +551,63 @@ class SoundEngine {
       const dest = this._sfxGain;
       const pj = 0.94 + Math.random() * 0.12;
 
-      // Grounded Heavy Real-Firearm Gunpowder & Steel Bolt Foley (Zero Neon / Laser Synth)
+      // Grounded Heavy Real-Firearm Gunpowder & Steel Bolt Foley (balanced headroom so hits cut through)
       switch (id) {
         case 'scattergun':
           // BR-12 12-GAUGE BREACHER: Thunderous chest kick + sharp muzzle crack + booming gunpowder tail + steel pump
-          this._playHeavyPunch(dest, now, 0.22, 82 * pj, 24, 0.95);
-          this._playNoiseBurst(dest, now, 0.018, 0.85, 'highpass', 1100 * pj, 600, 0.9, false);
-          this._playNoiseBurst(dest, now, 0.30, 0.88, 'lowpass', 1500, 110, 0.7, true);
-          this._playNoiseBurst(dest, now + 0.015, 0.22, 0.45, 'lowpass', 480, 85, 0.7, true);
+          this._playHeavyPunch(dest, now, 0.20, 84 * pj, 28, 0.68);
+          this._playNoiseBurst(dest, now, 0.018, 0.68, 'highpass', 1100 * pj, 600, 0.9, false);
+          this._playNoiseBurst(dest, now, 0.26, 0.66, 'lowpass', 1500, 130, 0.7, true);
+          this._playNoiseBurst(dest, now + 0.015, 0.18, 0.34, 'lowpass', 480, 95, 0.7, true);
           // Heavy steel pump-action rack (chk-clack)
-          this._playNoiseBurst(dest, now + 0.18, 0.036, 0.28, 'bandpass', 1400, 900, 3.8, false);
-          this._playNoiseBurst(dest, now + 0.28, 0.042, 0.32, 'bandpass', 2000, 1200, 4.2, false);
+          this._playNoiseBurst(dest, now + 0.18, 0.036, 0.26, 'bandpass', 1400, 900, 3.8, false);
+          this._playNoiseBurst(dest, now + 0.28, 0.042, 0.30, 'bandpass', 2000, 1200, 4.2, false);
           break;
 
         case 'railgun':
           // HV-7 ANTI-MATERIEL CANNON: Massive .50-cal supersonic crack + earth-shaking low boom + steel breech slam
-          this._playHeavyPunch(dest, now, 0.38, 92 * pj, 19, 0.98);
-          this._playNoiseBurst(dest, now, 0.022, 0.88, 'bandpass', 1950 * pj, 700, 0.9, false);
-          this._playNoiseBurst(dest, now + 0.006, 0.34, 0.84, 'lowpass', 1350, 95, 0.75, true);
-          this._playNoiseBurst(dest, now + 0.06, 0.075, 0.32, 'bandpass', 850, 380, 3.0, false);
+          this._playHeavyPunch(dest, now, 0.32, 92 * pj, 26, 0.72);
+          this._playNoiseBurst(dest, now, 0.022, 0.72, 'bandpass', 1950 * pj, 700, 0.9, false);
+          this._playNoiseBurst(dest, now + 0.006, 0.28, 0.64, 'lowpass', 1350, 115, 0.75, true);
+          this._playNoiseBurst(dest, now + 0.06, 0.075, 0.28, 'bandpass', 850, 380, 3.0, false);
           break;
 
         case 'plasma_smg':
           // K-9 SCRAPPER PDW: Snappy 9mm/PDW dry tactical bark + rapid steel bolt rattle
-          this._playHeavyPunch(dest, now, 0.055, 96 * pj, 34, 0.58);
-          this._playNoiseBurst(dest, now, 0.014, 0.62, 'bandpass', 1800 * pj, 800, 1.1, false);
-          this._playNoiseBurst(dest, now, 0.065, 0.44, 'lowpass', 1750, 220, 0.8, true);
-          this._playNoiseBurst(dest, now + 0.018, 0.016, 0.20, 'bandpass', 2600, 1800, 3.6, false);
+          this._playHeavyPunch(dest, now, 0.055, 98 * pj, 36, 0.42);
+          this._playNoiseBurst(dest, now, 0.014, 0.50, 'bandpass', 1800 * pj, 800, 1.1, false);
+          this._playNoiseBurst(dest, now, 0.060, 0.34, 'lowpass', 1750, 240, 0.8, true);
+          this._playNoiseBurst(dest, now + 0.018, 0.016, 0.18, 'bandpass', 2600, 1800, 3.6, false);
           break;
 
         case 'weld_pistol':
           // W-01 HEAVY SIDEARM: Crisp compact pistol crack + compressed gas punch
-          this._playHeavyPunch(dest, now, 0.075, 102 * pj, 36, 0.52);
-          this._playNoiseBurst(dest, now, 0.020, 0.55, 'bandpass', 1550 * pj, 650, 1.2, false);
-          this._playNoiseBurst(dest, now, 0.085, 0.46, 'lowpass', 1200, 200, 0.9, true);
+          this._playHeavyPunch(dest, now, 0.072, 102 * pj, 38, 0.40);
+          this._playNoiseBurst(dest, now, 0.020, 0.46, 'bandpass', 1550 * pj, 650, 1.2, false);
+          this._playNoiseBurst(dest, now, 0.080, 0.36, 'lowpass', 1200, 220, 0.9, true);
           break;
 
         case 'arc_rivet':
           // T-4 HEAVY NAIL/RIVET DRIVER: Hard pneumatic piston slam + solid steel anvil thud
-          this._playHeavyPunch(dest, now, 0.11, 110 * pj, 30, 0.68);
-          this._playNoiseBurst(dest, now, 0.020, 0.64, 'bandpass', 1650 * pj, 720, 2.2, false);
-          this._playNoiseBurst(dest, now + 0.010, 0.09, 0.42, 'lowpass', 1100, 190, 0.9, true);
+          this._playHeavyPunch(dest, now, 0.10, 110 * pj, 34, 0.50);
+          this._playNoiseBurst(dest, now, 0.020, 0.52, 'bandpass', 1650 * pj, 720, 2.2, false);
+          this._playNoiseBurst(dest, now + 0.010, 0.085, 0.34, 'lowpass', 1100, 210, 0.9, true);
           break;
 
         case 'repulsor':
           // K-0 CONCUSSIVE AIR-CANNON: Deep sub-pressure thump + heavy compressed exhaust blast
-          this._playHeavyPunch(dest, now, 0.26, 86 * pj, 20, 0.94);
-          this._playNoiseBurst(dest, now, 0.24, 0.76, 'lowpass', 980, 95, 0.75, true);
-          this._playNoiseBurst(dest, now + 0.06, 0.14, 0.30, 'bandpass', 1700, 820, 1.6, false);
+          this._playHeavyPunch(dest, now, 0.22, 88 * pj, 26, 0.68);
+          this._playNoiseBurst(dest, now, 0.22, 0.58, 'lowpass', 980, 110, 0.75, true);
+          this._playNoiseBurst(dest, now + 0.06, 0.14, 0.26, 'bandpass', 1700, 820, 1.6, false);
           break;
 
         case 'pulse_rifle':
         default:
           // M41-A 7.62 ASSAULT RIFLE: Heavy punchy gunpowder snap + warm low-end thump + steel bolt clack
-          this._playHeavyPunch(dest, now, 0.09, 88 * pj, 28, 0.74);
-          this._playNoiseBurst(dest, now, 0.018, 0.72, 'bandpass', 1650 * pj, 680, 1.1, false);
-          this._playNoiseBurst(dest, now, 0.11, 0.62, 'lowpass', 1850 * pj, 210, 0.8, true);
-          this._playNoiseBurst(dest, now + 0.026, 0.020, 0.22, 'bandpass', 2700, 1850, 4.2, false);
+          this._playHeavyPunch(dest, now, 0.085, 90 * pj, 32, 0.52);
+          this._playNoiseBurst(dest, now, 0.018, 0.56, 'bandpass', 1650 * pj, 680, 1.1, false);
+          this._playNoiseBurst(dest, now, 0.095, 0.46, 'lowpass', 1850 * pj, 220, 0.8, true);
+          this._playNoiseBurst(dest, now + 0.026, 0.020, 0.20, 'bandpass', 2700, 1850, 4.2, false);
           break;
       }
 
@@ -675,34 +696,38 @@ class SoundEngine {
       const dest = this._sfxGain;
       const isHeadshot = Boolean(payload && payload.isHeadshot);
       const blockedByShield = Boolean(payload && payload.blockedByShield);
+      // Offset +12ms so hit confirmation separates cleanly from 0ms weapon muzzle blast
+      const t = now + 0.012;
 
       if (isHeadshot) {
         if (now - this._lastHeadshotTime < 0.032) return;
         this._lastHeadshotTime = now;
         this._lastHitmarkerTime = now;
 
-        // Visceral Steel Helmet Shatter + Short Mechanical Servo-Screech Groan
-        this._playHeavyPunch(dest, now, 0.09, 118, 32, 0.62);
-        this._playNoiseBurst(dest, now, 0.022, 0.58, 'bandpass', 2900, 1450, 3.2, false);
-        this._playNoiseBurst(dest, now + 0.012, 0.052, 0.46, 'bandpass', 1800, 720, 5.2, false);
-        this._playNoiseBurst(dest, now + 0.022, 0.085, 0.24, 'bandpass', 920, 380, 4.5, true);
+        // Crisp metallic helmet-crack + dual-harmonic headshot dink
+        this._playHeavyPunch(dest, t, 0.075, 138, 38, 0.46);
+        this._playTone(dest, 'triangle', t, 0.075, 2050, 1680, 0.34, 0.001, 5200);
+        this._playTone(dest, 'sine', t + 0.008, 0.095, 3120, 2640, 0.24, 0.001);
+        this._playNoiseBurst(dest, t, 0.034, 0.42, 'bandpass', 3400, 1450, 2.6, false);
         return;
       }
 
-      if (now - this._lastHitmarkerTime < 0.022) return;
+      if (now - this._lastHitmarkerTime < 0.024) return;
       this._lastHitmarkerTime = now;
 
       if (blockedByShield) {
-        // Heavy Riot-Shield Dull Steel Ricochet
-        this._playHeavyPunch(dest, now, 0.065, 110, 46, 0.34);
-        this._playNoiseBurst(dest, now, 0.040, 0.32, 'bandpass', 1350, 620, 3.8, false);
+        // Metallic riot-shield ricochet clink
+        this._playHeavyPunch(dest, t, 0.055, 118, 48, 0.26);
+        this._playTone(dest, 'triangle', t, 0.048, 1240, 820, 0.28, 0.001, 3800);
+        this._playNoiseBurst(dest, t, 0.034, 0.28, 'bandpass', 1800, 780, 3.6, false);
         return;
       }
 
-      // Grounded Heavy Ballistic Armor Crunch + Subtle Mechanical Servo Groan
-      this._playHeavyPunch(dest, now, 0.055, 108, 36, 0.44);
-      this._playNoiseBurst(dest, now, 0.018, 0.38, 'bandpass', 2150, 1050, 2.6, false);
-      this._playNoiseBurst(dest, now + 0.015, 0.065, 0.20, 'bandpass', 740, 340, 4.2, true);
+      // Crisp dry tactical hit-confirm tick + armor thwack
+      this._playHeavyPunch(dest, t, 0.050, 128, 44, 0.34);
+      this._playTone(dest, 'triangle', t, 0.028, 1520, 620, 0.34, 0.001, 4200);
+      this._playTone(dest, 'sine', t, 0.020, 2350, 1450, 0.22, 0.001);
+      this._playNoiseBurst(dest, t, 0.024, 0.28, 'bandpass', 2400, 1100, 2.4, false);
     } catch {}
   }
 
@@ -714,16 +739,14 @@ class SoundEngine {
       const dest = this._sfxGain;
       const broken = Boolean(payload && payload.guardBroken);
       if (broken) {
-        // Realistic Ballistic Glass Shatter + Heavy Pressure Thud (Zero Sawtooth Sweep!)
-        this._playHeavyPunch(dest, now, 0.22, 95, 24, 0.65);
-        this._playNoiseBurst(dest, now, 0.09, 0.54, 'highpass', 3400, 1800, 1.4, false);
-        this._playNoiseBurst(dest, now + 0.045, 0.14, 0.44, 'bandpass', 4200, 2200, 2.2, false);
-        this._playNoiseBurst(dest, now + 0.095, 0.16, 0.32, 'bandpass', 2800, 1200, 1.8, false);
+        this._playHeavyPunch(dest, now, 0.20, 102, 28, 0.56);
+        this._playTone(dest, 'sawtooth', now, 0.22, 1480, 260, 0.26, 0.002, 3200);
+        this._playNoiseBurst(dest, now, 0.09, 0.48, 'highpass', 3200, 1600, 1.4, false);
+        this._playNoiseBurst(dest, now + 0.045, 0.14, 0.38, 'bandpass', 3800, 1900, 2.2, false);
       } else {
-        // Heavy Composite Riot-Shield Bullet Deflection Thud + Crisp Glass Tap
-        this._playHeavyPunch(dest, now, 0.075, 108, 38, 0.48);
-        this._playNoiseBurst(dest, now, 0.026, 0.38, 'bandpass', 2400, 1300, 3.6, false);
-        this._playNoiseBurst(dest, now + 0.014, 0.032, 0.22, 'highpass', 3600, 2400, 2.4, false);
+        this._playHeavyPunch(dest, now, 0.070, 116, 40, 0.38);
+        this._playTone(dest, 'triangle', now, 0.045, 1320, 720, 0.28, 0.001, 3600);
+        this._playNoiseBurst(dest, now, 0.028, 0.34, 'bandpass', 2600, 1350, 3.2, false);
       }
     } catch {}
   }
@@ -739,23 +762,20 @@ class SoundEngine {
 
       const dest = this._sfxGain;
       const combo = Math.max(1, Math.min(5, Number(payload && payload.combo) || 1));
-      const pitchMult = 1 + (combo - 1) * 0.05;
+      const pitchMult = 1 + (combo - 1) * 0.06;
+      const t = now + 0.018;
 
-      // Grounded Heavy Mechanical Kill-Confirm: Deep Sub-Thump + Armor Crunch + Crisp Steel Click (Zero Synth Chime!)
-      this._playHeavyPunch(dest, now, 0.16, 98, 28, 0.68);
-      this._playNoiseBurst(dest, now, 0.10, 0.48, 'bandpass', 980 * pitchMult, 220, 1.3, true);
-      this._playNoiseBurst(dest, now + 0.028, 0.026, 0.34, 'bandpass', 2250 * pitchMult, 1450, 4.6, false);
-      this._playNoiseBurst(dest, now + 0.060, 0.024, 0.26, 'bandpass', 3000 * pitchMult, 1950, 5.0, false);
-
-      // Robotic dying power-down groan + scattered steel debris clatter
-      this._playNoiseBurst(dest, now + 0.045, 0.16, 0.24, 'bandpass', 620, 210, 3.8, true);
-      this._playNoiseBurst(dest, now + 0.085, 0.022, 0.16, 'bandpass', 3200, 2400, 8.0, false);
-      this._playNoiseBurst(dest, now + 0.145, 0.026, 0.12, 'bandpass', 2600, 1800, 7.5, false);
+      // Authoritative kill-confirm mechanical punch + crisp two-tone confirm
+      this._playHeavyPunch(dest, t, 0.13, 108, 32, 0.48);
+      this._playTone(dest, 'triangle', t, 0.055, 760 * pitchMult, 580 * pitchMult, 0.28, 0.001, 3200);
+      this._playTone(dest, 'sine', t + 0.028, 0.080, 1480 * pitchMult, 1280 * pitchMult, 0.24, 0.001);
+      this._playNoiseBurst(dest, t, 0.085, 0.36, 'bandpass', 1400 * pitchMult, 360, 1.5, true);
+      this._playNoiseBurst(dest, t + 0.030, 0.024, 0.24, 'bandpass', 2600 * pitchMult, 1600, 4.4, false);
 
       if (isBoss) {
-        this._playHeavyPunch(dest, now, 1.10, 78, 18, 0.96);
-        this._playNoiseBurst(dest, now, 1.35, 0.84, 'lowpass', 1650, 85, 0.75, true);
-        this._playNoiseBurst(dest, now + 0.08, 0.55, 0.48, 'bandpass', 720, 160, 1.4, true);
+        this._playHeavyPunch(dest, now, 0.95, 82, 24, 0.80);
+        this._playNoiseBurst(dest, now, 1.15, 0.68, 'lowpass', 1650, 95, 0.75, true);
+        this._playNoiseBurst(dest, now + 0.08, 0.48, 0.40, 'bandpass', 720, 160, 1.4, true);
       }
     } catch {}
   }
@@ -852,64 +872,76 @@ class SoundEngine {
       const shieldBroken = Boolean(payload && payload.shieldBroken);
       const isFatal = Boolean(payload && payload.isFatal);
 
-      // Heavy dull armor impact thud (Zero sawtooth/triangle synth sweeps!)
-      this._playHeavyPunch(dest, now, 0.18, 96, 26, 0.64);
+      if (!shieldBroken && !isFatal && now - this._lastPlayerDamagedTime < 0.055) {
+        return;
+      }
+      this._lastPlayerDamagedTime = now;
 
       if (shieldBroken) {
-        this._playNoiseBurst(dest, now, 0.14, 0.56, 'highpass', 2800, 1100, 1.4, false);
-        this._playNoiseBurst(dest, now + 0.05, 0.22, 0.44, 'bandpass', 1900, 600, 1.8, false);
-        this._playHeavyPunch(dest, now, 0.30, 88, 22, 0.60);
+        // Unmistakable shield collapse + arc shatter + chest slam
+        this._playHeavyPunch(dest, now, 0.24, 106, 28, 0.56);
+        this._playTone(dest, 'sawtooth', now, 0.24, 1680, 240, 0.30, 0.002, 3400);
+        this._playNoiseBurst(dest, now, 0.14, 0.50, 'highpass', 2600, 1000, 1.4, false);
+        this._playNoiseBurst(dest, now + 0.04, 0.20, 0.38, 'bandpass', 1800, 520, 1.8, false);
       } else if (shieldDmg > 0) {
-        this._playNoiseBurst(dest, now, 0.10, 0.30, 'bandpass', 1800, 560, 2.2, false);
+        // Crisp kinetic shield impact crack + solid body thud
+        this._playHeavyPunch(dest, now, 0.11, 118, 38, 0.38);
+        this._playTone(dest, 'triangle', now, 0.065, 1380, 480, 0.34, 0.001, 4200);
+        this._playNoiseBurst(dest, now, 0.075, 0.36, 'bandpass', 2400, 900, 2.0, false);
       }
+
       if (healthDmg > 0) {
-        this._playNoiseBurst(dest, now, 0.20, 0.46, 'lowpass', 880, 140, 1.0, true);
-        // Helmeted Pilot Pain Grunt ("Ugh!") via dual vocal formant filters (cooldown 0.38s)
-        if (now - (this._lastGruntTime || 0) >= 0.38) {
+        // Sharp visceral armor-pierce thwack + chest impact
+        this._playHeavyPunch(dest, now, 0.15, 132, 34, 0.48);
+        this._playTone(dest, 'triangle', now, 0.068, 860, 220, 0.36, 0.001, 2800);
+        this._playNoiseBurst(dest, now, 0.085, 0.38, 'bandpass', 1750, 420, 1.4, false);
+        // Helmeted Pilot Pain Grunt delayed slightly so initial impact transient stays crisp
+        if (now - (this._lastGruntTime || 0) >= 0.42) {
           this._lastGruntTime = now;
-          this._playPilotPainGrunt(dest, now, healthDmg >= 20);
+          this._playPilotPainGrunt(dest, now + 0.025, healthDmg >= 20);
         }
-        // Low-HP Heartbeat Thump when below 35% health
+        // Low-HP warning double pulse when below 35% health
         if (payload && Number.isFinite(payload.health) && payload.health > 0 && payload.health <= 35) {
-          this._playHeavyPunch(dest, now + 0.14, 0.11, 68, 30, 0.42);
-          this._playHeavyPunch(dest, now + 0.30, 0.09, 58, 28, 0.30);
+          this._playHeavyPunch(dest, now + 0.14, 0.10, 74, 34, 0.36);
+          this._playTone(dest, 'sine', now + 0.14, 0.06, 480, 380, 0.14, 0.002);
+          this._playHeavyPunch(dest, now + 0.30, 0.09, 66, 32, 0.28);
         }
       }
+
       if (isFatal) {
-        this._playHeavyPunch(dest, now + 0.04, 0.65, 72, 18, 0.72);
-        this._playNoiseBurst(dest, now + 0.04, 0.60, 0.42, 'lowpass', 640, 90, 1.0, true);
+        this._playHeavyPunch(dest, now + 0.04, 0.55, 76, 22, 0.64);
+        this._playNoiseBurst(dest, now + 0.04, 0.50, 0.38, 'lowpass', 640, 100, 1.0, true);
       }
     } catch {}
   }
 
-  /** @private */
   /**
    * Formant-filtered vocal grunt for grounded helmeted pilot pain feedback.
    * @private
    */
   _playPilotPainGrunt(dest, startTime, isHeavy) {
     const ctx = this.ctx;
-    const dur = isHeavy ? 0.21 : 0.14;
+    const dur = isHeavy ? 0.18 : 0.13;
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    const basePitch = (isHeavy ? 96 : 112) * (0.94 + Math.random() * 0.12);
+    const basePitch = (isHeavy ? 102 : 118) * (0.94 + Math.random() * 0.12);
     osc.frequency.setValueAtTime(basePitch, startTime);
-    osc.frequency.exponentialRampToValueAtTime(basePitch * 0.68, startTime + dur);
+    osc.frequency.exponentialRampToValueAtTime(basePitch * 0.70, startTime + dur);
 
-    // Dual vocal tract formants (F1 ~520Hz, F2 ~1180Hz -> gritty muffled "Ugh!")
+    // Dual vocal tract formants (F1 ~620Hz, F2 ~1350Hz)
     const f1 = ctx.createBiquadFilter();
     f1.type = 'bandpass';
-    f1.frequency.setValueAtTime(520, startTime);
-    f1.Q.value = 3.2;
+    f1.frequency.setValueAtTime(620, startTime);
+    f1.Q.value = 3.0;
 
     const f2 = ctx.createBiquadFilter();
     f2.type = 'bandpass';
-    f2.frequency.setValueAtTime(1180, startTime);
-    f2.Q.value = 4.0;
+    f2.frequency.setValueAtTime(1350, startTime);
+    f2.Q.value = 3.8;
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, startTime);
-    g.gain.linearRampToValueAtTime(isHeavy ? 0.36 : 0.26, startTime + 0.015);
+    g.gain.linearRampToValueAtTime(isHeavy ? 0.24 : 0.18, startTime + 0.015);
     g.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
 
     osc.connect(f1);
@@ -918,10 +950,19 @@ class SoundEngine {
     f2.connect(g);
     g.connect(dest);
 
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        f1.disconnect();
+        f2.disconnect();
+        g.disconnect();
+      } catch {}
+    };
+
     osc.start(startTime);
     osc.stop(startTime + dur + 0.02);
     // Breathy helmet exhalation layer
-    this._playNoiseBurst(dest, startTime + 0.01, dur * 0.9, isHeavy ? 0.18 : 0.12, 'bandpass', 1350, 620, 2.2, true);
+    this._playNoiseBurst(dest, startTime + 0.01, dur * 0.85, isHeavy ? 0.14 : 0.10, 'bandpass', 1450, 680, 2.2, true);
   }
 
   /** @private */
@@ -1203,21 +1244,32 @@ class SoundEngine {
       switch (archetypeId) {
         case 'rusher_drone':
         case 'interceptor_drone':
+        case 'void_swarmer':
           this._playHeavyPunch(dest, now, 0.055, 108 * jitter, 38, 0.32);
           this._playNoiseBurst(dest, now, 0.044, 0.28, 'bandpass', 1800 * jitter, 720, 1.5, false);
+          break;
+        case 'volatile_rusher':
+          this._playHeavyPunch(dest, now, 0.075, 130 * jitter, 46, 0.38);
+          this._playNoiseBurst(dest, now, 0.055, 0.34, 'bandpass', 2000 * jitter, 640, 1.4, false);
           break;
         case 'shock_breacher':
           this._playHeavyPunch(dest, now, 0.15, 96 * jitter, 28, 0.56);
           this._playNoiseBurst(dest, now, 0.14, 0.48, 'lowpass', 1600, 200, 1.0, true);
           break;
         case 'vanguard_assassin':
+        case 'void_warper':
           this._playHeavyPunch(dest, now, 0.055, 114 * jitter, 42, 0.34);
           this._playNoiseBurst(dest, now, 0.040, 0.30, 'bandpass', 2100 * jitter, 850, 1.4, false);
           break;
         case 'heavy_enforcer':
         case 'rail_warden':
+        case 'abyss_sentinel':
           this._playHeavyPunch(dest, now, 0.20, 94 * jitter, 26, 0.60);
           this._playNoiseBurst(dest, now, 0.16, 0.48, 'lowpass', 1400, 180, 1.0, true);
+          break;
+        case 'boss_turret':
+          this._playTone(dest, 'triangle', now, 0.12, 680 * jitter, 240, 0.22, 0.02, 2400);
+          this._playNoiseBurst(dest, now, 0.045, 0.24, 'bandpass', 2200 * jitter, 800, 1.6, false);
           break;
         case 'mortar_artillery':
           this._playHeavyPunch(dest, now, 0.25, 82 * jitter, 22, 0.64);
@@ -1230,6 +1282,7 @@ class SoundEngine {
           break;
         case 'aegis_overlord_boss':
         case 'cyber_mech_boss':
+        case 'transcendent_omega_boss':
           this._playHeavyPunch(dest, now, 0.26, 84 * jitter, 20, 0.72);
           this._playNoiseBurst(dest, now, 0.20, 0.54, 'lowpass', 1400, 140, 0.95, true);
           break;
@@ -1238,6 +1291,62 @@ class SoundEngine {
           this._playHeavyPunch(dest, now, 0.070, 102 * jitter, 36, 0.36);
           this._playNoiseBurst(dest, now, 0.062, 0.30, 'bandpass', 1550 * jitter, 520, 1.4, true);
           break;
+      }
+    } catch {}
+  }
+
+  /** @private */
+  _playVoidGateShatter(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = payload && payload.position ? payload.position : null;
+      const dest = pos ? this._getSpatialPanner(pos, 8.0, 90, 1.0) : this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.52, 92, 22, 0.85);
+      this._playTone(dest, 'sawtooth', now, 0.48, 320, 74, 0.28, 0.04, 1600);
+      this._playNoiseBurst(dest, now, 0.45, 0.62, 'bandpass', 1900, 260, 1.3, true);
+    } catch {}
+  }
+
+  /** @private */
+  _playTeleportRift(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = (payload && (payload.toPos || payload.fromPos)) || null;
+      const dest = pos ? this._getSpatialPanner(pos, 6.0, 70, 1.1) : this._sfxGain;
+      this._playTone(dest, 'sine', now, 0.24, 180, 920, 0.22, 0.02, 2600);
+      this._playNoiseBurst(dest, now, 0.16, 0.26, 'bandpass', 2400, 750, 2.0, false);
+    } catch {}
+  }
+
+  /** @private */
+  _playEnemyOverload(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = payload && payload.position ? payload.position : null;
+      const dest = pos ? this._getSpatialPanner(pos, 7.0, 80, 1.0) : this._sfxGain;
+      if (payload && payload.phase === 'detonate') {
+        this._playHeavyPunch(dest, now, 0.58, 88, 20, 0.92);
+        this._playNoiseBurst(dest, now, 0.62, 0.78, 'lowpass', 2100, 110, 0.9, true);
+      } else {
+        this._playTone(dest, 'sawtooth', now, 0.42, 260, 780, 0.20, 0.03, 2200);
+      }
+    } catch {}
+  }
+
+  /** @private */
+  _playTurretShatter(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = payload && payload.position ? payload.position : null;
+      const dest = pos ? this._getSpatialPanner(pos, 8.0, 85, 1.0) : this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.44, 110, 26, 0.78);
+      this._playNoiseBurst(dest, now, 0.36, 0.54, 'bandpass', 2100, 380, 1.5, true);
+      if (payload && payload.shieldBroken) {
+        this._playTone(this._sfxGain, 'triangle', now + 0.06, 0.62, 520, 140, 0.32, 0.05, 1900);
       }
     } catch {}
   }
@@ -1464,6 +1573,7 @@ class SoundEngine {
     this._masterGain = null;
     this._sfxGain = null;
     this._musicGain = null;
+    this._subFilter = null;
     this._compressor = null;
     this._whiteNoiseBuffer = null;
     this._pinkNoiseBuffer = null;

@@ -47,6 +47,8 @@ const MODULE_FILES = [
   "./world/Map4AegisFlightDeckBuilder.js",
   "./world/Map5AegisReactorBayBuilder.js",
   "./world/Map6OrbitalDrydockBuilder.js",
+  "./world/Map7AbyssRingBuilder.js",
+  "./world/Map8AbyssSanctumBuilder.js",
   "./world/TutorialMapBuilder.js",
   "./world/MapManager.js",
   "./world/Interactables.js",

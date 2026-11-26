@@ -34,6 +34,10 @@ const EVENTS = Object.freeze({
   ANNOUNCEMENT: 'hud:announcement',
   GUARD_BLOCKED: 'player:guard_blocked',
   ULTIMATE_USED: 'player:ultimate_used',
+  VOID_GATE_SHATTERED: 'world:void_gate_shattered',
+  ENEMY_TELEPORT: 'enemy:teleport',
+  ENEMY_OVERLOAD: 'enemy:overload',
+  BOSS_TURRET_SHATTERED: 'boss:turret_shattered',
 });
 
 
@@ -69,10 +73,13 @@ const ACHIEVEMENTS = [
   { id: 'emp_tactician', cat: 'ops', catLabel: '작전', reward: 80, name: '전자전 전문가', desc: 'EMP 파일런 또는 쉴드 중계기 파괴' },
   { id: 'elite_slayer', cat: 'combat', catLabel: '전투', reward: 90, name: '전선 분쇄자', desc: '한 판에 이지스 신규 정예병 10기 격파' },
   { id: 'first_clear', cat: 'ops', catLabel: '작전', reward: 120, name: '지구 수복', desc: '캠페인 웨이브 5 보스 COLOSSUS-IV 격파' },
-  { id: 'citadel_clear', cat: 'ops', catLabel: '작전', reward: 250, name: '이지스 성채 탈환', desc: '캠페인 웨이브 10 최종 보스 AEGIS-IX 격파' },
+  { id: 'citadel_clear', cat: 'ops', catLabel: '작전', reward: 250, name: '이지스 성채 탈환', desc: '캠페인 웨이브 10 보스 AEGIS-IX 격파' },
+  { id: 'abyss_gatebreaker', cat: 'ops', catLabel: '작전', reward: 120, name: '차원 게이트 파괴자', desc: '심연 차원 게이트 3회 파괴' },
+  { id: 'abyss_clear', cat: 'ops', catLabel: '작전', reward: 400, name: '심연의 정복자', desc: '캠페인 웨이브 15 최종 보스 TRANSCENDENT-OMEGA 격파' },
   { id: 'heat_clear', cat: 'ops', catLabel: '작전', reward: 220, name: '극한 돌파', desc: 'HEAT 2 이상에서 캠페인 최종 승리' },
   { id: 'endless_8', cat: 'ops', catLabel: '작전', reward: 120, name: '무한의 생존자', desc: '무한 강하 8웨이브 도달' },
   { id: 'endless_12', cat: 'ops', catLabel: '작전', reward: 200, name: '궤도의 전설', desc: '무한 강하 12웨이브 도달' },
+  { id: 'endless_15', cat: 'ops', catLabel: '작전', reward: 300, name: '심연의 생존자', desc: '무한 강하 15웨이브 도달' },
 ];
 
 function getTodayDailyModifier() {
@@ -101,6 +108,9 @@ const PILOT_FRAMES = [
     tacticalReload: true,
     guardMax: 100,
     guardCostMult: 1.0,
+    defaultPrimaryIndex: 0,
+    defaultSecondaryIndex: 4,
+    defaultLoadoutLabel: 'M41-A 펄스 라이플 + W-01 용접 피스톨',
     specialName: '전술 리로드 집중',
     specialDesc: '표준 속도(1.0x) · 재장전 완료 시 2.5초간 연사속도 +25% & 반동 -35%',
     ultName: '궤도 포격 (ORBITAL BARRAGE)',
@@ -126,6 +136,9 @@ const PILOT_FRAMES = [
     lowGravity: true,
     guardMax: 85,
     guardCostMult: 1.05,
+    defaultPrimaryIndex: 3,
+    defaultSecondaryIndex: 6,
+    defaultLoadoutLabel: 'K-9 스크래퍼 PDW + K-0 충격 리펄서',
     specialName: '페이즈 블링크 & 에어 스트라이크',
     specialDesc: '초고속 기동(1.35x) · 대시 시 0.35초 위상 무적 + 공중 중력 -25% & 공중/슬라이드 피해 +40%',
     ultName: '타임 다이레이션 (PHASE OVERCLOCK)',
@@ -150,6 +163,9 @@ const PILOT_FRAMES = [
     dashSlam: true,
     guardMax: 200,
     guardCostMult: 0.50,
+    defaultPrimaryIndex: 1,
+    defaultSecondaryIndex: 4,
+    defaultLoadoutLabel: 'BR-12 브리처 샷건 + W-01 용접 피스톨',
     specialName: '지진 돌파 & 철벽 방패',
     specialDesc: '중장갑(0.76x) · HP +90/쉴드 +80 · 대시 시 7.5m 지진 강타(65피해) & [E] 방패 용량 2배·소모 절반',
     ultName: '이지스 포트리스 (AEGIS FORTRESS)',
@@ -175,6 +191,9 @@ const PILOT_FRAMES = [
     chainLightning: true,
     guardMax: 130,
     guardCostMult: 0.80,
+    defaultPrimaryIndex: 2,
+    defaultSecondaryIndex: 5,
+    defaultLoadoutLabel: 'HV-7 레일 랜스 + T-4 아크 리벳건',
     specialName: '오버드라이브 & 연쇄 번개',
     specialDesc: '고속 기동(1.24x) · 화력 +18% · 처치 시 대시 충전+3초 폭주 & 헤드샷 시 7m 연쇄 아크 번개(50피해)',
     ultName: '아포칼립스 노바 (APOCALYPSE NOVA)',
@@ -358,6 +377,12 @@ const TACTICAL_CARDS = [
     name: '과열 폭발',
     desc: 'W-01 과열 도달 또는 재장전 완료 시 전방 9m 화염 폭발(75 피해)',
   },
+  {
+    id: 'void_breaker',
+    tag: 'assault',
+    name: '차원 파쇄 탄두',
+    desc: '방패·차원 게이트·부유 포탑·보스 대상 추가 피해 +24%',
+  },
 
   // === MOBILITY (기동 6장) ===
   {
@@ -397,6 +422,12 @@ const TACTICAL_CARDS = [
     rare: true,
     name: '슬라이드 폭주',
     desc: '슬라이드 중 사격 시 탄약·열기 미소모 + 확정 치명타(피해 1.6배)',
+  },
+  {
+    id: 'gravity_thruster',
+    tag: 'mobility',
+    name: '반중력 부스터',
+    desc: '공중 제어력 +30%, 저중력 구역 가속 +20%, 대시 쿨타임 -12%',
   },
 
   // === VANGUARD (방어 6장 — 전방 방패 & 드랍 생존 특화!) ===
@@ -510,9 +541,9 @@ const PLAYER_CONFIG = {
   slideFriction: 3.0,
   slideCameraRollDeg: 5.5,
 
-  // 2-charge directional omni-dash
-  dashSpeed: 24.5,
-  dashDuration: 0.16,
+  // 2-charge directional omni-dash (2.5x reach: 39.2 * 0.25 = 9.8m)
+  dashSpeed: 39.2,
+  dashDuration: 0.25,
   dashMaxCharges: 2,
   dashCooldown: 2.2,
 
@@ -643,8 +674,32 @@ const MAPS = [
     id: 'aegis_drydock',
     code: 'SEC-99',
     name: 'SECTOR-99 // AEGIS DRYDOCK',
-    subtitle: 'COMMAND CITADEL & DREADNOUGHT KEEL — FINAL BOSS',
+    subtitle: 'COMMAND CITADEL & DREADNOUGHT KEEL — ACT 2 BOSS',
     waves: [10],
+  },
+  {
+    index: 6,
+    id: 'tactical_tutorial',
+    code: 'TRN-01',
+    name: 'SECTOR-01 // TACTICAL TRAINING BAY',
+    subtitle: 'ORBITAL FIRING RANGE & MOBILITY PROVING GROUND',
+    waves: [],
+  },
+  {
+    index: 7,
+    id: 'abyss_conduit_ring',
+    code: 'SEC-108',
+    name: 'SECTOR-108 // ABYSSAL CONDUIT RING',
+    subtitle: 'LOW-G ORBITAL CONDUIT & DIMENSIONAL RIFT',
+    waves: [11, 12, 13],
+  },
+  {
+    index: 8,
+    id: 'transcendent_sanctum',
+    code: 'SEC-120',
+    name: 'SECTOR-120 // TRANSCENDENT ABYSS SANCTUM',
+    subtitle: 'ORBITAL SINGULARITY CORE — FINAL BOSS',
+    waves: [14, 15],
   },
 ];
 

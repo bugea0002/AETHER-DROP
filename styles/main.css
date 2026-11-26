@@ -1326,6 +1326,69 @@ input[type='checkbox'].mil-check {
 .boss-phase-tick.tick-33 { left: 33.33%; }
 .boss-phase-tick.tick-66 { left: 66.66%; }
 
+.boss-turrets-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(168, 85, 247, 0.28);
+}
+
+.boss-turrets-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.boss-turrets-label {
+  font-family: var(--ad-font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #d8b4fe;
+}
+
+.boss-turrets-pips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.boss-turret-pip {
+  width: 14px;
+  height: 7px;
+  background: linear-gradient(90deg, #a855f7, #38bdf8);
+  border: 1px solid rgba(216, 180, 254, 0.85);
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.65);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.boss-turret-pip.destroyed {
+  background: rgba(68, 64, 60, 0.45);
+  border-color: rgba(120, 113, 108, 0.45);
+  box-shadow: none;
+  opacity: 0.45;
+}
+
+.boss-shield-link {
+  font-family: var(--ad-font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 2px 7px;
+  border: 1px solid rgba(168, 85, 247, 0.72);
+  background: rgba(88, 28, 135, 0.35);
+  color: #e9d5ff;
+}
+
+.boss-shield-link.broken {
+  border-color: rgba(34, 211, 238, 0.78);
+  background: rgba(8, 51, 68, 0.55);
+  color: #67e8f9;
+}
+
 /* Center-Top Tactical Announcement Banner */
 #announcement-banner {
   position: fixed;
@@ -2958,6 +3021,31 @@ body.force-touch.touch-active #hud-pause-btn {
 .hud-buff-chip.vanguard {
   border-color: var(--ad-shield);
   color: var(--ad-shield);
+}
+
+.hud-act3-pill {
+  font-family: var(--ad-font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  background: rgba(18, 16, 14, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  white-space: nowrap;
+}
+
+.hud-act3-pill.low-g {
+  border-color: rgba(34, 211, 238, 0.78);
+  color: #67e8f9;
+  background: rgba(8, 47, 73, 0.72);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.25);
+}
+
+.hud-act3-pill.void-gate {
+  border-color: rgba(192, 132, 252, 0.8);
+  color: #e9d5ff;
+  background: rgba(59, 7, 100, 0.72);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.28);
 }
 
 .weapon-slot-btn.locked {

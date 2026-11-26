@@ -502,7 +502,15 @@ class EnemyModelFactory {
   _createPalette(archetype) {
     const { armorWear, armorBump, armorRoughness, visorGrid } = this._textures;
 
+    const isAbyssOrbital =
+      archetype.id === 'volatile_rusher' ||
+      archetype.id === 'void_warper' ||
+      archetype.id === 'void_swarmer' ||
+      archetype.id === 'abyss_sentinel' ||
+      archetype.id === 'transcendent_omega_boss';
+
     const isAegisOrbital =
+      isAbyssOrbital ||
       archetype.id === 'interceptor_drone' ||
       archetype.id === 'shock_breacher' ||
       archetype.id === 'rail_warden' ||
@@ -510,7 +518,15 @@ class EnemyModelFactory {
       archetype.id === 'vanguard_assassin' ||
       archetype.id === 'aegis_overlord_boss';
 
-    const primaryArmor = isAegisOrbital
+    const primaryArmor = isAbyssOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: 0x141028,
+          metalness: 0.82,
+          roughness: 0.22,
+          emissive: new THREE.Color(0x160a2a),
+          emissiveIntensity: 0.34,
+        })
+      : isAegisOrbital
       ? new THREE.MeshStandardMaterial({
           color: archetype.id === 'vanguard_assassin' ? 0x1e1b2e : 0xeaf2fb,
           metalness: 0.78,
@@ -536,7 +552,7 @@ class EnemyModelFactory {
           metalness: 0.74,
           roughness: 0.22,
           emissive: new THREE.Color(archetype.color),
-          emissiveIntensity: 0.52,
+          emissiveIntensity: isAbyssOrbital ? 0.62 : 0.52,
         })
       : new THREE.MeshStandardMaterial({
           color: archetype.color,
@@ -550,7 +566,15 @@ class EnemyModelFactory {
           emissiveIntensity: 0.28,
         });
 
-    const darkFrame = isAegisOrbital
+    const darkFrame = isAbyssOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: 0x090714,
+          metalness: 0.90,
+          roughness: 0.24,
+          emissive: new THREE.Color(0x0c061c),
+          emissiveIntensity: 0.18,
+        })
+      : isAegisOrbital
       ? new THREE.MeshStandardMaterial({
           color: 0x0b1222,
           metalness: 0.88,
@@ -570,14 +594,35 @@ class EnemyModelFactory {
         });
 
     const pistonSteel = new THREE.MeshStandardMaterial({
-      color: archetype.id === 'aegis_overlord_boss' ? 0xf59e0b : isAegisOrbital ? 0xf1f5f9 : 0xcbd5e1,
+      color:
+        archetype.id === 'aegis_overlord_boss'
+          ? 0xf59e0b
+          : isAbyssOrbital
+          ? 0xc4b5fd
+          : isAegisOrbital
+          ? 0xf1f5f9
+          : 0xcbd5e1,
       metalness: 0.92,
       roughness: 0.20,
-      emissive: new THREE.Color(archetype.id === 'aegis_overlord_boss' ? 0x4a2a00 : 0x000000),
-      emissiveIntensity: archetype.id === 'aegis_overlord_boss' ? 0.35 : 0.0,
+      emissive: new THREE.Color(
+        archetype.id === 'aegis_overlord_boss'
+          ? 0x4a2a00
+          : isAbyssOrbital
+          ? 0x241046
+          : 0x000000
+      ),
+      emissiveIntensity: archetype.id === 'aegis_overlord_boss' ? 0.35 : isAbyssOrbital ? 0.24 : 0.0,
     });
 
-    const cableMat = isAegisOrbital
+    const cableMat = isAbyssOrbital
+      ? new THREE.MeshStandardMaterial({
+          color: 0x2e1065,
+          metalness: 0.58,
+          roughness: 0.32,
+          emissive: new THREE.Color(archetype.accentColor),
+          emissiveIntensity: 0.72,
+        })
+      : isAegisOrbital
       ? new THREE.MeshStandardMaterial({
           color: 0x164e63,
           metalness: 0.55,
@@ -596,13 +641,23 @@ class EnemyModelFactory {
     const accentGlow = new THREE.MeshStandardMaterial({
       color: archetype.accentColor,
       emissive: new THREE.Color(archetype.accentColor),
-      emissiveIntensity: isAegisOrbital ? 3.1 : 2.2,
+      emissiveIntensity: isAbyssOrbital ? 3.4 : isAegisOrbital ? 3.1 : 2.2,
       metalness: 0.15,
       roughness: 0.20,
       fog: false,
     });
 
-    const opticColor = isAegisOrbital
+    const opticColor = isAbyssOrbital
+      ? archetype.id === 'volatile_rusher'
+        ? 0xff2a6d
+        : archetype.id === 'void_warper'
+        ? 0xc084fc
+        : archetype.id === 'void_swarmer'
+        ? 0xd8b4fe
+        : archetype.id === 'abyss_sentinel'
+        ? 0x38bdf8
+        : 0xe879f9
+      : isAegisOrbital
       ? archetype.id === 'vanguard_assassin'
         ? 0xf43f5e
         : archetype.id === 'mortar_artillery'
@@ -627,11 +682,11 @@ class EnemyModelFactory {
     const holoEnergy = new THREE.MeshStandardMaterial({
       color: archetype.accentColor,
       emissive: new THREE.Color(archetype.accentColor),
-      emissiveIntensity: 2.6,
+      emissiveIntensity: isAbyssOrbital ? 3.0 : 2.6,
       metalness: 0.1,
       roughness: 0.15,
       transparent: true,
-      opacity: 0.52,
+      opacity: 0.54,
       side: THREE.DoubleSide,
       depthWrite: false,
       fog: false,
@@ -669,7 +724,8 @@ class EnemyModelFactory {
     const isHeavy =
       archetype.id === 'heavy_enforcer' ||
       archetype.id === 'rail_warden' ||
-      archetype.id === 'mortar_artillery';
+      archetype.id === 'mortar_artillery' ||
+      archetype.id === 'abyss_sentinel';
     const barWidth = archetype.isBoss ? 2.25 : isHeavy ? 1.15 : 0.86;
     const barHeight = archetype.isBoss ? 0.16 : 0.085;
 
@@ -736,6 +792,7 @@ class EnemyModelFactory {
     const coreRings = [];
     let shieldMesh = null;
     let laserLine = null;
+    let overloadRing = null;
 
     const palette = this._createPalette(archetype);
     const ownedMaterials = [...palette.flashMaterials];
@@ -905,6 +962,80 @@ class EnemyModelFactory {
         leftWeaponMuzzle = overlordExtras.leftWeaponMuzzle;
         break;
       }
+      case 'volatile_rusher':
+        overloadRing = this._buildVolatileRusher(
+          palette,
+          ownedMaterials,
+          root,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle,
+          coreRings
+        );
+        break;
+      case 'void_warper':
+        this._buildVoidWarper(
+          palette,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'void_swarmer':
+        this._buildVoidSwarmer(
+          palette,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          weaponMuzzle,
+          rotors
+        );
+        break;
+      case 'abyss_sentinel':
+        shieldMesh = this._buildAbyssSentinel(
+          palette,
+          ownedMaterials,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle
+        );
+        break;
+      case 'transcendent_omega_boss': {
+        const omegaExtras = this._buildTranscendentOmegaBoss(
+          palette,
+          ownedMaterials,
+          bodyGroup,
+          headGroup,
+          headAnchor,
+          leftArm,
+          rightArm,
+          leftLeg,
+          rightLeg,
+          weaponMuzzle,
+          rotors,
+          coreRings
+        );
+        shieldMesh = omegaExtras.shieldMesh;
+        leftWeaponMuzzle = omegaExtras.leftWeaponMuzzle;
+        break;
+      }
       default:
         this._buildTacticalTrooper(
           palette,
@@ -928,16 +1059,23 @@ class EnemyModelFactory {
         return g;
       });
       const shadowRadius = archetype.isBoss
-        ? archetype.id === 'aegis_overlord_boss'
+        ? archetype.id === 'transcendent_omega_boss'
+          ? 2.85
+          : archetype.id === 'aegis_overlord_boss'
           ? 2.55
           : 2.35
-        : archetype.id === 'heavy_enforcer' || archetype.id === 'rail_warden'
+        : archetype.id === 'heavy_enforcer' ||
+          archetype.id === 'rail_warden' ||
+          archetype.id === 'abyss_sentinel'
         ? 1.18
         : archetype.id === 'mortar_artillery'
         ? 1.14
         : archetype.id === 'shock_breacher'
         ? 0.92
-        : archetype.id === 'sniper_stalker' || archetype.id === 'vanguard_assassin'
+        : archetype.id === 'sniper_stalker' ||
+          archetype.id === 'vanguard_assassin' ||
+          archetype.id === 'void_warper' ||
+          archetype.id === 'volatile_rusher'
         ? 0.72
         : 0.78;
       const shadowDisc = new THREE.Mesh(shadowGeo, this._contactShadowMat);
@@ -951,7 +1089,7 @@ class EnemyModelFactory {
 
     // Cast & receive shadows cleanly across solid sculpted armor meshes
     root.traverse((obj) => {
-      if (obj.isMesh && obj !== shieldMesh) {
+      if (obj.isMesh && obj !== shieldMesh && obj !== overloadRing) {
         const mat = obj.material;
         if (mat && !mat.transparent) {
           obj.castShadow = true;
@@ -994,6 +1132,7 @@ class EnemyModelFactory {
       rotors,
       coreRings,
       laserLine,
+      overloadRing,
       healthBarFill,
       healthBarBg,
       flashMaterials: palette.flashMaterials,
@@ -4919,6 +5058,668 @@ class EnemyModelFactory {
 
     const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
     shieldMesh.position.set(0, 2.28, 0.04);
+    shieldMesh.visible = false;
+    shieldMesh.renderOrder = 7;
+    bodyGroup.add(shieldMesh);
+
+    return { shieldMesh, leftWeaponMuzzle };
+  }
+
+  // ===========================================================================
+  // 12. VOLATILE RUSHER (Overload Frenzy Canister Runner + Ground Blast Ring)
+  // ===========================================================================
+  _buildVolatileRusher(
+    p,
+    ownedMaterials,
+    root,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle,
+    coreRings
+  ) {
+    const legGeo = this._getGeo('vol_rusher_leg', () => new THREE.BoxGeometry(0.14, 0.68, 0.18));
+    const footGeo = this._getGeo('vol_rusher_foot', () => new THREE.BoxGeometry(0.18, 0.1, 0.28));
+    for (const [legGrp, sx] of [
+      [leftLeg, -0.22],
+      [rightLeg, 0.22],
+    ]) {
+      legGrp.position.set(sx, 0.72, 0);
+      const shin = new THREE.Mesh(legGeo, p.darkFrame);
+      shin.position.set(0, -0.34, 0.02);
+      legGrp.add(shin);
+      const foot = new THREE.Mesh(footGeo, p.primaryArmor);
+      foot.position.set(0, -0.66, 0.06);
+      legGrp.add(foot);
+      bodyGroup.add(legGrp);
+    }
+
+    // Hunched obsidian torso housing glowing unstable crimson-magenta plasma core
+    const chestGeo = this._makeExtrudedPoly(
+      'vol_rusher_chest',
+      [
+        [-0.3, -0.26],
+        [0.3, -0.26],
+        [0.38, 0.18],
+        [0.18, 0.36],
+        [-0.18, 0.36],
+        [-0.38, 0.18],
+      ],
+      0.42,
+      0.024,
+      0.02,
+      1
+    );
+    const chest = new THREE.Mesh(chestGeo, p.primaryArmor);
+    chest.position.set(0, 0.96, 0);
+    bodyGroup.add(chest);
+
+    const reactorCore = new THREE.Mesh(
+      this._getGeo('vol_rusher_core', () => new THREE.OctahedronGeometry(0.26, 1)),
+      p.accentGlow
+    );
+    reactorCore.position.set(0, 1.0, 0.12);
+    bodyGroup.add(reactorCore);
+
+    const cageRing = new THREE.Group();
+    cageRing.position.set(0, 1.0, 0.12);
+    cageRing.add(
+      new THREE.Mesh(
+        this._getGeo('vol_rusher_cage', () => new THREE.TorusGeometry(0.32, 0.032, 8, 20)),
+        p.coloredPlate
+      )
+    );
+    bodyGroup.add(cageRing);
+    coreRings.push(cageRing);
+
+    // Cranial sensor pod (headHeight = 1.26)
+    headGroup.position.set(0, 1.28, 0.14);
+    bodyGroup.add(headGroup);
+    const helm = new THREE.Mesh(
+      this._getGeo('vol_rusher_helm', () => new THREE.BoxGeometry(0.32, 0.24, 0.34)),
+      p.coloredPlate
+    );
+    headGroup.add(helm);
+    const visor = new THREE.Mesh(
+      this._getGeo('vol_rusher_visor', () => new THREE.BoxGeometry(0.28, 0.11, 0.08)),
+      p.weakpointGlow
+    );
+    visor.position.set(0, 0, 0.16);
+    headGroup.add(visor);
+    headAnchor.position.set(0, 0, 0.05);
+    headGroup.add(headAnchor);
+
+    // Forward claw prongs + short-range plasma emitter
+    const armGeo = this._getGeo('vol_rusher_arm', () => new THREE.BoxGeometry(0.12, 0.44, 0.14));
+    leftArm.position.set(-0.38, 1.06, 0.08);
+    leftArm.add(new THREE.Mesh(armGeo, p.pistonSteel));
+    bodyGroup.add(leftArm);
+
+    rightArm.position.set(0.38, 1.06, 0.08);
+    rightArm.add(new THREE.Mesh(armGeo, p.pistonSteel));
+    const barrel = new THREE.Mesh(
+      this._getGeo('vol_rusher_barrel', () => new THREE.CylinderGeometry(0.06, 0.08, 0.42, 8)),
+      p.darkFrame
+    );
+    barrel.rotation.x = Math.PI * 0.5;
+    barrel.position.set(0, -0.14, 0.24);
+    rightArm.add(barrel);
+    weaponMuzzle.position.set(0, -0.14, 0.48);
+    rightArm.add(weaponMuzzle);
+    bodyGroup.add(rightArm);
+
+    // Expanding ground telegraph ring for Overload Frenzy blast
+    const ringGeo = this._getGeo('vol_overload_ring', () => {
+      const g = new THREE.RingGeometry(0.84, 1.0, 36);
+      g.rotateX(-Math.PI * 0.5);
+      return g;
+    });
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff2a6d,
+      transparent: true,
+      opacity: 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    ownedMaterials.push(ringMat);
+    const overloadRing = new THREE.Mesh(ringGeo, ringMat);
+    overloadRing.position.set(0, 0.08, 0);
+    overloadRing.visible = false;
+    overloadRing.renderOrder = 8;
+    root.add(overloadRing);
+    return overloadRing;
+  }
+
+  // ===========================================================================
+  // 13. VOID WARPER (Dimensional Blink Flanker + Violet Mantle)
+  // ===========================================================================
+  _buildVoidWarper(
+    p,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    const legGeo = this._getGeo('warper_leg', () => new THREE.CylinderGeometry(0.08, 0.06, 0.92, 8));
+    for (const [legGrp, sx] of [
+      [leftLeg, -0.18],
+      [rightLeg, 0.18],
+    ]) {
+      legGrp.position.set(sx, 0.92, 0);
+      const leg = new THREE.Mesh(legGeo, p.darkFrame);
+      leg.position.y = -0.46;
+      legGrp.add(leg);
+      const greave = new THREE.Mesh(
+        this._getGeo('warper_greave', () => new THREE.BoxGeometry(0.14, 0.42, 0.18)),
+        p.primaryArmor
+      );
+      greave.position.set(0, -0.62, 0.02);
+      legGrp.add(greave);
+      bodyGroup.add(legGrp);
+    }
+
+    const torsoGeo = this._makeExtrudedPoly(
+      'warper_torso',
+      [
+        [-0.24, -0.34],
+        [0.24, -0.34],
+        [0.34, 0.22],
+        [0.14, 0.4],
+        [-0.14, 0.4],
+        [-0.34, 0.22],
+      ],
+      0.34,
+      0.022,
+      0.018,
+      1
+    );
+    const torso = new THREE.Mesh(torsoGeo, p.primaryArmor);
+    torso.position.set(0, 1.24, 0);
+    bodyGroup.add(torso);
+
+    // Swept shoulder dimensional rift fins
+    const finGeo = this._makeExtrudedPoly(
+      'warper_fin',
+      [
+        [0, -0.05],
+        [0.44, 0.38],
+        [0.54, 0.12],
+        [0.12, -0.22],
+      ],
+      0.08,
+      0.014,
+      0.012,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const fin = new THREE.Mesh(finGeo, p.coloredPlate);
+      fin.scale.x = side;
+      fin.position.set(side * 0.24, 1.46, -0.12);
+      fin.rotation.y = side * 0.35;
+      bodyGroup.add(fin);
+    }
+
+    const chestGem = new THREE.Mesh(
+      this._getGeo('warper_gem', () => new THREE.OctahedronGeometry(0.12, 0)),
+      p.accentGlow
+    );
+    chestGem.position.set(0, 1.28, 0.21);
+    bodyGroup.add(chestGem);
+
+    headGroup.position.set(0, 1.66, 0.04);
+    bodyGroup.add(headGroup);
+    const cowl = new THREE.Mesh(
+      this._getGeo('warper_cowl', () => new THREE.ConeGeometry(0.2, 0.36, 6)),
+      p.primaryArmor
+    );
+    cowl.rotation.x = Math.PI;
+    headGroup.add(cowl);
+    const optic = new THREE.Mesh(
+      this._getGeo('warper_optic', () => new THREE.BoxGeometry(0.24, 0.07, 0.08)),
+      p.weakpointGlow
+    );
+    optic.position.set(0, 0.02, 0.14);
+    headGroup.add(optic);
+    headAnchor.position.set(0, 0, 0.04);
+    headGroup.add(headAnchor);
+
+    // Twin blade/carbine arms
+    leftArm.position.set(-0.34, 1.44, 0);
+    const blade = new THREE.Mesh(
+      this._getGeo('warper_blade', () => new THREE.BoxGeometry(0.05, 0.52, 0.14)),
+      p.accentGlow
+    );
+    blade.position.set(0, -0.32, 0.2);
+    blade.rotation.x = -0.7;
+    leftArm.add(blade);
+    bodyGroup.add(leftArm);
+
+    rightArm.position.set(0.34, 1.44, 0);
+    const rifle = new THREE.Mesh(
+      this._getGeo('warper_rifle', () => new THREE.BoxGeometry(0.12, 0.14, 0.64)),
+      p.coloredPlate
+    );
+    rifle.position.set(0, -0.22, 0.28);
+    rightArm.add(rifle);
+    weaponMuzzle.position.set(0, -0.22, 0.62);
+    rightArm.add(weaponMuzzle);
+    bodyGroup.add(rightArm);
+  }
+
+  // ===========================================================================
+  // 14. VOID SWARMER (Airborne Rift-Summoned Construct)
+  // ===========================================================================
+  _buildVoidSwarmer(p, bodyGroup, headGroup, headAnchor, leftArm, rightArm, weaponMuzzle, rotors) {
+    const hull = new THREE.Mesh(
+      this._getGeo('swarmer_hull', () => new THREE.OctahedronGeometry(0.34, 1)),
+      p.primaryArmor
+    );
+    hull.scale.set(1.15, 0.78, 1.3);
+    bodyGroup.add(hull);
+
+    const wingGeo = this._makeExtrudedPoly(
+      'swarmer_wing',
+      [
+        [0, 0],
+        [0.52, 0.16],
+        [0.44, -0.14],
+        [0.08, -0.18],
+      ],
+      0.05,
+      0.01,
+      0.01,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const wing = new THREE.Mesh(wingGeo, p.coloredPlate);
+      wing.scale.x = side;
+      wing.position.set(side * 0.2, 0.04, -0.06);
+      bodyGroup.add(wing);
+
+      const rotorGroup = new THREE.Group();
+      rotorGroup.position.set(side * 0.44, 0.14, -0.02);
+      rotorGroup.add(
+        new THREE.Mesh(
+          this._getGeo('swarmer_rotor_ring', () => new THREE.TorusGeometry(0.16, 0.024, 6, 16)),
+          p.holoEnergy
+        )
+      );
+      bodyGroup.add(rotorGroup);
+      rotors.push(rotorGroup);
+    }
+
+    headGroup.position.set(0, 0.06, 0.26);
+    bodyGroup.add(headGroup);
+    const eye = new THREE.Mesh(
+      this._getGeo('swarmer_eye', () => new THREE.SphereGeometry(0.15, 10, 8)),
+      p.weakpointGlow
+    );
+    headGroup.add(eye);
+    headAnchor.position.set(0, 0, 0.04);
+    headGroup.add(headAnchor);
+
+    leftArm.position.set(-0.22, -0.12, 0.1);
+    bodyGroup.add(leftArm);
+    rightArm.position.set(0.22, -0.12, 0.12);
+    const stinger = new THREE.Mesh(
+      this._getGeo('swarmer_stinger', () => new THREE.BoxGeometry(0.08, 0.08, 0.34)),
+      p.accentGlow
+    );
+    stinger.position.set(-0.22, -0.04, 0.22);
+    rightArm.add(stinger);
+    weaponMuzzle.position.set(-0.22, -0.04, 0.42);
+    rightArm.add(weaponMuzzle);
+    bodyGroup.add(rightArm);
+  }
+
+  // ===========================================================================
+  // 15. ABYSS SENTINEL (Heavy Obsidian Shield Knight + Triple Plasma Repeater)
+  // ===========================================================================
+  _buildAbyssSentinel(
+    p,
+    ownedMaterials,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle
+  ) {
+    const legGeo = this._getGeo('sentinel_leg', () => new THREE.BoxGeometry(0.26, 0.98, 0.3));
+    for (const [legGrp, sx] of [
+      [leftLeg, -0.3],
+      [rightLeg, 0.3],
+    ]) {
+      legGrp.position.set(sx, 0.98, 0);
+      const leg = new THREE.Mesh(legGeo, p.primaryArmor);
+      leg.position.y = -0.49;
+      legGrp.add(leg);
+      bodyGroup.add(legGrp);
+    }
+
+    const chestGeo = this._makeExtrudedPoly(
+      'sentinel_chest',
+      [
+        [-0.44, -0.42],
+        [0.44, -0.42],
+        [0.56, 0.24],
+        [0.26, 0.52],
+        [-0.26, 0.52],
+        [-0.56, 0.24],
+      ],
+      0.58,
+      0.035,
+      0.028,
+      2
+    );
+    const chest = new THREE.Mesh(chestGeo, p.primaryArmor);
+    chest.position.set(0, 1.38, 0);
+    bodyGroup.add(chest);
+
+    const reactor = new THREE.Mesh(
+      this._getGeo('sentinel_core', () => new THREE.CylinderGeometry(0.18, 0.18, 0.14, 12)),
+      p.accentGlow
+    );
+    reactor.rotation.x = Math.PI * 0.5;
+    reactor.position.set(0, 1.44, 0.34);
+    bodyGroup.add(reactor);
+
+    headGroup.position.set(0, 1.94, 0.08);
+    bodyGroup.add(headGroup);
+    const helm = new THREE.Mesh(
+      this._getGeo('sentinel_helm', () => new THREE.BoxGeometry(0.36, 0.32, 0.38)),
+      p.coloredPlate
+    );
+    headGroup.add(helm);
+    const visor = new THREE.Mesh(
+      this._getGeo('sentinel_visor', () => new THREE.BoxGeometry(0.32, 0.1, 0.08)),
+      p.weakpointGlow
+    );
+    visor.position.set(0, 0.02, 0.2);
+    headGroup.add(visor);
+    headAnchor.position.set(0, 0, 0.05);
+    headGroup.add(headAnchor);
+
+    // Left arm with full abyssal reactive shield
+    leftArm.position.set(-0.66, 1.56, 0.08);
+    const pauldronL = new THREE.Mesh(
+      this._getGeo('sentinel_pauldron', () => new THREE.BoxGeometry(0.34, 0.36, 0.42)),
+      p.coloredPlate
+    );
+    leftArm.add(pauldronL);
+    const shieldGeo = this._getGeo('sentinel_shield', () => new THREE.BoxGeometry(0.92, 1.48, 0.09));
+    const shieldMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0x38bdf8),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 1.65,
+      transparent: true,
+      opacity: 0.76,
+      roughness: 0.32,
+      metalness: 0.5,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    shieldMat.userData.baseColor = shieldMat.color.clone();
+    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
+    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
+    shieldMat.userData.baseOpacity = shieldMat.opacity;
+    ownedMaterials.push(shieldMat);
+    const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+    shieldMesh.position.set(-0.14, -0.34, 0.48);
+    shieldMesh.rotation.y = 0.22;
+    shieldMesh.renderOrder = 6;
+    leftArm.add(shieldMesh);
+    bodyGroup.add(leftArm);
+
+    // Right arm triple-plasma repeater
+    rightArm.position.set(0.66, 1.56, 0.06);
+    rightArm.add(new THREE.Mesh(pauldronL.geometry, p.coloredPlate));
+    const cannon = new THREE.Mesh(
+      this._getGeo('sentinel_gun', () => new THREE.BoxGeometry(0.24, 0.24, 0.88)),
+      p.darkFrame
+    );
+    cannon.position.set(0.06, -0.34, 0.42);
+    rightArm.add(cannon);
+    weaponMuzzle.position.set(0.06, -0.34, 0.9);
+    rightArm.add(weaponMuzzle);
+    bodyGroup.add(rightArm);
+
+    return shieldMesh;
+  }
+
+  // ===========================================================================
+  // 16. TRANSCENDENT-OMEGA (Wave 15 Final Abyssal Colossus Boss — 5.2m)
+  // ===========================================================================
+  _buildTranscendentOmegaBoss(
+    p,
+    ownedMaterials,
+    bodyGroup,
+    headGroup,
+    headAnchor,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    weaponMuzzle,
+    rotors,
+    coreRings
+  ) {
+    const thighGeo = this._getGeo('omega_thigh', () => new THREE.BoxGeometry(0.56, 1.15, 0.62));
+    const shinGeo = this._getGeo('omega_shin', () => new THREE.BoxGeometry(0.46, 1.25, 0.56));
+    const footGeo = this._getGeo('omega_foot', () => new THREE.BoxGeometry(0.7, 0.24, 0.95));
+    for (const [legGrp, sx] of [
+      [leftLeg, -0.68],
+      [rightLeg, 0.68],
+    ]) {
+      legGrp.position.set(sx, 2.25, 0);
+      const thigh = new THREE.Mesh(thighGeo, p.primaryArmor);
+      thigh.position.y = -0.56;
+      legGrp.add(thigh);
+      const shin = new THREE.Mesh(shinGeo, p.darkFrame);
+      shin.position.set(0, -1.55, 0.04);
+      legGrp.add(shin);
+      const foot = new THREE.Mesh(footGeo, p.coloredPlate);
+      foot.position.set(0, -2.14, 0.14);
+      legGrp.add(foot);
+      bodyGroup.add(legGrp);
+    }
+
+    const pelvis = new THREE.Mesh(
+      this._getGeo('omega_pelvis', () => new THREE.BoxGeometry(1.62, 0.52, 0.96)),
+      p.darkFrame
+    );
+    pelvis.position.set(0, 2.28, 0);
+    bodyGroup.add(pelvis);
+
+    // Towering biomechanical abyssal carapace torso
+    const chestGeo = this._makeExtrudedPoly(
+      'omega_chest',
+      [
+        [-0.92, -0.74],
+        [0.92, -0.74],
+        [1.18, 0.42],
+        [0.64, 0.92],
+        [-0.64, 0.92],
+        [-1.18, 0.42],
+      ],
+      1.12,
+      0.06,
+      0.045,
+      2
+    );
+    const chest = new THREE.Mesh(chestGeo, p.primaryArmor);
+    chest.position.set(0, 3.25, 0.04);
+    bodyGroup.add(chest);
+
+    const singularityCore = new THREE.Mesh(
+      this._getGeo('omega_singularity_core', () => new THREE.OctahedronGeometry(0.54, 1)),
+      p.accentGlow
+    );
+    singularityCore.position.set(0, 3.28, 0.56);
+    bodyGroup.add(singularityCore);
+
+    // Dorsal obsidian wing-ribs
+    const wingGeo = this._makeExtrudedPoly(
+      'omega_wing',
+      [
+        [0, 0],
+        [1.35, 1.15],
+        [1.65, 0.42],
+        [0.32, -0.55],
+      ],
+      0.16,
+      0.025,
+      0.02,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const wing = new THREE.Mesh(wingGeo, p.coloredPlate);
+      wing.scale.x = side;
+      wing.position.set(side * 0.72, 3.65, -0.52);
+      wing.rotation.y = side * 0.34;
+      bodyGroup.add(wing);
+    }
+
+    // Floating horned crown helm (headHeight = 4.35)
+    headGroup.position.set(0, 4.35, 0.16);
+    bodyGroup.add(headGroup);
+    const cranial = new THREE.Mesh(
+      this._getGeo('omega_head_core', () => new THREE.SphereGeometry(0.46, 16, 12)),
+      p.weakpointGlow
+    );
+    headGroup.add(cranial);
+    const hornGeo = this._makeExtrudedPoly(
+      'omega_crown_horn',
+      [
+        [-0.1, -0.25],
+        [0.14, -0.2],
+        [0.36, 0.72],
+        [0.06, 0.82],
+        [-0.1, 0.28],
+      ],
+      0.16,
+      0.022,
+      0.018,
+      1
+    );
+    for (let side = -1; side <= 1; side += 2) {
+      const horn = new THREE.Mesh(hornGeo, p.coloredPlate);
+      horn.scale.x = side;
+      horn.position.set(side * 0.48, 0.16, -0.02);
+      horn.rotation.y = side * 0.25;
+      headGroup.add(horn);
+    }
+    headAnchor.position.set(0, 0.04, 0.08);
+    headGroup.add(headAnchor);
+
+    // Twin siege-void arm cannons (weaponMuzzle & leftWeaponMuzzle)
+    const housingGeo = this._getGeo('omega_cannon', () => new THREE.BoxGeometry(0.56, 0.52, 1.18));
+    const discGeo = this._getGeo('omega_rotor_disc', () => new THREE.CylinderGeometry(0.24, 0.24, 0.08, 12));
+    const leftWeaponMuzzle = new THREE.Object3D();
+
+    const buildOmegaArm = (armGroup, side, muzzleObj) => {
+      armGroup.position.set(side * 1.48, 3.68, 0.08);
+      const pauldron = new THREE.Mesh(
+        this._getGeo('omega_pauldron', () => new THREE.BoxGeometry(0.74, 0.72, 0.84)),
+        p.coloredPlate
+      );
+      pauldron.position.set(side * 0.14, 0.1, 0);
+      armGroup.add(pauldron);
+
+      const pod = new THREE.Group();
+      pod.position.set(side * 0.16, -0.76, 0.58);
+      pod.add(new THREE.Mesh(housingGeo, p.primaryArmor));
+
+      const rotorCluster = new THREE.Group();
+      rotorCluster.position.set(0, 0, 0.68);
+      const disc = new THREE.Mesh(discGeo, p.accentGlow);
+      disc.rotation.x = Math.PI * 0.5;
+      disc.position.z = 0.52;
+      rotorCluster.add(disc);
+      pod.add(rotorCluster);
+      rotors.push(rotorCluster);
+
+      muzzleObj.position.set(0, 0, 1.56);
+      pod.add(muzzleObj);
+      armGroup.add(pod);
+      bodyGroup.add(armGroup);
+    };
+    buildOmegaArm(rightArm, -1, weaponMuzzle);
+    buildOmegaArm(leftArm, 1, leftWeaponMuzzle);
+
+    // 4 Gyroscopic Singularity Rings (coreRings)
+    const omegaRings = [
+      { r: 2.05, tube: 0.055, tiltX: 0.44, tiltZ: 0.28, y: 3.35, color: 0x581c87, emissive: 0xc084fc },
+      { r: 2.35, tube: 0.05, tiltX: -0.52, tiltZ: 0.64, y: 3.36, color: 0x1e1b4b, emissive: 0x38bdf8 },
+      { r: 2.65, tube: 0.044, tiltX: 0.76, tiltZ: -0.44, y: 3.34, color: 0x4c0519, emissive: 0xf43f5e },
+      { r: 2.95, tube: 0.038, tiltX: -0.26, tiltZ: -0.72, y: 3.35, color: 0x3b0764, emissive: 0xe879f9 },
+    ];
+    for (let i = 0; i < omegaRings.length; i++) {
+      const cfg = omegaRings[i];
+      const ringGroup = new THREE.Group();
+      ringGroup.position.set(0, cfg.y, 0.04);
+      ringGroup.rotation.set(cfg.tiltX, i * 0.9, cfg.tiltZ);
+      ringGroup.userData.baseRotation = new THREE.Euler(cfg.tiltX, i * 0.9, cfg.tiltZ);
+
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        emissive: new THREE.Color(cfg.emissive),
+        emissiveIntensity: 1.9,
+        roughness: 0.3,
+        metalness: 0.78,
+      });
+      ringMat.userData.baseColor = ringMat.color.clone();
+      ringMat.userData.baseEmissive = ringMat.emissive.clone();
+      ringMat.userData.baseEmissiveIntensity = ringMat.emissiveIntensity;
+      ownedMaterials.push(ringMat);
+
+      const ringGeo = this._getGeo(`omega_orbit_ring_${i}`, () => {
+        return new THREE.TorusGeometry(cfg.r, cfg.tube, 8, 36);
+      });
+      ringGroup.add(new THREE.Mesh(ringGeo, ringMat));
+      ringGroup.userData.ringMaterial = ringMat;
+      bodyGroup.add(ringGroup);
+      coreRings.push(ringGroup);
+    }
+
+    // Turret-Link Abyssal Barrier Cylinder (visible while turrets live or phase shield surges)
+    const omegaShieldGeo = this._getGeo('omega_turret_shield', () => {
+      return new THREE.CylinderGeometry(2.12, 2.2, 3.1, 24, 1, true);
+    });
+    const omegaShieldMat = new THREE.MeshStandardMaterial({
+      color: 0xa855f7,
+      map: this._textures.blastShield,
+      emissive: new THREE.Color(0x7c3aed),
+      emissiveMap: this._textures.blastShield,
+      emissiveIntensity: 2.1,
+      transparent: true,
+      opacity: 0.0,
+      roughness: 0.32,
+      metalness: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    omegaShieldMat.userData.baseColor = omegaShieldMat.color.clone();
+    omegaShieldMat.userData.baseEmissive = omegaShieldMat.emissive.clone();
+    omegaShieldMat.userData.baseEmissiveIntensity = omegaShieldMat.emissiveIntensity;
+    omegaShieldMat.userData.baseOpacity = 0.62;
+    ownedMaterials.push(omegaShieldMat);
+
+    const shieldMesh = new THREE.Mesh(omegaShieldGeo, omegaShieldMat);
+    shieldMesh.position.set(0, 2.55, 0.04);
     shieldMesh.visible = false;
     shieldMesh.renderOrder = 7;
     bodyGroup.add(shieldMesh);

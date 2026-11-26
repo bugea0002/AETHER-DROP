@@ -153,7 +153,10 @@ function bootstrap() {
     achievements: [],
     bestEndlessWave: 0,
     totalKillsAllTime: 0,
+    voidGatesDestroyed: 0,
   };
+  const SETTINGS_STORAGE_KEY = 'aether_drop_settings_v1';
+  let _initializingSettings = true;
   function _readCookieBackup(name) {
     try {
       const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -165,6 +168,39 @@ function bootstrap() {
       document.cookie = name + '=' + encodeURIComponent(val) + '; max-age=31536000; path=/; SameSite=Lax';
     } catch {}
   }
+  function saveSettingsState() {
+    if (_initializingSettings) return;
+    try {
+      const serialized = JSON.stringify(settings);
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, serialized);
+      _writeCookieBackup(SETTINGS_STORAGE_KEY, serialized);
+    } catch {}
+  }
+  try {
+    const rawSettings =
+      window.localStorage.getItem(SETTINGS_STORAGE_KEY) || _readCookieBackup(SETTINGS_STORAGE_KEY);
+    if (rawSettings) {
+      const ps = JSON.parse(rawSettings);
+      if (typeof ps.quality === 'string' && QUALITY_PRESETS[ps.quality.toLowerCase()]) {
+        settings.quality = ps.quality.toLowerCase();
+      }
+      if (ps.controlMode === 'auto' || ps.controlMode === 'pc' || ps.controlMode === 'touch') {
+        settings.controlMode = ps.controlMode;
+      }
+      if (Number.isFinite(ps.sensitivity)) {
+        settings.sensitivity = Math.max(0.3, Math.min(2.5, ps.sensitivity));
+      }
+      if (Number.isFinite(ps.volume)) {
+        settings.volume = Math.max(0, Math.min(100, Math.round(ps.volume)));
+      }
+      if (typeof ps.music === 'boolean') {
+        settings.music = ps.music;
+      }
+      if (typeof ps.showFps === 'boolean') {
+        settings.showFps = ps.showFps;
+      }
+    }
+  } catch {}
   try {
     const raw = window.localStorage.getItem(META_STORAGE_KEY) || _readCookieBackup(META_STORAGE_KEY);
     if (raw) {
@@ -191,6 +227,9 @@ function bootstrap() {
       }
       if (Number.isFinite(parsed.totalKillsAllTime)) {
         metaState.totalKillsAllTime = Math.max(0, Math.floor(parsed.totalKillsAllTime));
+      }
+      if (Number.isFinite(parsed.voidGatesDestroyed)) {
+        metaState.voidGatesDestroyed = Math.max(0, Math.floor(parsed.voidGatesDestroyed));
       }
     }
   } catch {}
@@ -361,11 +400,11 @@ function bootstrap() {
     }
     if (descEl) {
       if (selectedMissionMode === 'endless') {
-        descEl.textContent = `무한 강하: 10웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
+        descEl.textContent = `무한 강하: 15웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
       } else if (selectedMissionMode === 'daily') {
         descEl.textContent = `오늘의 작전 [${daily.name}]: ${daily.desc} · ${heat.desc}`;
       } else {
-        descEl.textContent = `표준 10웨이브 궤도 수복 작전 · ${heat.desc}`;
+        descEl.textContent = `표준 15웨이브 궤도 수복 작전 · ${heat.desc}`;
       }
     }
   }
@@ -377,10 +416,74 @@ function bootstrap() {
       _writeCookieBackup(META_STORAGE_KEY, serialized);
     } catch {}
   }
-  window.addEventListener('beforeunload', saveMetaState);
-  window.addEventListener('pagehide', saveMetaState);
+  function getEquippedLoadoutIndices() {
+    const f = getEquippedFrame();
+    const pIdx = Number.isInteger(f && f.defaultPrimaryIndex) ? f.defaultPrimaryIndex : 0;
+    const sIdx = Number.isInteger(f && f.defaultSecondaryIndex) ? f.defaultSecondaryIndex : 4;
+    return { primaryIndex: pIdx, secondaryIndex: sIdx };
+  }
+
+  function engageGameplayShortcutLock(requestFullscreen = false) {
+    if (isTouchActive()) return;
+    if (input) {
+      input.lockGameplayShortcuts(requestFullscreen);
+      return;
+    }
+    try {
+      if (
+        requestFullscreen &&
+        document.documentElement &&
+        !document.fullscreenElement &&
+        typeof document.documentElement.requestFullscreen === 'function'
+      ) {
+        const fsP = document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        if (fsP && typeof fsP.catch === 'function') fsP.catch(() => {});
+      }
+      if (navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
+        const lkP = navigator.keyboard.lock([
+          'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF',
+          'KeyC', 'KeyV', 'KeyX', 'KeyP', 'ControlLeft', 'ControlRight',
+          'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'Tab', 'Space',
+          'Digit1', 'Digit2', 'Digit3', 'Digit4',
+        ]);
+        if (lkP && typeof lkP.catch === 'function') lkP.catch(() => {});
+      }
+    } catch {}
+  }
+
+  function releaseGameplayShortcutLock(exitFullscreen = false) {
+    if (input) {
+      input.unlockGameplayShortcuts(exitFullscreen);
+      return;
+    }
+    try {
+      if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
+        navigator.keyboard.unlock();
+      }
+      if (exitFullscreen && document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+        const exP = document.exitFullscreen();
+        if (exP && typeof exP.catch === 'function') exP.catch(() => {});
+      }
+    } catch {}
+  }
+
+  window.addEventListener('beforeunload', (e) => {
+    saveMetaState();
+    saveSettingsState();
+    if (gameState === 'playing' || gameState === 'upgrading') {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    saveMetaState();
+    saveSettingsState();
+  });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveMetaState();
+    if (document.visibilityState === 'hidden') {
+      saveMetaState();
+      saveSettingsState();
+    }
   });
 
   let runCards = [];
@@ -465,9 +568,10 @@ function bootstrap() {
       if (desc) desc.textContent = '적 처치 시 체력·방어력이 회복되지 않습니다! [E]를 길게 눌러 정면 탄환을 막고(방패 중 정조준 불가, 피격 시 균열 발생), 동쪽 패드에 스폰된 체력 키트·쉴드 셀·탄약 상자를 직접 먹어 회복하세요.';
       if (goal) goal.textContent = `목표: [E] 방패 전개(${tutorialState.guardHoldSec >= 0.8 ? '완료' : Math.round(tutorialState.guardHoldSec * 100) + '%'}) · 바닥 아이템 획득(${tutorialState.pickedItem ? '완료' : '0/1'})`;
     } else if (s === 4) {
+      const curPriName = (weaponSystem && WEAPONS[weaponSystem.equippedPrimaryIndex] && WEAPONS[weaponSystem.equippedPrimaryIndex].shortName) || '기본 주무기';
       if (title) title.textContent = '4. 드랍 총기 교체 & 자동 업그레이드';
       if (desc) desc.textContent = '적이 떨어뜨린 다른 총기는 [F]로 교체하고, 지금 들고 있는 것과 "같은 총기"에 다가가면 자동으로 업그레이드(MK.II~)되며 외형과 탄환 이펙트가 진화합니다!';
-      if (goal) goal.textContent = `목표: 앞에 떨어진 M41-A에 다가가 자동 업그레이드 체험 (${tutorialState.autoUpgraded ? '완료' : '0/1'})`;
+      if (goal) goal.textContent = `목표: 앞에 떨어진 ${curPriName}에 다가가 자동 업그레이드 체험 (${tutorialState.autoUpgraded ? '완료' : '0/1'})`;
     } else if (s === 5) {
       if (title) title.textContent = '5. 테라-비콘 거점 & [X] 궁극기';
       if (desc) desc.textContent = '2스테이지부터 등장하는 중앙 테라-비콘 원형 구역 안에서 버티면 거점이 점령됩니다. 지금 궁극기 게이지를 100% 채워드렸으니 중앙 거점에 들어가 [X] 궁극기로 북쪽 분대를 섬멸하세요!';
@@ -499,10 +603,12 @@ function bootstrap() {
     } else if (nextStep === 4 && interactables && playerController) {
       tutorialState.autoUpgraded = false;
       const base = playerController.position;
-      // Spawn matching M41-A (index 0) for auto-upgrade + alternate BR-12 (index 1) for [F] swap demo
+      const curPriIdx = weaponSystem ? weaponSystem.equippedPrimaryIndex : 0;
+      const altPriIdx = (curPriIdx + 1) % 4;
+      // Spawn matching equipped primary for auto-upgrade + alternate primary for [F] swap demo
       if (typeof interactables.spawnWeaponDrop === 'function') {
-        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x)), 0.2, Math.max(-18, base.z - 4.5)), 0);
-        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x + 3.2)), 0.2, Math.max(-18, base.z - 4.5)), 1);
+        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x)), 0.2, Math.max(-18, base.z - 4.5)), curPriIdx);
+        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x + 3.2)), 0.2, Math.max(-18, base.z - 4.5)), altPriIdx);
       }
     } else if (nextStep === 5 && playerController && interactables && waveDirector) {
       tutorialState.enteredBeacon = false;
@@ -537,63 +643,96 @@ function bootstrap() {
   }
 
   function startTutorialRun() {
-    if (sceneTitle) sceneTitle.classList.add('hidden');
-    if (scenePlaying) scenePlaying.classList.remove('hidden');
-    const ok = ensureRuntimeInitialized();
-    if (!ok) return;
+    if (isTransitioning) return;
+    unlockAudioOnGesture();
+    engageGameplayShortcutLock(true);
 
-    if (interactables) {
-      interactables.dispose();
-      interactables = null;
-    }
-    arenaData = mapManager.loadMap(6);
-    interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
-    waveDirector.setArenaData(arenaData, interactables);
-    hudManager.setArenaData(arenaData, collisionWorld);
+    runFadeTransition(
+      () => {
+        if (sceneTitle) sceneTitle.classList.add('hidden');
+        if (sceneResult) {
+          sceneResult.classList.add('hidden');
+          sceneResult.classList.remove('victory', 'defeat');
+        }
+        if (pausePanel) pausePanel.classList.add('hidden');
+        if (upgradePanel) upgradePanel.classList.add('hidden');
+        if (scenePlaying) scenePlaying.classList.remove('hidden');
 
-    resetTelemetry();
-    input.resetAll();
-    touchOverlay.reset();
-    hudManager.reset();
-    vfxManager.reset();
-    waveDirector.reset();
-    runCards = [];
-    draftChoices = [];
-    if (upgradePanel) upgradePanel.classList.add('hidden');
+        const ok = ensureRuntimeInitialized();
+        if (!ok) return;
 
-    const { mods: startMods } = computePlayerMods();
-    playerController.applyModifiers(startMods, true);
-    playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
-    weaponSystem.reset();
-    lastWeaponState = weaponSystem.getCurrentWeaponState();
+        if (interactables) {
+          interactables.dispose();
+          interactables = null;
+        }
+        arenaData = mapManager.loadMap(6);
+        interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
+        waveDirector.setArenaData(arenaData, interactables);
+        hudManager.setArenaData(arenaData, collisionWorld);
 
-    engine.viewmodelScene.visible = true;
-    engine.resize();
-    engine.setFov(playerController.currentFov);
-    engine.bakeStaticShadows();
-    engine.prewarmShaders();
+        resetTelemetry();
+        lastAdsFov = null;
+        hadPointerLock = false;
+        zoneAmmoRefilled = false;
+        endingTimer = 0;
+        endingIsVictory = false;
+        endingFadeStarted = false;
 
-    hudManager.setVisible(true);
-    gameState = 'playing';
-    document.body.classList.add('playing-active');
-    syncTouchOverlayVisibility();
+        input.resetAll();
+        input.setControlMode(settings.controlMode);
+        if (settings.controlMode === 'auto') {
+          input.setTouchMode(isCoarsePointer());
+        }
+        touchOverlay.reset();
+        hudManager.reset();
+        vfxManager.reset();
+        waveDirector.reset();
+        runCards = [];
+        draftChoices = [];
+        if (upgradePanel) upgradePanel.classList.add('hidden');
 
-    tutorialState.active = true;
-    tutorialState.didDash = false;
-    tutorialState.didJumpPad = false;
-    tutorialState.didBarrel = false;
-    tutorialState.killsInStep = 0;
-    tutorialState.guardHoldSec = 0;
-    tutorialState.pickedItem = false;
-    tutorialState.autoUpgraded = false;
-    tutorialState.enteredBeacon = false;
-    tutorialState.usedUlt = false;
-    advanceTutorialStep(1);
+        const { mods: startMods } = computePlayerMods();
+        const { primaryIndex, secondaryIndex } = getEquippedLoadoutIndices();
+        playerController.applyModifiers(startMods, true);
+        playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
+        weaponSystem.reset(primaryIndex, secondaryIndex);
+        lastWeaponState = weaponSystem.getCurrentWeaponState();
 
-    eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
-    if (!input.isTouchMode()) {
-      input.requestPointerLock();
-    }
+        engine.viewmodelScene.visible = true;
+        engine.resize();
+        engine.setFov(playerController.currentFov);
+        engine.bakeStaticShadows();
+        engine.prewarmShaders();
+
+        hudManager.setVisible(true);
+        gameState = 'playing';
+        document.body.classList.add('playing-active');
+        syncTouchOverlayVisibility();
+
+        tutorialState.active = true;
+        tutorialState.didDash = false;
+        tutorialState.didJumpPad = false;
+        tutorialState.didBarrel = false;
+        tutorialState.killsInStep = 0;
+        tutorialState.guardHoldSec = 0;
+        tutorialState.pickedItem = false;
+        tutorialState.autoUpgraded = false;
+        tutorialState.enteredBeacon = false;
+        tutorialState.usedUlt = false;
+        advanceTutorialStep(1);
+
+        eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+        syncHudImmediate();
+        engine.render();
+        startLoop();
+      },
+      () => {
+        if (gameState === 'playing' && runtimeReady && !isTouchActive()) {
+          engageGameplayShortcutLock(false);
+          input.requestPointerLock();
+        }
+      }
+    );
   }
   let _bastionDomeGroup = null;
 
@@ -948,6 +1087,8 @@ function bootstrap() {
       slideOverclock: false,
       armorPiercer: false,
       orbitalOverload: false,
+      voidBreakerMult: 1.0,
+      gravityThruster: false,
       synergyAssault: false,
       synergyMobility: false,
       synergyVanguard: false,
@@ -1045,6 +1186,13 @@ function bootstrap() {
           break;
         case 'shield_to_ult':
           mods.shieldToUlt = true;
+          break;
+        case 'void_breaker':
+          mods.voidBreakerMult = (mods.voidBreakerMult || 1.0) * 1.24;
+          break;
+        case 'gravity_thruster':
+          mods.gravityThruster = true;
+          mods.dashCooldownMult *= 0.88;
           break;
       }
     }
@@ -1179,7 +1327,8 @@ function bootstrap() {
               <div class="frame-stat-chip"><span>SPEED</span>${spdPct}%</div>
             </div>
             <div class="frame-special-box">
-              <strong>특수능력 · ${f.specialName}</strong>
+              <strong>기본 무장 · ${f.defaultLoadoutLabel || 'M41-A + W-01'}</strong>
+              <strong style="margin-top:4px;display:block;">특수능력 · ${f.specialName}</strong>
               ${f.specialDesc}<br><span style="color:#fde68a;font-size:0.86em;">★ 궁극기: ${f.ultName || ''} — ${f.ultDesc || ''}</span>
             </div>
             <button class="mil-btn armory-buy-btn" type="button" ${!owned && !canBuy ? 'disabled' : ''}>
@@ -1255,6 +1404,7 @@ function bootstrap() {
     hadPointerLock = false;
     document.body.classList.remove('playing-active');
     if (input) {
+      releaseGameplayShortcutLock(false);
       input.exitPointerLock();
       input.resetAll();
     }
@@ -1320,6 +1470,8 @@ function bootstrap() {
         auto_forge: "./assets/card-auto_forge.webp",
         scavenger_protocol: "./assets/card-scavenger_protocol.webp",
         shield_to_ult: "./assets/card-shield_to_ult.webp",
+        void_breaker: "./assets/card-tungsten_core.webp",
+        gravity_thruster: "./assets/card-thruster_tune.webp",
       };
       const cardArtSrc = CARD_ART_MAP[card.id] || CARD_ART_MAP.tungsten_core;
       const cardArt = `<img class="tactical-card-img" loading="eager" decoding="sync" src="${cardArtSrc}" alt="${card.name} 일러스트" />`;
@@ -1372,7 +1524,10 @@ function bootstrap() {
     syncTouchOverlayVisibility();
     if (input) {
       input.resetAll();
-      if (!isTouchActive()) input.requestPointerLock();
+      if (!isTouchActive()) {
+        engageGameplayShortcutLock(true);
+        input.requestPointerLock();
+      }
     }
   }
 
@@ -1540,6 +1695,8 @@ function bootstrap() {
     zone: null,
     enemies: null,
     pickups: null,
+    voidGates: null,
+    lowGravityZones: null,
     fps: 60,
   };
 
@@ -1594,6 +1751,18 @@ function bootstrap() {
     }
     soundEngine.unlock();
   }
+
+  window.addEventListener('pointerdown', () => {
+    if (soundEngine && (!soundEngine.ctx || soundEngine.ctx.state !== 'running')) {
+      soundEngine.unlock();
+    }
+  }, { passive: true });
+
+  window.addEventListener('keydown', () => {
+    if (soundEngine && (!soundEngine.ctx || soundEngine.ctx.state !== 'running')) {
+      soundEngine.unlock();
+    }
+  }, { passive: true });
 
   function showWebGLFallback(reason) {
     stopLoop();
@@ -1903,6 +2072,8 @@ function bootstrap() {
         playerController.addScreenShake(0.45);
       }
       if (p && p.archetypeId === 'cyber_mech_boss') unlockAchievement('first_clear');
+      if (p && p.archetypeId === 'aegis_overlord_boss') unlockAchievement('citadel_clear');
+      if (p && p.archetypeId === 'transcendent_omega_boss') unlockAchievement('abyss_clear');
       if (
         p &&
         (p.archetypeId === 'interceptor_drone' ||
@@ -1935,7 +2106,7 @@ function bootstrap() {
         if (killedUnit.eliteAffix === 'supply_drone') {
           if (interactables) {
             interactables.spawnGoldDrop(killedUnit.position, 45);
-            const dropPool = [1, 2, 3, 5, 6];
+            const dropPool = [0, 1, 2, 3, 4, 5, 6];
             interactables.spawnWeaponDrop(killedUnit.position, dropPool[Math.floor(Math.random() * dropPool.length)]);
           }
           addStylePoints(28, '보급 드론 격추!');
@@ -2004,6 +2175,25 @@ function bootstrap() {
         const vfxHex = p.gimmickType === 'emp_pylon' ? 0xf59e0b : p.gimmickType === 'shield_relay' ? 0x38bdf8 : 0xff6a00;
         vfxManager.spawnExplosion(p.position, p.radius, vfxHex);
       }
+    });
+
+    eventBus.on(EVENTS.VOID_GATE_SHATTERED, (p) => {
+      metaState.voidGatesDestroyed = (metaState.voidGatesDestroyed || 0) + 1;
+      if (metaState.voidGatesDestroyed >= 3) unlockAchievement('abyss_gatebreaker');
+      saveMetaState();
+      addStylePoints(24, '차원 게이트 파괴!');
+      if (vfxManager && p && p.position) {
+        vfxManager.spawnExplosion(p.position, 4.5, 0xa855f7);
+      }
+    });
+
+    eventBus.on(EVENTS.BOSS_TURRET_SHATTERED, (p) => {
+      const allBroken = Boolean(p && p.allBroken);
+      addStylePoints(allBroken ? 32 : 16, allBroken ? '방어막 링크 붕괴!' : '부유 포탑 파괴!');
+    });
+
+    eventBus.on(EVENTS.ENEMY_OVERLOAD, () => {
+      addStylePoints(14, '과부하 연쇄 폭발!');
     });
 
     eventBus.on(EVENTS.WEAPON_FIRED, () => {
@@ -2157,6 +2347,7 @@ function bootstrap() {
     }
 
     updateDeviceBadge();
+    saveSettingsState();
   }
 
   function applyQuality(preset) {
@@ -2177,6 +2368,7 @@ function bootstrap() {
       if (vfxManager) vfxManager.setQuality(qCfg);
       engine.bakeStaticShadows();
     }
+    saveSettingsState();
   }
 
   function applySensitivity(val) {
@@ -2193,6 +2385,7 @@ function bootstrap() {
     if (runtimeReady && input) {
       input.setSensitivity(s);
     }
+    saveSettingsState();
   }
 
   function applyVolume(val) {
@@ -2209,6 +2402,7 @@ function bootstrap() {
     if (soundEngine) {
       soundEngine.setMasterVolume(v / 100);
     }
+    saveSettingsState();
   }
 
   function applyMusic(enabled) {
@@ -2221,6 +2415,7 @@ function bootstrap() {
     if (soundEngine) {
       soundEngine.setMusicEnabled(on);
     }
+    saveSettingsState();
   }
 
   function applyShowFps(enabled) {
@@ -2230,6 +2425,7 @@ function bootstrap() {
     if (titleChkFps && titleChkFps.checked !== on) titleChkFps.checked = on;
     if (pauseChkFps && pauseChkFps.checked !== on) pauseChkFps.checked = on;
     if (fpsCounterEl) fpsCounterEl.classList.toggle('hidden', !on);
+    saveSettingsState();
   }
 
   function syncTouchOverlayVisibility() {
@@ -2250,6 +2446,8 @@ function bootstrap() {
     hudSnapshot.zone = interactables.getZoneState();
     hudSnapshot.enemies = waveDirector.getTargets();
     hudSnapshot.pickups = interactables.getPickups();
+    hudSnapshot.voidGates = interactables.getActiveVoidGates ? interactables.getActiveVoidGates() : null;
+    hudSnapshot.lowGravityZones = interactables.getActiveLowGravityZones ? interactables.getActiveLowGravityZones() : null;
     hudSnapshot.fps = engine ? engine.fps : 60;
     hudManager.update(0.016, hudSnapshot);
     if (touchOverlay) touchOverlay.syncState(hudSnapshot);
@@ -2274,6 +2472,7 @@ function bootstrap() {
   function startNewGame() {
     if (isTransitioning) return;
     unlockAudioOnGesture();
+    engageGameplayShortcutLock(true);
 
     runFadeTransition(
       () => {
@@ -2329,9 +2528,10 @@ function bootstrap() {
         draftChoices = [];
         if (upgradePanel) upgradePanel.classList.add('hidden');
         const { mods: startMods } = computePlayerMods();
+        const { primaryIndex, secondaryIndex } = getEquippedLoadoutIndices();
         playerController.applyModifiers(startMods, true);
         playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
-        weaponSystem.reset();
+        weaponSystem.reset(primaryIndex, secondaryIndex);
         lastWeaponState = weaponSystem.getCurrentWeaponState();
 
         engine.viewmodelScene.visible = true;
@@ -2360,6 +2560,7 @@ function bootstrap() {
       },
       () => {
         if (gameState === 'playing' && runtimeReady && !isTouchActive()) {
+          engageGameplayShortcutLock(false);
           input.requestPointerLock();
         }
       }
@@ -2413,6 +2614,7 @@ function bootstrap() {
     hadPointerLock = false;
 
     document.body.classList.remove('playing-active');
+    releaseGameplayShortcutLock(false);
     input.exitPointerLock();
     input.resetAll();
     touchOverlay.setVisible(false);
@@ -2434,6 +2636,7 @@ function bootstrap() {
     eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
 
     if (!isTouchActive()) {
+      engageGameplayShortcutLock(true);
       input.requestPointerLock();
     }
   }
@@ -2455,6 +2658,7 @@ function bootstrap() {
     if (pausePanel) pausePanel.classList.add('hidden');
 
     if (input) {
+      releaseGameplayShortcutLock(false);
       input.exitPointerLock();
       input.resetAll();
     }
@@ -2481,6 +2685,7 @@ function bootstrap() {
     document.body.classList.remove('playing-active');
 
     if (input) {
+      releaseGameplayShortcutLock(true);
       input.exitPointerLock();
       input.resetAll();
     }
@@ -2530,9 +2735,11 @@ function bootstrap() {
     }
     if (selectedMissionMode === 'endless' && totalReachedWave >= 8) unlockAchievement('endless_8');
     if (selectedMissionMode === 'endless' && totalReachedWave >= 12) unlockAchievement('endless_12');
+    if (selectedMissionMode === 'endless' && totalReachedWave >= 15) unlockAchievement('endless_15');
     if (isVictory) {
       unlockAchievement('first_clear');
       unlockAchievement('citadel_clear');
+      unlockAchievement('abyss_clear');
       if (selectedHeatLevel >= 2) unlockAchievement('heat_clear');
     }
     saveMetaState();
@@ -2583,6 +2790,7 @@ function bootstrap() {
       document.body.classList.remove('playing-active');
 
       if (runtimeReady) {
+        releaseGameplayShortcutLock(true);
         input.exitPointerLock();
         input.resetAll();
         touchOverlay.setVisible(false);
@@ -2592,7 +2800,8 @@ function bootstrap() {
         waveDirector.reset();
         if (interactables) interactables.reset();
         vfxManager.reset();
-        weaponSystem.reset();
+        const { primaryIndex, secondaryIndex } = getEquippedLoadoutIndices();
+        weaponSystem.reset(primaryIndex, secondaryIndex);
         if (soundEngine) soundEngine.setCombatIntensity(0);
         eventBus.emit(EVENTS.GAME_STATE, { state: 'title' });
       }
@@ -2753,6 +2962,7 @@ function bootstrap() {
   applyMusic(settings.music);
   applyShowFps(settings.showFps);
   applyControlMode(settings.controlMode);
+  _initializingSettings = false;
   renderArmoryUI();
   showTitleSubpanel('main');
 
@@ -3075,6 +3285,8 @@ function bootstrap() {
       hudSnapshot.zone = interactables.getZoneState();
       hudSnapshot.enemies = livingEnemies;
       hudSnapshot.pickups = interactables.getPickups();
+      hudSnapshot.voidGates = interactables.getActiveVoidGates ? interactables.getActiveVoidGates() : null;
+      hudSnapshot.lowGravityZones = interactables.getActiveLowGravityZones ? interactables.getActiveLowGravityZones() : null;
       hudSnapshot.fps = engine.fps;
       hudSnapshot.gold = metaState.gold;
       hudSnapshot.loadout = weaponSystem.getLoadoutInfo();

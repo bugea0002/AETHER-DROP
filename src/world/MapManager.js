@@ -8,6 +8,8 @@ const { Map3CitadelBuilder } = __require("src/world/Map3CitadelBuilder.js");
 const { Map4AegisFlightDeckBuilder } = __require("src/world/Map4AegisFlightDeckBuilder.js");
 const { Map5AegisReactorBayBuilder } = __require("src/world/Map5AegisReactorBayBuilder.js");
 const { Map6OrbitalDrydockBuilder } = __require("src/world/Map6OrbitalDrydockBuilder.js");
+const { Map7AbyssRingBuilder } = __require("src/world/Map7AbyssRingBuilder.js");
+const { Map8AbyssSanctumBuilder } = __require("src/world/Map8AbyssSanctumBuilder.js");
 const { TutorialMapBuilder } = __require("src/world/TutorialMapBuilder.js");
 
 /**
@@ -49,7 +51,7 @@ class MapManager {
    */
   loadMap(mapIndex) {
     const parsed = Number.isFinite(mapIndex) ? Math.floor(mapIndex) : 0;
-    const idx = parsed >= 0 && parsed <= 6 ? parsed : 0;
+    const idx = parsed >= 0 && parsed <= 8 ? parsed : 0;
 
     if (this._activeBuilder) {
       this._activeBuilder.dispose();
@@ -78,6 +80,10 @@ class MapManager {
       builder = new Map6OrbitalDrydockBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     } else if (idx === 6) {
       builder = new TutorialMapBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
+    } else if (idx === 7) {
+      builder = new Map7AbyssRingBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
+    } else if (idx === 8) {
+      builder = new Map8AbyssSanctumBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     } else {
       builder = new ArenaBuilder(this.scene, this.collisionWorld, qualityConfig, this._texGen);
     }

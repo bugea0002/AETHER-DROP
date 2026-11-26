@@ -102,6 +102,8 @@ class PlayerController {
     this.phaseInvulnTimer = 0;
     this.reloadBuffTimer = 0;
     this.hyperBarrageTimer = 0;
+    this.arenaGravityScale = 1.0;
+    this.inLowGravityZone = false;
     this.mods = this._defaultMods();
 
     // Internal locomotion & timers
@@ -171,6 +173,8 @@ class PlayerController {
       speed: 0,
       currentFov: this.currentFov,
       cameraRoll: 0,
+      arenaGravityScale: 1.0,
+      inLowGravityZone: false,
     };
 
     this.camera.rotation.order = 'YXZ';
@@ -199,6 +203,8 @@ class PlayerController {
       zoneRegenHp: 0,
       zoneDamageBonus: 0.0,
       reactiveArmor: false,
+      gravityThruster: false,
+      voidBreakerMult: 1.0,
       synergyAssault: false,
       synergyMobility: false,
       synergyVanguard: false,
@@ -247,6 +253,8 @@ class PlayerController {
     this.inZoneBuff = false;
     this.dashOverdriveTimer = 0;
     this.reactiveArmorTimer = 0;
+    this.arenaGravityScale = 1.0;
+    this.inLowGravityZone = false;
     this.isAlive = true;
 
     this.isGrounded = false;
@@ -502,7 +510,7 @@ class PlayerController {
         this._slideCooldown = 0.25;
       }
 
-      const gravScale = this.mods && this.mods.lowGravity ? 0.75 : 1.0;
+      const gravScale = this._getEffectiveGravityScale();
       this.velocity.y -= PLAYER_CONFIG.gravity * gravScale * clampedDt;
     } else {
       // Standard ground / air locomotion (with meta/card moveSpeedMult)
@@ -510,6 +518,9 @@ class PlayerController {
         (this.isSprinting ? PLAYER_CONFIG.sprintSpeed : PLAYER_CONFIG.walkSpeed) *
         (this.mods ? this.mods.moveSpeedMult : 1.0) *
         (this.weaponMoveMult || 1.0);
+      if (this.inLowGravityZone && this.mods && this.mods.gravityThruster) {
+        targetSpeed *= 1.2;
+      }
       if (this.isGuarding) {
         targetSpeed *= 0.78;
       } else if (this.isAds) {
@@ -558,7 +569,8 @@ class PlayerController {
             this.velocity.x * this._wishDir.x + this.velocity.z * this._wishDir.z;
 
           if (projSpeed < targetSpeed) {
-            const airAccel = PLAYER_CONFIG.groundAccel * PLAYER_CONFIG.airControl;
+            const airControlMult = this.mods && this.mods.gravityThruster ? 1.3 : 1.0;
+            const airAccel = PLAYER_CONFIG.groundAccel * PLAYER_CONFIG.airControl * airControlMult;
             const addSpeed = Math.min(targetSpeed - projSpeed, airAccel * clampedDt);
             this.velocity.x += this._wishDir.x * addSpeed;
             this.velocity.z += this._wishDir.z * addSpeed;
@@ -575,7 +587,8 @@ class PlayerController {
         }
       }
 
-      this.velocity.y -= PLAYER_CONFIG.gravity * clampedDt;
+      const gravScale = this._getEffectiveGravityScale();
+      this.velocity.y -= PLAYER_CONFIG.gravity * gravScale * clampedDt;
     }
 
     // 8. Smooth capsule height interpolation respecting full-capsule overhead clearance
@@ -1188,7 +1201,27 @@ class PlayerController {
     s.ultCharge = this.ultCharge;
     s.ultActiveTimer = this.ultActiveTimer;
     s.frameId = (this.mods && this.mods.frameId) || 'vanguard';
+    s.arenaGravityScale = this.arenaGravityScale;
+    s.inLowGravityZone = Boolean(this.inLowGravityZone);
     return s;
+  }
+
+  /**
+   * Apply localized arena low-gravity multiplier from active Low-G zones.
+   * @param {number} [scale=1.0]
+   * @param {boolean} [active=false]
+   */
+  setArenaGravityScale(scale = 1.0, active = false) {
+    const safeScale = Number.isFinite(scale) ? Math.max(0.25, Math.min(1.5, scale)) : 1.0;
+    this.arenaGravityScale = safeScale;
+    this.inLowGravityZone = Boolean(active);
+  }
+
+  /** @private */
+  _getEffectiveGravityScale() {
+    const modScale = this.mods && this.mods.lowGravity ? 0.75 : 1.0;
+    const arenaScale = Number.isFinite(this.arenaGravityScale) ? this.arenaGravityScale : 1.0;
+    return modScale * arenaScale;
   }
 }
   __exports.PlayerController = PlayerController;

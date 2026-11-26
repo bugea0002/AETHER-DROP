@@ -84,6 +84,7 @@ class WeaponSystem {
         reserve: w.maxReserve,
         heat: 0,
         overheated: false,
+        heatCoolDelay: 0,
         regenTimer: 0,
       });
     }
@@ -366,8 +367,11 @@ class WeaponSystem {
       const w = WEAPONS[i];
       const st = this._ammoStates[i];
       if (w.mech === 'heat') {
-        const coolRate = st.overheated ? 52 : 34;
-        if (st.heat > 0) {
+        if (st.heatCoolDelay > 0) {
+          st.heatCoolDelay = Math.max(0, st.heatCoolDelay - clampedDt);
+        }
+        const coolRate = st.overheated ? 52 : (st.heatCoolDelay > 0 ? 0 : 34);
+        if (st.heat > 0 && coolRate > 0) {
           st.heat = Math.max(0, st.heat - coolRate * clampedDt);
           if (st.overheated && st.heat <= 1) {
             st.overheated = false;
@@ -478,7 +482,11 @@ class WeaponSystem {
     const moveBonus =
       activeWeapon.moveSpreadBonus * speedRatio * airFactor * (1 - this._adsProgress * 0.72);
     const guardSpreadFactor = pc && pc.isGuarding ? (activeWeapon.guardSpreadMult || 1.35) : 1.0;
-    const currentSpread = (baseSpread + moveBonus + this._spreadBloom * (1 - this._adsProgress * 0.65)) * guardSpreadFactor;
+    const crouchSpreadFactor = pc && pc.isCrouching ? 0.5 : 1.0;
+    const currentSpread =
+      (baseSpread + moveBonus + this._spreadBloom * (1 - this._adsProgress * 0.65)) *
+      guardSpreadFactor *
+      crouchSpreadFactor;
 
     // 7. Firing Input & Semi-Auto Buffer
     const fireDown = this.input.isDown('fire');
@@ -832,6 +840,7 @@ class WeaponSystem {
     if (w.mech === 'heat') {
       st.heat = 0;
       st.overheated = false;
+      st.heatCoolDelay = 0;
       st.ammo = 0;
     } else {
       st.ammo = w.magSize;
@@ -1141,14 +1150,27 @@ class WeaponSystem {
       this._dmgOptions.knockback = 12.0;
       this._dmgOptions.isMelee = true;
 
+      let meleeDmg = PLAYER_CONFIG.meleeDamage;
+      const meleeMods = pc && pc.mods;
+      if (
+        meleeMods &&
+        meleeMods.voidBreakerMult > 1 &&
+        (target.isVoidGate ||
+          target.isBossTurret ||
+          (target.archetype && (target.archetype.hasShield || target.archetype.isBoss)) ||
+          target._turretShieldActive)
+      ) {
+        meleeDmg *= meleeMods.voidBreakerMult;
+      }
+
       const res = target.applyDamage(
-        PLAYER_CONFIG.meleeDamage,
+        meleeDmg,
         this._hitPoint,
         false,
         this._kbDir,
         this._dmgOptions
       );
-      const dealt = res && typeof res.dealt === 'number' ? res.dealt : PLAYER_CONFIG.meleeDamage;
+      const dealt = res && typeof res.dealt === 'number' ? res.dealt : meleeDmg;
       const killed = Boolean(res && res.killed);
       const blocked = Boolean(res && res.blockedByShield);
 
@@ -1213,7 +1235,9 @@ class WeaponSystem {
     const overdrive = (pc && pc.dashOverdriveTimer > 0) || slideFree;
     if (weapon.mech === 'heat') {
       if (!overdrive) {
-        ammoState.heat = Math.min(100, ammoState.heat + 13);
+        const heatStep = Number.isFinite(weapon.heatPerShot) ? weapon.heatPerShot : 2.86;
+        ammoState.heatCoolDelay = Number.isFinite(weapon.heatCoolDelay) ? weapon.heatCoolDelay : 0.20;
+        ammoState.heat = Math.min(100, ammoState.heat + heatStep);
         if (ammoState.heat >= 100) {
           if (mods && mods.thermalNova) {
             // Thermal Nova rare card: forward 9m flame blast + instant vent to 45%
@@ -1251,7 +1275,7 @@ class WeaponSystem {
     }
     const rpmMult = (mods ? mods.fireRateMult : 1.0) * (overdrive ? 1.3 : 1.0);
     this._fireCooldown = 60 / (weapon.rpm * rpmMult);
-    this._spreadBloom = Math.min(0.045, this._spreadBloom + weapon.hipSpread * 0.35);
+    this._spreadBloom = Math.min(0.036, this._spreadBloom + weapon.hipSpread * 0.35);
 
     // Update diegetic LED segments on weapon immediately
     this._updateAmmoBar(rig, ammoState.ammo, weapon.magSize, 1.0);
@@ -1532,6 +1556,17 @@ class WeaponSystem {
           const minM = weapon.falloffMinMult || 0.45;
           const t = Math.min(1, (h.distance - weapon.falloffStart) / Math.max(1, endD - weapon.falloffStart));
           falloffMult = 1.0 - t * (1.0 - minM);
+        }
+        if (
+          mods &&
+          mods.voidBreakerMult > 1 &&
+          (entity.isVoidGate ||
+            entity.isBossTurret ||
+            h.isShield ||
+            (entity.archetype && (entity.archetype.hasShield || entity.archetype.isBoss)) ||
+            entity._turretShieldActive)
+        ) {
+          totalDmgMult *= mods.voidBreakerMult;
         }
         const rawDamage = weapon.damage * totalDmgMult * hsMult * falloffMult;
         this._kbDir.set(this._rayDir.x, this._rayDir.y + 0.12, this._rayDir.z).normalize();
@@ -2202,23 +2237,33 @@ class WeaponSystem {
     }
   }
 
-  reset() {
+  reset(primaryIndex = 0, secondaryIndex = 4) {
+    const pIdx =
+      Number.isInteger(primaryIndex) && WEAPONS[primaryIndex] && WEAPONS[primaryIndex].category === 'primary'
+        ? primaryIndex
+        : 0;
+    const sIdx =
+      Number.isInteger(secondaryIndex) && WEAPONS[secondaryIndex] && WEAPONS[secondaryIndex].category === 'secondary'
+        ? secondaryIndex
+        : 4;
+
     for (let i = 0; i < WEAPONS.length; i++) {
       const w = WEAPONS[i];
       this._ammoStates[i].ammo = w.mech === 'heat' ? 0 : w.magSize;
       this._ammoStates[i].reserve = w.maxReserve;
       this._ammoStates[i].heat = 0;
       this._ammoStates[i].overheated = false;
+      this._ammoStates[i].heatCoolDelay = 0;
       this._ammoStates[i].regenTimer = 0;
-      this._rigs[i].root.visible = i === 0;
+      this._rigs[i].root.visible = i === pIdx;
       this._resetMechanicalParts(this._rigs[i]);
-      this._updateAmmoBar(this._rigs[i], w.magSize, w.magSize, 1.0);
+      this._updateAmmoBar(this._rigs[i], this._ammoStates[i].ammo, w.magSize, 1.0);
     }
 
-    this.equippedPrimaryIndex = 0;
-    this.equippedSecondaryIndex = 4;
+    this.equippedPrimaryIndex = pIdx;
+    this.equippedSecondaryIndex = sIdx;
     this.activeLoadoutSlot = 0;
-    this.currentIndex = 0;
+    this.currentIndex = pIdx;
     this._pendingIndex = -1;
     this.weaponOverclock = new Array(WEAPONS.length).fill(0);
     for (let i = 0; i < WEAPONS.length; i++) {
@@ -2274,18 +2319,19 @@ class WeaponSystem {
       this.playerController.isAds = false;
     }
 
-    const w0 = WEAPONS[0];
-    this._rigs[0].root.position.set(
+    const w0 = WEAPONS[pIdx];
+    const st0 = this._ammoStates[pIdx];
+    this._rigs[pIdx].root.position.set(
       w0.viewmodelOffset.x,
       w0.viewmodelOffset.y,
       w0.viewmodelOffset.z
     );
-    this._rigs[0].root.rotation.set(0, 0, 0);
+    this._rigs[pIdx].root.rotation.set(0, 0, 0);
 
-    this._switchedPayload.index = 0;
+    this._switchedPayload.index = pIdx;
     this._switchedPayload.weapon = w0;
-    this._switchedPayload.ammo = w0.magSize;
-    this._switchedPayload.reserve = w0.maxReserve;
+    this._switchedPayload.ammo = st0.ammo;
+    this._switchedPayload.reserve = st0.reserve;
     this._switchedPayload.magSize = w0.magSize;
     this.eventBus.emit(EVENTS.WEAPON_SWITCHED, this._switchedPayload);
   }

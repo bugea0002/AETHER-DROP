@@ -85,6 +85,9 @@ class HudManager {
     this._bossShieldTag = byId('boss-shield-tag');
     this._bossHpText = byId('boss-hp-text');
     this._bossBarFill = byId('boss-bar-fill');
+    this._bossTurretsRow = byId('boss-turrets-row');
+    this._bossTurretsPips = byId('boss-turrets-pips');
+    this._bossShieldLink = byId('boss-shield-link');
 
     this._banner = byId('announcement-banner');
     this._bannerKicker = byId('announcement-kicker');
@@ -95,6 +98,8 @@ class HudManager {
     this._beaconWaypoint = byId('beacon-waypoint');
     this._beaconDist = byId('beacon-dist');
     this._hudGoldPill = byId('hud-gold-pill');
+    this._lowGBadge = byId('low-g-badge');
+    this._voidGatePill = byId('void-gate-pill');
     this._hudBuffRow = byId('hud-buff-row');
     this._lastGoldText = '';
     this._lastBuffKey = '';
@@ -107,6 +112,8 @@ class HudManager {
       firstHeavy: false,
       firstMortar: false,
       firstOverlord: false,
+      firstOverload: false,
+      firstTranscendent: false,
     };
     this._waypointVec = new THREE.Vector3();
 
@@ -277,6 +284,10 @@ class HudManager {
       bossHpText: '',
       bossHpPct: -1,
       bossShield: null,
+      bossTurretKey: '',
+      bossShieldLinkKey: '',
+      lowG: false,
+      voidGateCount: -1,
       score: -1,
       combo: -1,
       comboPct: -1,
@@ -363,6 +374,19 @@ class HudManager {
     });
     on(EVENTS.MAP_TRANSITION, (p) => this._onMapTransition(p));
     on(EVENTS.GAME_STATE, (p) => this._onGameState(p));
+    on(EVENTS.VOID_GATE_SHATTERED, () => {
+      this._pushKillfeed('차원 게이트 파괴!', 'headshot');
+    });
+    on(EVENTS.ENEMY_OVERLOAD, () => {
+      this._pushKillfeed('과부하 자폭 연쇄!', 'boss');
+    });
+    on(EVENTS.BOSS_TURRET_SHATTERED, (p) => {
+      if (p && p.allBroken) {
+        this._pushKillfeed('방어막 링크 붕괴 — 코어 노출!', 'boss');
+      } else if (p) {
+        this._pushKillfeed(`부유 포탑 파괴 (잔여 ${p.remaining || 0})`, 'headshot');
+      }
+    });
   }
 
   /**
@@ -646,7 +670,7 @@ class HudManager {
     if (!payload) return;
     this._zoneCapturedNotified = false;
     const wPad = String(payload.wave || 1).padStart(2, '0');
-    const tPad = String(payload.totalWaves || 10).padStart(2, '0');
+    const tPad = String(payload.totalWaves || 15).padStart(2, '0');
     const kicker = payload.isBossWave
       ? '최종 보스 출현'
       : `WAVE ${wPad} / ${tPad}`;
@@ -664,6 +688,14 @@ class HudManager {
       this.showOnboardingTip('전술 기믹: 노란 EMP 파일런을 사격하면 주변 적 방어막을 붕괴시킵니다', 4.8);
     } else if (payload.wave === 8) {
       this.showOnboardingTip('이지스 쉴드 중계기가 적 체력을 회복시킵니다 — 최우선 파괴하세요', 4.8);
+    } else if (payload.wave === 11) {
+      this.showOnboardingTip('시안 저중력 구역(LOW-G)으로 고공 도약하고, 과부하 돌격병의 연쇄 폭발을 유도하세요', 5.0);
+    } else if (payload.wave === 12) {
+      this.showOnboardingTip('보라색 차원 게이트가 소환수를 전개합니다 — 게이트를 최우선으로 파괴하세요', 5.0);
+    } else if (payload.wave === 14) {
+      this.showOnboardingTip('차원 게이트 2기 동시 가동 — 공간 도약 적과 게이트를 우선 제압하세요', 5.0);
+    } else if (payload.wave === 15) {
+      this.showOnboardingTip('TRANSCENDENT-OMEGA의 궤도 부유 포탑을 모두 파괴해 방어막 링크를 해제하세요', 5.2);
     } else if (payload.controlZoneActive && !this._onboardingFlags.firstBeacon) {
       this._onboardingFlags.firstBeacon = true;
       this.showOnboardingTip('노란 마커(테라비콘)를 점령하거나 적을 섬멸하세요', 4.5);
@@ -801,13 +833,13 @@ class HudManager {
     if (this._weaponName) this._weaponName.textContent = weapon.name;
     if (this._weaponRole) this._weaponRole.textContent = weapon.role;
 
-    const activeIdx = Number.isFinite(slotIndex) ? slotIndex : weapon.slot ? weapon.slot - 1 : 0;
+    const activeIdx = weapon.category === 'secondary' ? 1 : 0;
     for (let i = 0; i < this._slotBtns.length; i++) {
       const btn = this._slotBtns[i];
       if (btn) btn.classList.toggle('active', i === activeIdx);
     }
     this._cache.weaponId = weapon.id;
-    this._cache.weaponSlot = activeIdx;
+    this._cache.weaponSlot = Number.isFinite(slotIndex) ? slotIndex : activeIdx;
   }
 
   // ---------------------------------------------------------------------------
@@ -990,7 +1022,7 @@ class HudManager {
       if (c.wave !== wave.wave) {
         c.wave = wave.wave;
         if (this._waveBadge) {
-          this._waveBadge.textContent = wave.totalWaves === 0 ? `ENDLESS // W${Math.max(1, wave.wave)}` : `WAVE ${Math.max(1, wave.wave)} / ${wave.totalWaves || 10}`;
+          this._waveBadge.textContent = wave.totalWaves === 0 ? `ENDLESS // W${Math.max(1, wave.wave)}` : `WAVE ${Math.max(1, wave.wave)} / ${wave.totalWaves || 15}`;
         }
       }
       if (c.waveName !== wave.waveName) {
@@ -1112,6 +1144,38 @@ class HudManager {
         c.bossShield = shActive;
         if (this._bossShieldTag) this._bossShieldTag.classList.toggle('hidden', !shActive);
       }
+      const totalT = boss.turretsTotal || 0;
+      const aliveT = boss.turretsAlive || 0;
+      const showTurrets = totalT > 0 || Boolean(boss.coreExposed);
+      if (this._bossTurretsRow) {
+        this._bossTurretsRow.classList.toggle('hidden', !showTurrets);
+      }
+      if (showTurrets) {
+        const tKey = `${aliveT}:${totalT}`;
+        if (c.bossTurretKey !== tKey) {
+          c.bossTurretKey = tKey;
+          if (this._bossTurretsPips) {
+            let html = '';
+            for (let ti = 0; ti < totalT; ti++) {
+              html += `<span class="boss-turret-pip${ti >= aliveT ? ' destroyed' : ''}"></span>`;
+            }
+            this._bossTurretsPips.innerHTML = html;
+          }
+        }
+        const linkKey = boss.turretShieldActive ? 'link' : boss.coreExposed ? 'exposed' : 'broken';
+        if (c.bossShieldLinkKey !== linkKey) {
+          c.bossShieldLinkKey = linkKey;
+          if (this._bossShieldLink) {
+            this._bossShieldLink.classList.toggle('broken', linkKey !== 'link');
+            this._bossShieldLink.textContent =
+              linkKey === 'link'
+                ? 'SHIELD LINK (-65% DMG)'
+                : linkKey === 'exposed'
+                ? 'CORE EXPOSED (+35% DMG)'
+                : 'LINK DISRUPTED';
+          }
+        }
+      }
     }
 
     // 10. Announcement Banner & Killfeed Timers
@@ -1152,12 +1216,27 @@ class HudManager {
       }
     }
 
-    // 11.2. Step 2: Gold Pill, Locked/Overclock Weapon Slots & Synergy/Zone Buff Chips
+    // 11.2. Step 2: Gold Pill, Act 3 Badges, Locked/Overclock Weapon Slots & Synergy/Zone Buff Chips
     if (this._hudGoldPill && snapshot.gold !== undefined) {
       const gText = `${snapshot.gold} G`;
       if (this._lastGoldText !== gText) {
         this._lastGoldText = gText;
         this._hudGoldPill.textContent = gText;
+      }
+    }
+    const inLowG = Boolean(player && player.inLowGravityZone);
+    if (c.lowG !== inLowG) {
+      c.lowG = inLowG;
+      if (this._lowGBadge) this._lowGBadge.classList.toggle('hidden', !inLowG);
+    }
+    const gateCount = Array.isArray(snapshot.voidGates) ? snapshot.voidGates.length : 0;
+    if (c.voidGateCount !== gateCount) {
+      c.voidGateCount = gateCount;
+      if (this._voidGatePill) {
+        this._voidGatePill.classList.toggle('hidden', gateCount <= 0);
+        if (gateCount > 0) {
+          this._voidGatePill.textContent = `차원 게이트 ${gateCount}`;
+        }
       }
     }
     if (snapshot.loadout) {
@@ -1216,7 +1295,14 @@ class HudManager {
     this._minimapAccum += clampedDt;
     if (this._minimapAccum >= MINIMAP_INTERVAL) {
       this._minimapAccum = 0;
-      this._renderMinimap(player, snapshot.enemies, snapshot.pickups, zone);
+      this._renderMinimap(
+        player,
+        snapshot.enemies,
+        snapshot.pickups,
+        zone,
+        snapshot.voidGates,
+        snapshot.lowGravityZones
+      );
     }
   }
 
@@ -1243,7 +1329,8 @@ class HudManager {
       }
     }
 
-    const gap = Math.round(clamp(5 + spread * 460, 4, 48));
+    const baseOffset = player && player.isCrouching ? 2.0 : 4.0;
+    const gap = Math.round(clamp(baseOffset + spread * 460, 2, 48));
     if (c.spreadPx !== gap) {
       c.spreadPx = gap;
       if (this._xhairTop) this._xhairTop.style.transform = `translate3d(0, ${-gap - 5}px, 0)`;
@@ -1473,6 +1560,22 @@ class HudManager {
           this._onboardingFlags.firstOverlord = true;
           this.showOnboardingTip('AEGIS-IX 위상 방어막 가동 시 EMP 파일런·중계기를 파괴해 즉시 해제하세요', 5.0);
         }
+        if (
+          !this._onboardingFlags.firstOverload &&
+          e.archetype &&
+          e.archetype.id === 'volatile_rusher'
+        ) {
+          this._onboardingFlags.firstOverload = true;
+          this.showOnboardingTip('과부하 돌격병은 처치 시 연쇄 폭발을 일으킵니다 — 거리를 두고 격파하세요', 4.5);
+        }
+        if (
+          !this._onboardingFlags.firstTranscendent &&
+          e.archetype &&
+          e.archetype.id === 'transcendent_omega_boss'
+        ) {
+          this._onboardingFlags.firstTranscendent = true;
+          this.showOnboardingTip('TRANSCENDENT-OMEGA: 연결된 부유 포탑을 모두 파괴하면 코어가 노출됩니다', 5.0);
+        }
       }
     }
     if (this._sniperWarning) {
@@ -1525,7 +1628,7 @@ class HudManager {
   }
 
   /** @private */
-  _renderMinimap(player, enemies, pickups, zone) {
+  _renderMinimap(player, enemies, pickups, zone, voidGates, lowGravityZones) {
     const ctx = this._minimapCtx;
     if (!ctx) return;
 
@@ -1543,6 +1646,43 @@ class HudManager {
     const drawSpan = MINIMAP_SIZE - pad * 2;
     const toMapX = (wx) => pad + ((wx - this._bounds.minX) / spanX) * drawSpan;
     const toMapY = (wz) => pad + ((wz - this._bounds.minZ) / spanZ) * drawSpan;
+
+    // 1.5. Act 3 Low-Gravity Zones (cyan rings) & Dimensional Void Gates (magenta diamonds)
+    if (Array.isArray(lowGravityZones)) {
+      for (let i = 0; i < lowGravityZones.length; i++) {
+        const lg = lowGravityZones[i];
+        if (!lg || !lg.pos || lg.enabled === false) continue;
+        const lx = toMapX(lg.pos.x);
+        const ly = toMapY(lg.pos.z);
+        const lr = Math.max(4, ((lg.radius || 5.5) / spanX) * drawSpan);
+        ctx.beginPath();
+        ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.14)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.72)';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+      }
+    }
+
+    if (Array.isArray(voidGates)) {
+      for (let i = 0; i < voidGates.length; i++) {
+        const vg = voidGates[i];
+        if (!vg || !vg.isAlive || !vg.position) continue;
+        const vx = toMapX(vg.position.x);
+        const vy = toMapY(vg.position.z);
+        const r = 4.2 + Math.sin(this._radarTime * 7 + i) * 0.8;
+        ctx.save();
+        ctx.translate(vx, vy);
+        ctx.rotate(Math.PI * 0.25);
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.85)';
+        ctx.fillRect(-r * 0.5, -r * 0.5, r, r);
+        ctx.strokeStyle = '#f0abfc';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(-r * 0.5, -r * 0.5, r, r);
+        ctx.restore();
+      }
+    }
 
     // 2. Terra-Beacon Control Zone Ring
     if (this._arenaData && this._arenaData.controlZoneCenter) {
@@ -1739,7 +1879,9 @@ class HudManager {
     }
     if (this._endSubtitle) {
       this._endSubtitle.textContent = isVictory
-        ? (s.wave || 0) >= 10
+        ? (s.wave || 0) >= 15
+          ? 'TRANSCENDENT-OMEGA 격파 완료 — 궤도 심연 코어 완전 해방'
+          : (s.wave || 0) >= 10
           ? 'AEGIS-IX 격파 완료 — 이지스 궤도 성채 완전 탈환'
           : 'COLOSSUS-IV 격파 완료 — 지상 구역 안전 확보'
         : `WAVE ${s.wave || 1}에서 기체 파괴 — 재투입 준비 완료`;
@@ -1754,7 +1896,7 @@ class HudManager {
     if (this._statHeadshots) this._statHeadshots.textContent = String(headshots);
     if (this._statAccuracy) this._statAccuracy.textContent = `${accuracy}%`;
     if (this._statCombo) this._statCombo.textContent = `x${Math.max(1, s.maxCombo || 1)}`;
-    if (this._statWave) this._statWave.textContent = `${s.wave || 1} / ${s.totalWaves || 10}`;
+    if (this._statWave) this._statWave.textContent = `${s.wave || 1} / ${s.totalWaves || 15}`;
     if (this._statTime) this._statTime.textContent = formatTime(s.elapsedSec || 0);
 
     this._sceneResult.classList.toggle('victory', Boolean(isVictory));
@@ -1805,6 +1947,8 @@ class HudManager {
     if (this._sniperWarning) this._sniperWarning.classList.add('hidden');
     if (this._onboardingTip) this._onboardingTip.classList.remove('visible');
     if (this._pickupPrompt) this._pickupPrompt.classList.add('hidden');
+    if (this._lowGBadge) this._lowGBadge.classList.add('hidden');
+    if (this._voidGatePill) this._voidGatePill.classList.add('hidden');
     this._onboardingTimer = 0;
 
     for (let i = 0; i < DAMAGE_ARC_SLOTS; i++) {
@@ -1830,6 +1974,8 @@ class HudManager {
     c.vignetteShield = false;
     c.vignetteLowHp = false;
     c.healOp = '0.000';
+    c.lowG = false;
+    c.voidGateCount = -1;
   }
 
   reset() {
@@ -1841,10 +1987,13 @@ class HudManager {
     this._onboardingFlags.firstHeavy = false;
     this._onboardingFlags.firstMortar = false;
     this._onboardingFlags.firstOverlord = false;
+    this._onboardingFlags.firstOverload = false;
+    this._onboardingFlags.firstTranscendent = false;
 
     if (this._zonePanel) this._zonePanel.className = 'hidden';
     if (this._crosshair) this._crosshair.className = '';
     if (this._bossPanel) this._bossPanel.classList.add('hidden');
+    if (this._bossTurretsRow) this._bossTurretsRow.classList.add('hidden');
     this.hideEndScreen();
 
     for (let i = 0; i < KILLFEED_SLOTS; i++) {
@@ -1883,6 +2032,10 @@ class HudManager {
     c.bossHpText = '';
     c.bossHpPct = -1;
     c.bossShield = null;
+    c.bossTurretKey = '';
+    c.bossShieldLinkKey = '';
+    c.lowG = false;
+    c.voidGateCount = -1;
     c.score = -1;
     c.combo = -1;
     c.comboPct = -1;

@@ -2334,6 +2334,107 @@ class TextureGenerator {
   }
 
   /**
+   * 512x512 obsidian-slate hexagonal orbital abyss conduit floor textures
+   * with subtle cyan/violet energy seams and brushed metallic roughness.
+   *
+   * @param {number} [repeatX=14]
+   * @param {number} [repeatY=14]
+   * @returns {{ map: THREE.CanvasTexture, roughnessMap: THREE.CanvasTexture, bumpMap: THREE.CanvasTexture }}
+   */
+  getAbyssFloorTextures(repeatX = 14, repeatY = 14) {
+    const cacheKey = `abyss_floor_${repeatX}_${repeatY}`;
+    if (this._cache.has(cacheKey)) {
+      return this._cache.get(cacheKey);
+    }
+
+    const size = 512;
+    const albedo = this._createCanvas(size, size);
+    const rough = this._createCanvas(size, size);
+    const bump = this._createCanvas(size, size);
+    const aCtx = albedo.ctx;
+    const rCtx = rough.ctx;
+    const bCtx = bump.ctx;
+    const rng = createRng(9913);
+
+    // Deep obsidian slate base
+    aCtx.fillStyle = '#121320';
+    aCtx.fillRect(0, 0, size, size);
+    rCtx.fillStyle = '#525252';
+    rCtx.fillRect(0, 0, size, size);
+    bCtx.fillStyle = '#8a8a8a';
+    bCtx.fillRect(0, 0, size, size);
+
+    // Hexagonal plating grid
+    const hexR = 46;
+    const dx = hexR * Math.sqrt(3);
+    const dy = hexR * 1.5;
+
+    for (let row = -1; row <= Math.ceil(size / dy) + 1; row++) {
+      for (let col = -1; col <= Math.ceil(size / dx) + 1; col++) {
+        const cx = col * dx + (Math.abs(row) % 2 === 1 ? dx * 0.5 : 0);
+        const cy = row * dy;
+        const shade = Math.floor((rng() - 0.5) * 14);
+        const cr = 22 + shade;
+        const cg = 24 + shade;
+        const cb = 38 + shade;
+
+        const traceHex = (ctx, rad) => {
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const ang = (Math.PI / 3) * i + Math.PI / 6;
+            const px = cx + Math.cos(ang) * rad;
+            const py = cy + Math.sin(ang) * rad;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+        };
+
+        traceHex(aCtx, hexR - 2.2);
+        aCtx.fillStyle = `rgb(${cr},${cg},${cb})`;
+        aCtx.fill();
+
+        const isGlowSeam = (row + col) % 3 === 0;
+        aCtx.strokeStyle = isGlowSeam
+          ? 'rgba(168, 85, 247, 0.42)'
+          : 'rgba(56, 189, 248, 0.24)';
+        aCtx.lineWidth = isGlowSeam ? 2.6 : 1.8;
+        aCtx.stroke();
+
+        traceHex(rCtx, hexR - 2.2);
+        rCtx.fillStyle = rng() > 0.5 ? '#484848' : '#646464';
+        rCtx.fill();
+        rCtx.strokeStyle = '#282828';
+        rCtx.lineWidth = 2.4;
+        rCtx.stroke();
+
+        traceHex(bCtx, hexR - 2.2);
+        bCtx.fillStyle = '#9a9a9a';
+        bCtx.fill();
+        bCtx.strokeStyle = '#242424';
+        bCtx.lineWidth = 3.0;
+        bCtx.stroke();
+      }
+    }
+
+    // Fine brushed alloy micro-flecks
+    for (let i = 0; i < 420; i++) {
+      const fx = rng() * size;
+      const fy = rng() * size;
+      aCtx.fillStyle = i % 5 === 0 ? 'rgba(192,132,252,0.14)' : 'rgba(148,163,184,0.08)';
+      aCtx.fillRect(fx, fy, 2 + rng() * 6, 1.5);
+    }
+
+    const result = {
+      map: this._buildTexture(albedo.canvas, { isColor: true, repeatX, repeatY }),
+      roughnessMap: this._buildTexture(rough.canvas, { isColor: false, repeatX, repeatY }),
+      bumpMap: this._buildTexture(bump.canvas, { isColor: false, repeatX, repeatY }),
+    };
+    this._cache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
    * Cleanly dispose every generated CanvasTexture to prevent WebGL memory leaks.
    */
   dispose() {

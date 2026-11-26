@@ -145,6 +145,24 @@ class Interactables {
     this._shockwaves = [];
     this._pickups = [];
 
+    // Act 3: Low-Gravity Zones, Destructible Void Gates, Boss Floating Turrets
+    this._lowGravityZones = [];
+    this._activeLowGravityZones = [];
+    this._bossLowGravityOverride = false;
+    this._voidGates = [];
+    this._activeVoidGates = [];
+    this._onVoidGateSummonCallback = null;
+    this._bossTurrets = [];
+    this._bossTurretBoss = null;
+    this._bossTurretTotal = 0;
+    this._bossTurretAlive = 0;
+    this._bossTurretStats = { alive: 0, total: 0 };
+    this._onTurretProjectileCallback = null;
+    this._turretShotDir = new THREE.Vector3();
+    this._turretTetherMid = new THREE.Vector3();
+    this._turretTetherTarget = new THREE.Vector3();
+    this._turretYAxis = new THREE.Vector3(0, 1, 0);
+
     // Latest combat context cached from update() for mid-frame barrel chain reactions
     this._lastPlayerController = null;
     this._lastEnemies = null;
@@ -215,10 +233,13 @@ class Interactables {
       captureSpeedMultiplier: 1.0,
     };
 
-    // Build all interactive systems + Step 2 Dynamic Drops & Boss Hazard Pools + Stage 6-10 Gimmick Pylons
+    // Build all interactive systems + Dynamic Drops & Boss Hazard Pools + Stage 6-15 Gimmicks
     this._buildJumpPads();
     this._buildBarrels();
     this._buildGimmickPylons();
+    this._buildLowGravityZones();
+    this._buildVoidGates();
+    this._buildBossTurretPool();
     this._buildShockwavePool();
     this._buildPickups();
     this._buildControlZone();
@@ -591,6 +612,14 @@ class Interactables {
         emp: [{ x: -13.5, y: 0, z: -5.0 }, { x: 13.5, y: 0, z: -5.0 }],
         relay: [{ x: -13.5, y: 0, z: 5.0 }, { x: 13.5, y: 0, z: 5.0 }],
       },
+      7: {
+        emp: [{ x: -12.0, y: 0, z: -5.5 }, { x: 12.0, y: 0, z: 5.5 }],
+        relay: [{ x: -12.0, y: 0, z: 5.5 }, { x: 12.0, y: 0, z: -5.5 }],
+      },
+      8: {
+        emp: [{ x: -14.0, y: 0, z: -9.5 }, { x: 14.0, y: 0, z: 9.5 }],
+        relay: [{ x: -14.0, y: 0, z: 9.5 }, { x: 14.0, y: 0, z: -9.5 }],
+      },
     };
     const cfg = layoutByMap[mapIdx] || layoutByMap[3];
 
@@ -745,6 +774,334 @@ class Interactables {
     }
     for (let i = 0; i < cfg.relay.length; i++) {
       makePylon(cfg.relay[i], 'shield_relay', i);
+    }
+  }
+
+  /**
+   * Act 3: Build localized Low-Gravity Anti-Gravity Field Zones (Maps 7 & 8 + Boss Phase 3).
+   * @private
+   */
+  _buildLowGravityZones() {
+    const rawZones = Array.isArray(this.arenaData.lowGravityZones) ? this.arenaData.lowGravityZones : [];
+    const list = [...rawZones];
+    if (this.arenaData.bossCentralLowGravityZone) {
+      list.push(Object.assign({}, this.arenaData.bossCentralLowGravityZone, { bossOnly: true }));
+    }
+    if (list.length === 0) return;
+
+    for (let i = 0; i < list.length; i++) {
+      const cfg = list[i];
+      const pos = cfg.pos || cfg.position || new THREE.Vector3();
+      const radius = cfg.radius || 6.5;
+      const height = cfg.height || 8.5;
+      const gravityScale = cfg.gravityScale || 0.45;
+      const bossOnly = Boolean(cfg.bossOnly);
+
+      const group = new THREE.Group();
+      group.position.set(pos.x, pos.y || 0, pos.z);
+      group.visible = !bossOnly;
+
+      const ringGeo = this._trackGeo(new THREE.TorusGeometry(radius, 0.09, 8, 40));
+      ringGeo.rotateX(Math.PI * 0.5);
+      const ringMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.72,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const baseRing = new THREE.Mesh(ringGeo, ringMat);
+      baseRing.position.y = 0.08;
+      group.add(baseRing);
+
+      const colGeo = this._trackGeo(new THREE.CylinderGeometry(radius * 0.96, radius * 0.96, height, 24, 1, true));
+      const colMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x22d3ee,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const column = new THREE.Mesh(colGeo, colMat);
+      column.position.y = height * 0.5;
+      group.add(column);
+
+      const riseRingGeo = this._trackGeo(new THREE.TorusGeometry(radius * 0.78, 0.05, 6, 32));
+      riseRingGeo.rotateX(Math.PI * 0.5);
+      const riseRing = new THREE.Mesh(riseRingGeo, ringMat);
+      riseRing.position.y = 0.6;
+      group.add(riseRing);
+
+      this.root.add(group);
+      this._lowGravityZones.push({
+        pos: new THREE.Vector3(pos.x, pos.y || 0, pos.z),
+        radius,
+        height,
+        gravityScale,
+        bossOnly,
+        enabled: !bossOnly,
+        group,
+        riseRing,
+        colMat,
+        ringMat,
+        phase: i * 1.1,
+      });
+    }
+  }
+
+  /**
+   * Act 3: Build Destructible Dimensional Void Gates (summon minions until shattered).
+   * @private
+   */
+  _buildVoidGates() {
+    const spawns = Array.isArray(this.arenaData.voidGateSpawns) ? this.arenaData.voidGateSpawns : [];
+    if (spawns.length === 0) return;
+
+    const pillarGeo = this._trackGeo(new THREE.BoxGeometry(0.48, 3.6, 0.62));
+    const archGeo = this._trackGeo(new THREE.BoxGeometry(3.3, 0.44, 0.68));
+    const torusGeo = this._trackGeo(new THREE.TorusGeometry(1.18, 0.11, 10, 28));
+    const discGeo = this._trackGeo(new THREE.CircleGeometry(1.08, 24));
+
+    const frameMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x1e1b4b,
+        metalness: 0.85,
+        roughness: 0.26,
+        emissive: new THREE.Color(0x31105f),
+        emissiveIntensity: 0.45,
+      })
+    );
+
+    const self = this;
+    for (let i = 0; i < spawns.length; i++) {
+      const sp = spawns[i];
+      const p = sp.pos || sp.position || sp;
+      const groundY = this.collisionWorld
+        ? this.collisionWorld.getGroundHeightAt(p.x, p.z, (p.y || 0) + 1.5)
+        : p.y || 0;
+
+      const group = new THREE.Group();
+      group.position.set(p.x, groundY, p.z);
+      group.rotation.y = sp.yaw || 0;
+      group.visible = false;
+
+      const leftPillar = new THREE.Mesh(pillarGeo, frameMat);
+      leftPillar.position.set(-1.38, 1.8, 0);
+      leftPillar.castShadow = true;
+      const rightPillar = new THREE.Mesh(pillarGeo, frameMat);
+      rightPillar.position.set(1.38, 1.8, 0);
+      rightPillar.castShadow = true;
+      const arch = new THREE.Mesh(archGeo, frameMat);
+      arch.position.set(0, 3.7, 0);
+      group.add(leftPillar, rightPillar, arch);
+
+      const coreMat = this._trackMat(
+        new THREE.MeshStandardMaterial({
+          color: 0xc084fc,
+          emissive: new THREE.Color(0xa855f7),
+          emissiveIntensity: 2.2,
+          roughness: 0.18,
+          metalness: 0.25,
+        })
+      );
+      const vortexMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x9333ea,
+          transparent: true,
+          opacity: 0.56,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+
+      const vortexRing = new THREE.Mesh(torusGeo, coreMat);
+      vortexRing.position.set(0, 2.05, 0);
+      const vortexDisc = new THREE.Mesh(discGeo, vortexMat);
+      vortexDisc.position.set(0, 2.05, 0);
+      group.add(vortexRing, vortexDisc);
+      this.root.add(group);
+
+      const position = new THREE.Vector3(p.x, groundY, p.z);
+      const center = new THREE.Vector3(p.x, groundY + 2.05, p.z);
+      const head = new THREE.Vector3(p.x, groundY + 2.15, p.z);
+      const spawnPos = new THREE.Vector3(
+        p.x + Math.sin(sp.yaw || 0) * 2.2,
+        groundY,
+        p.z + Math.cos(sp.yaw || 0) * 2.2
+      );
+      const hitSphere = { center: center.clone(), radius: 1.65, isHead: false };
+      const hitSpheres = [hitSphere];
+
+      const gate = {
+        id: `void_gate_${i}`,
+        isVoidGate: true,
+        isEnemy: false,
+        enabled: false,
+        isAlive: false,
+        hp: 280,
+        maxHp: 280,
+        position,
+        center,
+        aimPoint: head,
+        spawnPos,
+        group,
+        vortexRing,
+        vortexDisc,
+        coreMat,
+        vortexMat,
+        hitFlashTimer: 0,
+        summonTimer: 3.5 + i * 2.0,
+        _hitSphere: hitSphere,
+        _hitSpheres: hitSpheres,
+        getCenterPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(center);
+        },
+        getHeadPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(head);
+        },
+        getHitSpheres() {
+          return hitSpheres;
+        },
+        applyDamage(amount) {
+          if (!gate.enabled || !gate.isAlive || !Number.isFinite(amount) || amount <= 0) {
+            return { dealt: 0, killed: false, blockedByShield: false };
+          }
+          const dealt = Math.min(gate.hp, amount);
+          gate.hp -= dealt;
+          gate.hitFlashTimer = 0.14;
+          if (gate.hp <= 0) {
+            gate.hp = 0;
+            gate.isAlive = false;
+            self._triggerVoidGateShatter(gate);
+            return { dealt, killed: true, blockedByShield: false };
+          }
+          return { dealt, killed: false, blockedByShield: false };
+        },
+      };
+
+      this._voidGates.push(gate);
+    }
+  }
+
+  /**
+   * Act 3: Pre-allocated pool of 4 Orbiting Boss Floating Turrets + Shield Tether Beams.
+   * @private
+   */
+  _buildBossTurretPool() {
+    const coreGeo = this._trackGeo(new THREE.OctahedronGeometry(0.46, 0));
+    const ringGeo = this._trackGeo(new THREE.TorusGeometry(0.68, 0.055, 6, 20));
+    ringGeo.rotateX(Math.PI * 0.5);
+    const finGeo = this._trackGeo(new THREE.BoxGeometry(0.14, 0.72, 0.24));
+    const tetherGeo = this._trackGeo(new THREE.CylinderGeometry(0.055, 0.055, 1.0, 6));
+
+    const frameMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x1e1b4b,
+        metalness: 0.85,
+        roughness: 0.24,
+      })
+    );
+
+    const self = this;
+    for (let i = 0; i < 4; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      const coreMat = this._trackMat(
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: new THREE.Color(0xa855f7),
+          emissiveIntensity: 2.2,
+          roughness: 0.2,
+          metalness: 0.25,
+        })
+      );
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      const ring = new THREE.Mesh(ringGeo, coreMat);
+      group.add(core, ring);
+
+      for (let f = 0; f < 3; f++) {
+        const a = (f * Math.PI * 2) / 3;
+        const fin = new THREE.Mesh(finGeo, frameMat);
+        fin.position.set(Math.cos(a) * 0.54, 0, Math.sin(a) * 0.54);
+        fin.rotation.y = -a;
+        group.add(fin);
+      }
+      this.root.add(group);
+
+      const tetherMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xc084fc,
+          transparent: true,
+          opacity: 0.65,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const tetherMesh = new THREE.Mesh(tetherGeo, tetherMat);
+      tetherMesh.visible = false;
+      this.root.add(tetherMesh);
+
+      const position = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      const hitSphere = { center, radius: 0.92, isHead: false };
+      const hitSpheres = [hitSphere];
+
+      const turret = {
+        id: `boss_turret_${i}`,
+        index: i,
+        isBossTurret: true,
+        isEnemy: false,
+        isAlive: false,
+        hp: 190,
+        maxHp: 190,
+        position,
+        center,
+        aimPoint: center,
+        group,
+        core,
+        ring,
+        coreMat,
+        tetherMesh,
+        tetherMat,
+        angleOffset: (i / 4) * Math.PI * 2,
+        fireCooldown: 1.8 + i * 0.55,
+        hitFlashTimer: 0,
+        _hitSphere: hitSphere,
+        _hitSpheres: hitSpheres,
+        getCenterPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(center);
+        },
+        getHeadPosition(outVec = new THREE.Vector3()) {
+          return outVec.copy(center);
+        },
+        getHitSpheres() {
+          return hitSpheres;
+        },
+        applyDamage(amount) {
+          if (!turret.isAlive || !Number.isFinite(amount) || amount <= 0) {
+            return { dealt: 0, killed: false, blockedByShield: false };
+          }
+          const dealt = Math.min(turret.hp, amount);
+          turret.hp -= dealt;
+          turret.hitFlashTimer = 0.14;
+          if (turret.hp <= 0) {
+            turret.hp = 0;
+            turret.isAlive = false;
+            self._triggerBossTurretShatter(turret);
+            return { dealt, killed: true, blockedByShield: false };
+          }
+          return { dealt, killed: false, blockedByShield: false };
+        },
+      };
+
+      this._bossTurrets.push(turret);
     }
   }
 
@@ -1393,6 +1750,9 @@ class Interactables {
     this._updateJumpPads(t);
     this._updateBarrels(safeDt, t);
     this._updateGimmicks(safeDt, t, playerController, enemies);
+    this._updateLowGravityZones(safeDt, t, playerController);
+    this._updateVoidGates(safeDt, t);
+    this._updateBossTurrets(safeDt, t, playerController);
     this._updateShockwaves(safeDt);
     this._updatePickups(safeDt, t, playerController, weaponSystem);
     this._updateControlZone(safeDt, t, playerController, enemies);
@@ -2524,7 +2884,422 @@ class Interactables {
   }
 
   /**
-   * Return a zero-allocation array of all currently alive destructible targets (barrels + Stage 6-10 pylons).
+   * Act 3: Toggle Wave 15 Phase 3 Central Low-Gravity Field.
+   * @param {boolean} active
+   */
+  setBossLowGravityOverride(active) {
+    this._bossLowGravityOverride = Boolean(active);
+    for (let i = 0; i < this._lowGravityZones.length; i++) {
+      const z = this._lowGravityZones[i];
+      if (z.bossOnly) {
+        z.enabled = this._bossLowGravityOverride;
+        z.group.visible = this._bossLowGravityOverride;
+      }
+    }
+  }
+
+  /**
+   * Act 3: Return zero-allocation list of currently active Low-Gravity zones for minimap.
+   */
+  getActiveLowGravityZones() {
+    this._activeLowGravityZones.length = 0;
+    for (let i = 0; i < this._lowGravityZones.length; i++) {
+      const z = this._lowGravityZones[i];
+      if (z.enabled) {
+        this._activeLowGravityZones.push(z);
+      }
+    }
+    return this._activeLowGravityZones;
+  }
+
+  /**
+   * Act 3: Enable requested number of Dimensional Void Gates for the active wave.
+   * @param {number} count
+   */
+  setVoidGatesEnabled(count = 0) {
+    const target = Math.max(0, Math.min(this._voidGates.length, Math.floor(count)));
+    for (let i = 0; i < this._voidGates.length; i++) {
+      const g = this._voidGates[i];
+      const active = i < target;
+      g.enabled = active;
+      g.isAlive = active;
+      g.hp = g.maxHp;
+      g.hitFlashTimer = 0;
+      g.summonTimer = 3.2 + i * 2.2;
+      g.group.visible = active;
+    }
+  }
+
+  /**
+   * Act 3: Open an inactive Dimensional Void Gate mid-fight (e.g. Boss Phase 2).
+   */
+  spawnBossVoidGate() {
+    for (let i = 0; i < this._voidGates.length; i++) {
+      const g = this._voidGates[i];
+      if (!g.enabled || !g.isAlive) {
+        g.enabled = true;
+        g.isAlive = true;
+        g.hp = g.maxHp;
+        g.hitFlashTimer = 0;
+        g.summonTimer = 2.4;
+        g.group.visible = true;
+        this._spawnShockwave(g.center);
+        if (this.eventBus) {
+          this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+            kicker: '차원 균열 개방',
+            title: '차원 게이트 출현!',
+            subtitle: '차원 균열체가 지속 소환됩니다 — 게이트를 파괴하세요',
+            duration: 2.8,
+          });
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  setVoidGateSummonCallback(cb) {
+    this._onVoidGateSummonCallback = typeof cb === 'function' ? cb : null;
+  }
+
+  getActiveVoidGates() {
+    this._activeVoidGates.length = 0;
+    for (let i = 0; i < this._voidGates.length; i++) {
+      const g = this._voidGates[i];
+      if (g.enabled && g.isAlive) {
+        this._activeVoidGates.push(g);
+      }
+    }
+    return this._activeVoidGates;
+  }
+
+  /**
+   * Act 3: Spawn orbiting floating turrets tethered to TRANSCENDENT-OMEGA.
+   */
+  spawnBossTurrets(count, bossEntity) {
+    this.clearBossTurrets();
+    if (!bossEntity || !bossEntity.isAlive || count <= 0) return;
+    const clamped = Math.max(0, Math.min(this._bossTurrets.length, Math.floor(count)));
+    this._bossTurretBoss = bossEntity;
+    this._bossTurretTotal = clamped;
+    this._bossTurretAlive = clamped;
+
+    for (let i = 0; i < clamped; i++) {
+      const tr = this._bossTurrets[i];
+      tr.isAlive = true;
+      tr.hp = tr.maxHp;
+      tr.hitFlashTimer = 0;
+      tr.angleOffset = (i / clamped) * Math.PI * 2;
+      tr.fireCooldown = 1.6 + i * 0.55;
+      tr.group.visible = true;
+      tr.tetherMesh.visible = true;
+    }
+    if (typeof bossEntity.setTurretShieldActive === 'function') {
+      bossEntity.setTurretShieldActive(clamped > 0);
+    }
+  }
+
+  clearBossTurrets() {
+    this._bossTurretBoss = null;
+    this._bossTurretTotal = 0;
+    this._bossTurretAlive = 0;
+    for (let i = 0; i < this._bossTurrets.length; i++) {
+      const tr = this._bossTurrets[i];
+      tr.isAlive = false;
+      tr.group.visible = false;
+      tr.tetherMesh.visible = false;
+    }
+  }
+
+  setTurretProjectileCallback(cb) {
+    this._onTurretProjectileCallback = typeof cb === 'function' ? cb : null;
+  }
+
+  getBossTurretStats() {
+    this._bossTurretStats.alive = this._bossTurretAlive;
+    this._bossTurretStats.total = this._bossTurretTotal;
+    return this._bossTurretStats;
+  }
+
+  /**
+   * Act 3: Trigger Volatile Rusher overload explosion & chain-react nearby volatile rushers.
+   */
+  triggerOverloadBlast(pos, radius, enemyDmg, playerDmg, playerController, enemies, sourceEnemy) {
+    if (!pos) return;
+    this._spawnShockwave(pos);
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.ENEMY_OVERLOAD, {
+        enemy: sourceEnemy || null,
+        position: pos,
+        phase: 'detonate',
+        radius,
+      });
+    }
+
+    if (playerController && playerController.isAlive && typeof playerController.applyDamage === 'function') {
+      this._tmpVecB.set(playerController.position.x, playerController.position.y + 0.92, playerController.position.z);
+      const pDist = pos.distanceTo(this._tmpVecB);
+      if (pDist <= radius) {
+        const losClear = !this.collisionWorld || this.collisionWorld.isLineOfSightClear(pos, this._tmpVecB);
+        if (losClear) {
+          const falloff = Math.max(0.28, 1 - (pDist / radius) * 0.68);
+          playerController.applyDamage(Math.round(playerDmg * falloff), pos);
+        }
+      }
+    }
+
+    if (enemies && enemies.length > 0) {
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (!e || !e.isAlive || e === sourceEnemy || typeof e.applyDamage !== 'function') continue;
+        this._getEntityCenter(e, this._tmpVecA);
+        const dist = pos.distanceTo(this._tmpVecA);
+        if (dist > radius) continue;
+        if (this.collisionWorld && !this.collisionWorld.isLineOfSightClear(pos, this._tmpVecA)) continue;
+
+        const falloff = Math.max(0.3, 1 - (dist / radius) * 0.65);
+        this._tmpKnockback.subVectors(this._tmpVecA, pos);
+        if (this._tmpKnockback.lengthSq() > 1e-4) this._tmpKnockback.normalize();
+        else this._tmpKnockback.set(0, 1, 0);
+
+        e.applyDamage(enemyDmg * falloff, this._tmpVecA, false, this._tmpKnockback, {
+          source: 'overload',
+          isExplosion: true,
+        });
+
+        if (e.isAlive && e.archetype && e.archetype.overloadFrenzy && typeof e.triggerOverload === 'function') {
+          e.triggerOverload(0.28);
+        }
+      }
+    }
+  }
+
+  /** @private */
+  _updateLowGravityZones(dt, t, playerController) {
+    if (!playerController) return;
+    if (this._lowGravityZones.length === 0) {
+      playerController.setArenaGravityScale(1.0, false);
+      return;
+    }
+
+    let matchedScale = 1.0;
+    let inZone = false;
+    const px = playerController.position.x;
+    const py = playerController.position.y;
+    const pz = playerController.position.z;
+
+    for (let i = 0; i < this._lowGravityZones.length; i++) {
+      const z = this._lowGravityZones[i];
+      if (!z.enabled) continue;
+
+      const phase = (t * 0.85 + z.phase) % 1.0;
+      z.riseRing.position.y = 0.25 + phase * (z.height - 0.6);
+      const s = 0.82 + Math.sin(phase * Math.PI) * 0.24;
+      z.riseRing.scale.set(s, 1, s);
+      z.colMat.opacity = 0.1 + 0.05 * Math.sin(t * 3.0 + z.phase);
+
+      const dx = px - z.pos.x;
+      const dz = pz - z.pos.z;
+      const dy = py - z.pos.y;
+      if (dx * dx + dz * dz <= z.radius * z.radius && dy >= -1.0 && dy <= z.height) {
+        inZone = true;
+        matchedScale = Math.min(matchedScale, z.gravityScale);
+      }
+    }
+
+    playerController.setArenaGravityScale(inZone ? matchedScale : 1.0, inZone);
+  }
+
+  /** @private */
+  _updateVoidGates(dt, t) {
+    for (let i = 0; i < this._voidGates.length; i++) {
+      const g = this._voidGates[i];
+      if (!g.enabled || !g.isAlive) continue;
+
+      g.vortexRing.rotation.z += dt * 1.9;
+      g.vortexDisc.rotation.z -= dt * 1.2;
+      g.vortexMat.opacity = 0.45 + 0.18 * Math.sin(t * 5.0 + i);
+
+      if (g.hitFlashTimer > 0) {
+        g.hitFlashTimer = Math.max(0, g.hitFlashTimer - dt);
+        g.coreMat.emissiveIntensity = 2.2 + (g.hitFlashTimer / 0.14) * 3.2;
+      } else {
+        g.coreMat.emissiveIntensity = 2.0 + 0.4 * Math.sin(t * 4.0 + i);
+      }
+
+      g.summonTimer -= dt;
+      if (g.summonTimer <= 0) {
+        g.summonTimer = 7.5;
+        if (typeof this._onVoidGateSummonCallback === 'function') {
+          this._onVoidGateSummonCallback(g.spawnPos, g);
+        }
+      }
+    }
+  }
+
+  /** @private */
+  _triggerVoidGateShatter(gate) {
+    gate.isAlive = false;
+    gate.hp = 0;
+    gate.group.visible = false;
+    const blastPos = gate.center;
+    this._spawnShockwave(blastPos);
+
+    const enemies = this._lastEnemies;
+    const radius = 10.0;
+    if (enemies && enemies.length > 0) {
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (!e || !e.isAlive || typeof e.applyDamage !== 'function') continue;
+        this._getEntityCenter(e, this._tmpVecA);
+        const dist = blastPos.distanceTo(this._tmpVecA);
+        if (dist > radius) continue;
+        const falloff = Math.max(0.35, 1 - (dist / radius) * 0.6);
+        this._tmpKnockback.subVectors(this._tmpVecA, blastPos);
+        if (this._tmpKnockback.lengthSq() > 1e-4) this._tmpKnockback.normalize();
+        else this._tmpKnockback.set(0, 1, 0);
+        e.applyDamage(120 * falloff, this._tmpVecA, false, this._tmpKnockback, {
+          source: 'void_gate',
+          isExplosion: true,
+        });
+      }
+    }
+
+    this.spawnItemDrop(gate.position, 'shield', 35);
+    this.spawnGoldDrop(gate.position, 40);
+    if (this._zone.active && !this._zone.captured) {
+      this.addZoneProgress(0.12);
+    }
+
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.VOID_GATE_SHATTERED, {
+        gateId: gate.id,
+        position: gate.center,
+      });
+      this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+        kicker: '차원 게이트 붕괴',
+        title: '균열 봉쇄 완료!',
+        subtitle: '주변 적 120 충격 피해 · 실드 & 골드 드랍',
+        duration: 2.4,
+      });
+    }
+  }
+
+  /** @private */
+  _updateBossTurrets(dt, t, playerController) {
+    const boss = this._bossTurretBoss;
+    if (!boss || !boss.isAlive) {
+      if (this._bossTurretTotal > 0) {
+        this.clearBossTurrets();
+      }
+      return;
+    }
+
+    const bPos = boss.position;
+    this._turretTetherTarget.set(bPos.x, bPos.y + 3.0, bPos.z);
+
+    for (let i = 0; i < this._bossTurrets.length; i++) {
+      const tr = this._bossTurrets[i];
+      if (!tr.isAlive) continue;
+
+      const ang = tr.angleOffset + t * 0.78;
+      const r = 5.2;
+      const ty = bPos.y + 3.2 + Math.sin(t * 2.4 + tr.index * 1.4) * 0.45;
+      const tx = bPos.x + Math.cos(ang) * r;
+      const tz = bPos.z + Math.sin(ang) * r;
+
+      tr.position.set(tx, ty, tz);
+      tr.center.set(tx, ty, tz);
+      tr.group.position.copy(tr.position);
+      tr.core.rotation.y += dt * 2.4;
+      tr.ring.rotation.z += dt * 1.6;
+
+      if (tr.hitFlashTimer > 0) {
+        tr.hitFlashTimer = Math.max(0, tr.hitFlashTimer - dt);
+        tr.coreMat.emissiveIntensity = 2.2 + (tr.hitFlashTimer / 0.14) * 3.0;
+      } else {
+        tr.coreMat.emissiveIntensity = 2.0 + 0.4 * Math.sin(t * 5.0 + tr.index);
+      }
+
+      // Orient tether beam between turret and boss core
+      this._turretTetherMid.addVectors(tr.position, this._turretTetherTarget).multiplyScalar(0.5);
+      tr.tetherMesh.position.copy(this._turretTetherMid);
+      this._turretShotDir.subVectors(this._turretTetherTarget, tr.position);
+      const tetherLen = this._turretShotDir.length();
+      if (tetherLen > 0.05) {
+        this._turretShotDir.multiplyScalar(1 / tetherLen);
+        tr.tetherMesh.scale.set(1, tetherLen, 1);
+        tr.tetherMesh.quaternion.setFromUnitVectors(this._turretYAxis, this._turretShotDir);
+      }
+      tr.tetherMat.opacity = 0.45 + 0.25 * Math.sin(t * 9.0 + tr.index);
+
+      // Fire telegraphed void bolt at player
+      if (playerController && playerController.isAlive && typeof this._onTurretProjectileCallback === 'function') {
+        tr.fireCooldown -= dt;
+        if (tr.fireCooldown <= 0) {
+          tr.fireCooldown = 2.6;
+          this._turretShotDir.set(
+            playerController.position.x - tr.position.x,
+            playerController.position.y + 1.15 - tr.position.y,
+            playerController.position.z - tr.position.z
+          );
+          if (this._turretShotDir.lengthSq() > 0.01) {
+            this._turretShotDir.normalize();
+            this._onTurretProjectileCallback(
+              tr.position,
+              this._turretShotDir,
+              27,
+              14,
+              0x38bdf8,
+              0.13,
+              'boss_turret',
+              false
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /** @private */
+  _triggerBossTurretShatter(turret) {
+    turret.isAlive = false;
+    turret.hp = 0;
+    turret.group.visible = false;
+    turret.tetherMesh.visible = false;
+    this._bossTurretAlive = Math.max(0, this._bossTurretAlive - 1);
+
+    this._spawnShockwave(turret.center);
+    this.spawnItemDrop(turret.position, 'shield', 20);
+
+    let shieldBroken = false;
+    if (this._bossTurretAlive === 0 && this._bossTurretBoss && this._bossTurretBoss.isAlive) {
+      shieldBroken = true;
+      if (typeof this._bossTurretBoss.breakTurretShield === 'function') {
+        this._bossTurretBoss.breakTurretShield();
+      }
+    }
+
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.BOSS_TURRET_SHATTERED, {
+        alive: this._bossTurretAlive,
+        total: this._bossTurretTotal,
+        shieldBroken,
+        position: turret.center,
+      });
+      if (shieldBroken) {
+        this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+          kicker: '초월 방어막 붕괴!',
+          title: '부유 포탑 전원 파괴 — 코어 완전 노출!',
+          subtitle: '4.5초간 TRANSCENDENT-OMEGA에게 125% 취약 피해 적용',
+          duration: 3.0,
+        });
+      }
+    }
+  }
+
+  /**
+   * Return a zero-allocation array of all currently alive destructible targets (barrels + pylons + void gates + boss turrets).
    */
   getDestructibleTargets() {
     this._activeBarrels.length = 0;
@@ -2537,6 +3312,18 @@ class Interactables {
       const p = this._gimmickPylons[i];
       if (p.enabled && p.isAlive) {
         this._activeBarrels.push(p);
+      }
+    }
+    for (let i = 0; i < this._voidGates.length; i++) {
+      const g = this._voidGates[i];
+      if (g.enabled && g.isAlive) {
+        this._activeBarrels.push(g);
+      }
+    }
+    for (let i = 0; i < this._bossTurrets.length; i++) {
+      const tr = this._bossTurrets[i];
+      if (tr.isAlive) {
+        this._activeBarrels.push(tr);
       }
     }
     return this._activeBarrels;
@@ -2691,6 +3478,9 @@ class Interactables {
     }
 
     this.setWaveGimmicks(null);
+    this.setVoidGatesEnabled(0);
+    this.setBossLowGravityOverride(false);
+    this.clearBossTurrets();
 
     for (let i = 0; i < this._pickups.length; i++) {
       const p = this._pickups[i];
@@ -2743,6 +3533,14 @@ class Interactables {
     this._barrels.length = 0;
     this._activeBarrels.length = 0;
     this._gimmickPylons.length = 0;
+    this._lowGravityZones.length = 0;
+    this._activeLowGravityZones.length = 0;
+    this._voidGates.length = 0;
+    this._activeVoidGates.length = 0;
+    this._bossTurrets.length = 0;
+    this._bossTurretBoss = null;
+    this._onVoidGateSummonCallback = null;
+    this._onTurretProjectileCallback = null;
     this._shockwaves.length = 0;
     this._pickups.length = 0;
     this._detonationQueue.length = 0;

@@ -21,6 +21,11 @@ const POOL_CAPACITIES = Object.freeze({
   mortar_artillery: 4,
   vanguard_assassin: 5,
   aegis_overlord_boss: 1,
+  volatile_rusher: 8,
+  void_warper: 6,
+  void_swarmer: 8,
+  abyss_sentinel: 5,
+  transcendent_omega_boss: 1,
 });
 
 const PROJECTILE_COLORS = Object.freeze({
@@ -35,6 +40,12 @@ const PROJECTILE_COLORS = Object.freeze({
   mortar_artillery: 0xfbbf24,
   vanguard_assassin: 0xff3b14,
   aegis_overlord_boss: 0x0ea5e9,
+  volatile_rusher: 0xff2a6d,
+  void_warper: 0xc084fc,
+  void_swarmer: 0xd8b4fe,
+  abyss_sentinel: 0x38bdf8,
+  transcendent_omega_boss: 0xa855f7,
+  boss_turret: 0x38bdf8,
 });
 
 const FALLBACK_SPAWNS = [
@@ -128,6 +139,11 @@ class WaveDirector {
       mortar_artillery: [],
       vanguard_assassin: [],
       aegis_overlord_boss: [],
+      volatile_rusher: [],
+      void_warper: [],
+      void_swarmer: [],
+      abyss_sentinel: [],
+      transcendent_omega_boss: [],
     };
     this._prewarmed = false;
 
@@ -177,12 +193,19 @@ class WaveDirector {
     this._projectiles = this._createProjectilePool();
 
     // Bound callbacks (avoid per-frame closures)
+    this._lastPlayerController = null;
     this._boundSpawnProjectile = this._spawnProjectile.bind(this);
     this._boundOnEnemyDeath = this._handleEnemyDeath.bind(this);
     this._boundOnBossPhase = this._handleBossPhase.bind(this);
+    this._boundOnEnemyOverload = this._handleEnemyOverload.bind(this);
+    this._boundOnVoidGateSummon = this._handleVoidGateSummon.bind(this);
+    this._boundOnEnemyTeleport = this._handleEnemyTeleport.bind(this);
 
     this._unsubBossPhase = this.eventBus
       ? this.eventBus.on(EVENTS.BOSS_PHASE, this._boundOnBossPhase)
+      : () => {};
+    this._unsubTeleport = this.eventBus
+      ? this.eventBus.on(EVENTS.ENEMY_TELEPORT, this._boundOnEnemyTeleport)
       : () => {};
 
     // Pre-allocated scratch structures & zero-GC snapshots
@@ -208,6 +231,10 @@ class WaveDirector {
       phase: 1,
       phaseName: '',
       shieldActive: false,
+      turretsAlive: 0,
+      turretsTotal: 0,
+      turretShieldActive: false,
+      coreExposed: false,
       position: new THREE.Vector3(),
     };
 
@@ -454,6 +481,15 @@ class WaveDirector {
       if (typeof this._interactables.setCaptureSpeedMultiplier === 'function') {
         this._interactables.setCaptureSpeedMultiplier(1.0);
       }
+      if (typeof this._interactables.clearBossTurrets === 'function') {
+        this._interactables.clearBossTurrets();
+      }
+      if (typeof this._interactables.setVoidGatesEnabled === 'function') {
+        this._interactables.setVoidGatesEnabled(0);
+      }
+      if (typeof this._interactables.setBossLowGravityOverride === 'function') {
+        this._interactables.setBossLowGravityOverride(false);
+      }
     }
   }
 
@@ -545,15 +581,34 @@ class WaveDirector {
       if (typeof this._interactables.setWaveGimmicks === 'function') {
         this._interactables.setWaveGimmicks(wave.gimmick || null);
       }
+      if (typeof this._interactables.clearBossTurrets === 'function') {
+        this._interactables.clearBossTurrets();
+      }
+      if (typeof this._interactables.setBossLowGravityOverride === 'function') {
+        this._interactables.setBossLowGravityOverride(false);
+      }
+      if (typeof this._interactables.setVoidGatesEnabled === 'function') {
+        this._interactables.setVoidGatesEnabled((wave.gimmick && wave.gimmick.voidGates) || 0);
+      }
+      if (typeof this._interactables.setVoidGateSummonCallback === 'function') {
+        this._interactables.setVoidGateSummonCallback(this._boundOnVoidGateSummon);
+      }
+      if (typeof this._interactables.setTurretProjectileCallback === 'function') {
+        this._interactables.setTurretProjectileCallback(this._boundSpawnProjectile);
+      }
     }
 
-    // Build wave spawn queue (boss spawns first on Wave 5 & Wave 10; regular units interleaved for variety)
+    // Build wave spawn queue (boss spawns first on Boss Waves; regular units interleaved for variety)
     this._spawnQueue.length = 0;
     const regularPool = [];
     for (let i = 0; i < wave.enemies.length; i++) {
       const entry = wave.enemies[i];
       for (let c = 0; c < entry.count; c++) {
-        if (entry.type === 'cyber_mech_boss' || entry.type === 'aegis_overlord_boss') {
+        if (
+          entry.type === 'cyber_mech_boss' ||
+          entry.type === 'aegis_overlord_boss' ||
+          entry.type === 'transcendent_omega_boss'
+        ) {
           this._spawnQueue.push(entry.type);
         } else {
           regularPool.push(entry.type);
@@ -605,6 +660,15 @@ class WaveDirector {
     if (this._bossEntity && this._interactables && typeof this._interactables.spawnBossShockwave === 'function') {
       this._interactables.spawnBossShockwave(this._bossEntity.position);
     }
+    if (this._interactables && this._bossEntity && payload.turretCount > 0 && typeof this._interactables.spawnBossTurrets === 'function') {
+      this._interactables.spawnBossTurrets(payload.turretCount, this._bossEntity);
+    }
+    if (this._interactables && payload.spawnVoidGate && typeof this._interactables.spawnBossVoidGate === 'function') {
+      this._interactables.spawnBossVoidGate();
+    }
+    if (this._interactables && payload.centralLowGravity && typeof this._interactables.setBossLowGravityOverride === 'function') {
+      this._interactables.setBossLowGravityOverride(true);
+    }
     for (let i = 0; i < payload.escorts.length; i++) {
       const entry = payload.escorts[i];
       for (let c = 0; c < entry.count; c++) {
@@ -613,6 +677,45 @@ class WaveDirector {
     }
     // Deploy first escort promptly
     this._spawnTimer = Math.min(this._spawnTimer, 0.45);
+  }
+
+  /** @private */
+  _handleEnemyTeleport(payload) {
+    if (!payload || !this.vfxManager || typeof this.vfxManager.spawnTeleport !== 'function') return;
+    if (payload.fromPos) this.vfxManager.spawnTeleport(payload.fromPos, payload.color || 0xa855f7);
+    if (payload.toPos) this.vfxManager.spawnTeleport(payload.toPos, payload.color || 0xa855f7);
+  }
+
+  /** @private */
+  _handleEnemyOverload(enemy) {
+    if (!enemy || !this._interactables || typeof this._interactables.triggerOverloadBlast !== 'function') return;
+    const arch = enemy.archetype || {};
+    this._interactables.triggerOverloadBlast(
+      enemy.center || enemy.position,
+      arch.overloadRadius || 8.0,
+      arch.overloadEnemyDamage || 85,
+      arch.overloadPlayerDamage || 48,
+      this._lastPlayerController,
+      this._livingTargets,
+      enemy
+    );
+  }
+
+  /** @private */
+  _handleVoidGateSummon(spawnPos) {
+    if (!this._active || this._inIntermission || this._awaitingMapTransition || this._draftPaused) return;
+    const wave =
+      this._currentWaveIndex >= 0 && this._currentWaveIndex < WAVES.length
+        ? WAVES[this._currentWaveIndex]
+        : null;
+    const cap = (wave ? wave.maxConcurrent : 8) + 4;
+    if (this._livingTargets.length >= cap) return;
+
+    const archetypeId = Math.random() < 0.7 ? 'void_swarmer' : 'volatile_rusher';
+    const spawned = this._spawnEnemyAtPos(archetypeId, spawnPos, wave);
+    if (spawned) {
+      this._livingTargets.push(spawned);
+    }
   }
 
   /**
@@ -641,6 +744,14 @@ class WaveDirector {
       this._bossEntity = null;
     }
     if (wasBoss) {
+      if (this._interactables) {
+        if (typeof this._interactables.clearBossTurrets === 'function') {
+          this._interactables.clearBossTurrets();
+        }
+        if (typeof this._interactables.setBossLowGravityOverride === 'function') {
+          this._interactables.setBossLowGravityOverride(false);
+        }
+      }
       // Clear any remaining queued escorts so no minions spawn after boss defeat
       this._spawnQueue.length = 0;
       // Immediately terminate all remaining living minions with chain-explosion VFX
@@ -699,29 +810,31 @@ class WaveDirector {
         aid === 'rail_warden' ||
         aid === 'mortar_artillery' ||
         aid === 'vanguard_assassin' ||
-        aid === 'shock_breacher';
+        aid === 'shock_breacher' ||
+        aid === 'abyss_sentinel' ||
+        aid === 'void_warper';
 
       if (typeof this._interactables.spawnGoldDrop === 'function') {
         const goldAmt = enemy.archetype.isBoss
-          ? (aid === 'aegis_overlord_boss' ? 260 : 150)
-          : aid === 'rail_warden'
+          ? (aid === 'transcendent_omega_boss' ? 400 : aid === 'aegis_overlord_boss' ? 260 : 150)
+          : aid === 'rail_warden' || aid === 'abyss_sentinel'
           ? 36
           : aid === 'mortar_artillery'
           ? 32
           : aid === 'heavy_enforcer'
           ? 30
-          : aid === 'vanguard_assassin'
+          : aid === 'vanguard_assassin' || aid === 'void_warper'
           ? 26
           : aid === 'sniper_stalker'
           ? 24
           : aid === 'shock_breacher'
           ? 22
-          : aid === 'interceptor_drone'
+          : aid === 'interceptor_drone' || aid === 'volatile_rusher'
           ? 18
           : 14;
         this._interactables.spawnGoldDrop(enemy.position, goldAmt);
         if (enemy.archetype.isBoss) {
-          const bonusDrop = aid === 'aegis_overlord_boss' ? 90 : 60;
+          const bonusDrop = aid === 'transcendent_omega_boss' ? 120 : aid === 'aegis_overlord_boss' ? 90 : 60;
           this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
           this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
         }
@@ -817,6 +930,7 @@ class WaveDirector {
     if (!this._active || !playerController) {
       return;
     }
+    this._lastPlayerController = playerController;
 
     const playerPos = playerController.position;
     playerController.getEyePosition(this._playerEye);
@@ -914,7 +1028,11 @@ class WaveDirector {
             spawned.displayName = `${aff.label} ${spawned.archetype.name || spawned.typeId}`;
             spawned.maxHp = Math.round(spawned.maxHp * aff.hpMult);
             spawned.hp = spawned.maxHp;
-            spawned.group.scale.multiplyScalar(1.16);
+            if (typeof spawned.setScaleMultiplier === 'function') {
+              spawned.setScaleMultiplier(1.16);
+            } else if (spawned.root) {
+              spawned.root.scale.multiplyScalar(1.16);
+            }
           }
           livingCount++;
           this._livingTargets.push(spawned);
@@ -934,7 +1052,11 @@ class WaveDirector {
             drone.displayName = '★ 황금 보급 드론';
             drone.maxHp = Math.round(drone.maxHp * 1.6);
             drone.hp = drone.maxHp;
-            drone.group.scale.multiplyScalar(1.32);
+            if (typeof drone.setScaleMultiplier === 'function') {
+              drone.setScaleMultiplier(1.32);
+            } else if (drone.root) {
+              drone.root.scale.multiplyScalar(1.32);
+            }
             livingCount++;
             this._livingTargets.push(drone);
             if (this.eventBus) {
@@ -1267,19 +1389,29 @@ class WaveDirector {
         this.modelFactory,
         this.eventBus,
         null,
-        this._onEnemyDeathBound
+        { dormant: false, pooled: true }
       );
+      enemy.setDeathCallback(this._boundOnEnemyDeath);
       bucket.push(enemy);
     }
     this._enemies.push(enemy);
+    if (enemy.isAlive) {
+      this._livingTargets.push(enemy);
+    }
     return enemy;
   }
 
   _spawnEnemy(archetypeId, playerController, wave) {
     const archetype = ENEMY_ARCHETYPES[archetypeId];
     if (!archetype) return null;
-
     const spawnPos = this._pickSpawnPoint(archetype, playerController);
+    return this._spawnEnemyAtPos(archetypeId, spawnPos, wave);
+  }
+
+  _spawnEnemyAtPos(archetypeId, spawnPos, wave) {
+    const archetype = ENEMY_ARCHETYPES[archetypeId];
+    if (!archetype) return null;
+
     const bossPhases = archetype.isBoss && wave ? wave.bossPhases || null : null;
     const enemyId = this._nextEnemyId++;
 
@@ -1312,9 +1444,21 @@ class WaveDirector {
       bucket.push(enemy);
     }
 
+    if (typeof enemy.setOverloadCallback === 'function') {
+      enemy.setOverloadCallback(this._boundOnEnemyOverload);
+    }
+
     this._enemies.push(enemy);
     if (archetype.isBoss) {
       this._bossEntity = enemy;
+      if (
+        archetype.id === 'transcendent_omega_boss' &&
+        this._interactables &&
+        typeof this._interactables.spawnBossTurrets === 'function'
+      ) {
+        const phase1Turrets = (wave && wave.bossPhases && wave.bossPhases[0] && wave.bossPhases[0].turretCount) || 2;
+        this._interactables.spawnBossTurrets(phase1Turrets, enemy);
+      }
     }
 
     if (this.vfxManager && typeof this.vfxManager.spawnTeleport === 'function') {
@@ -1373,7 +1517,12 @@ class WaveDirector {
         ) {
           score -= 140;
         }
-      } else if (archetype.id === 'heavy_enforcer' || archetype.id === 'rail_warden' || archetype.id === 'shock_breacher') {
+      } else if (
+        archetype.id === 'heavy_enforcer' ||
+        archetype.id === 'rail_warden' ||
+        archetype.id === 'shock_breacher' ||
+        archetype.id === 'abyss_sentinel'
+      ) {
         score += sp.elevated ? -90 : 22;
       } else if (!archetype.isFlying) {
         score += sp.elevated ? -12 : 12;
@@ -1448,11 +1597,11 @@ class WaveDirector {
     // Distinct glowing silhouette per archetype
     const length = isSniperBeam
       ? 2.4
-      : archetypeId === 'aegis_overlord_boss'
+      : archetypeId === 'aegis_overlord_boss' || archetypeId === 'transcendent_omega_boss'
       ? 1.48
-      : archetypeId === 'cyber_mech_boss' || archetypeId === 'rail_warden'
+      : archetypeId === 'cyber_mech_boss' || archetypeId === 'rail_warden' || archetypeId === 'abyss_sentinel'
       ? 1.35
-      : archetypeId === 'mortar_artillery' || archetypeId === 'vanguard_assassin'
+      : archetypeId === 'mortar_artillery' || archetypeId === 'vanguard_assassin' || archetypeId === 'void_warper'
       ? 0.98
       : archetypeId === 'heavy_enforcer' || archetypeId === 'shock_breacher'
       ? 0.70
@@ -1582,7 +1731,15 @@ class WaveDirector {
     s.hpRatio = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
     s.phase = boss.currentPhase;
     s.phaseName = boss._phaseName || `PHASE ${boss.currentPhase}`;
-    s.shieldActive = boss._phaseShieldTimer > 0;
+    s.shieldActive = boss._phaseShieldTimer > 0 || Boolean(boss._turretShieldActive);
+    s.turretShieldActive = Boolean(boss._turretShieldActive);
+    s.coreExposed = (boss._coreExposedTimer || 0) > 0;
+    const tStats =
+      this._interactables && typeof this._interactables.getBossTurretStats === 'function'
+        ? this._interactables.getBossTurretStats()
+        : null;
+    s.turretsAlive = tStats ? tStats.alive : 0;
+    s.turretsTotal = tStats ? tStats.total : 0;
     s.position.copy(boss.position);
     return s;
   }
@@ -1637,6 +1794,10 @@ class WaveDirector {
     if (this._unsubBossPhase) {
       this._unsubBossPhase();
       this._unsubBossPhase = null;
+    }
+    if (this._unsubTeleport) {
+      this._unsubTeleport();
+      this._unsubTeleport = null;
     }
 
     this.reset();

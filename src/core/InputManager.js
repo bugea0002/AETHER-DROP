@@ -39,12 +39,50 @@ const ACTION_ALIASES = {
 const PREVENT_DEFAULT_CODES = new Set([
   'Space',
   'AltLeft',
+  'AltRight',
   'ArrowUp',
   'ArrowDown',
   'ArrowLeft',
   'ArrowRight',
   'Tab',
+  'F1',
+  'F2',
+  'F3',
+  'F4',
+  'F5',
+  'F6',
+  'F7',
+  'F8',
+  'F9',
+  'F10',
 ]);
+
+const KEYBOARD_LOCK_CODES = [
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'KeyQ',
+  'KeyE',
+  'KeyR',
+  'KeyF',
+  'KeyC',
+  'KeyV',
+  'KeyX',
+  'KeyP',
+  'ControlLeft',
+  'ControlRight',
+  'ShiftLeft',
+  'ShiftRight',
+  'AltLeft',
+  'AltRight',
+  'Tab',
+  'Space',
+  'Digit1',
+  'Digit2',
+  'Digit3',
+  'Digit4',
+];
 
 /**
  * Hybrid PC (PointerLock + Keyboard/Mouse) and Mobile/Tablet Touch InputManager.
@@ -125,7 +163,7 @@ class InputManager {
 
   /** @private */
   _bindEvents() {
-    window.addEventListener('keydown', this._onKeyDown, { passive: false });
+    window.addEventListener('keydown', this._onKeyDown, { capture: true, passive: false });
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
@@ -152,7 +190,10 @@ class InputManager {
       this._touchMode = false;
     }
 
-    if (this.isPointerLocked() && PREVENT_DEFAULT_CODES.has(code)) {
+    if (
+      (this.isPointerLocked() || this._isPlayingFallbackActive()) &&
+      (PREVENT_DEFAULT_CODES.has(code) || e.ctrlKey || e.metaKey || e.altKey)
+    ) {
       e.preventDefault();
     }
 
@@ -350,6 +391,74 @@ class InputManager {
    */
   isPointerLocked() {
     return Boolean(this._canvas && document.pointerLockElement === this._canvas);
+  }
+
+  /**
+   * Request Fullscreen (optional) and W3C Keyboard Lock so Chrome/OS shortcuts
+   * like Ctrl+W, Ctrl+T, Ctrl+R, Alt+Tab are intercepted cleanly during combat.
+   * @param {boolean} [requestFullscreen=false]
+   */
+  lockGameplayShortcuts(requestFullscreen = false) {
+    try {
+      if (
+        requestFullscreen &&
+        typeof document !== 'undefined' &&
+        document.documentElement &&
+        !document.fullscreenElement &&
+        typeof document.documentElement.requestFullscreen === 'function'
+      ) {
+        const fsPromise = document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        if (fsPromise && typeof fsPromise.catch === 'function') {
+          fsPromise.catch(() => {
+            try {
+              const p2 = document.documentElement.requestFullscreen();
+              if (p2 && typeof p2.catch === 'function') p2.catch(() => {});
+            } catch {}
+          });
+        }
+      }
+    } catch {}
+
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.keyboard &&
+        typeof navigator.keyboard.lock === 'function'
+      ) {
+        const lockPromise = navigator.keyboard.lock(KEYBOARD_LOCK_CODES);
+        if (lockPromise && typeof lockPromise.catch === 'function') {
+          lockPromise.catch(() => {});
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * Release W3C Keyboard Lock (and optionally exit fullscreen).
+   * @param {boolean} [exitFullscreen=false]
+   */
+  unlockGameplayShortcuts(exitFullscreen = false) {
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.keyboard &&
+        typeof navigator.keyboard.unlock === 'function'
+      ) {
+        navigator.keyboard.unlock();
+      }
+    } catch {}
+
+    try {
+      if (
+        exitFullscreen &&
+        typeof document !== 'undefined' &&
+        document.fullscreenElement &&
+        typeof document.exitFullscreen === 'function'
+      ) {
+        const p = document.exitFullscreen();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+    } catch {}
   }
 
   // ---------------------------------------------------------------------------
@@ -620,14 +729,16 @@ class InputManager {
    * Clean up all DOM event listeners.
    */
   dispose() {
+    this.unlockGameplayShortcuts(false);
     this.resetAll();
-    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keydown', this._onKeyDown, { capture: true });
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('wheel', this._onWheel);
     window.removeEventListener('blur', this._onWindowBlur);
+    document.removeEventListener('mouseleave', this._onWindowBlur);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
 
     if (this._canvas) {

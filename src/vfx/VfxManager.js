@@ -1215,6 +1215,54 @@ class VfxManager {
     }
   }
 
+  /**
+   * Spawn a dimensional violet/crimson warp distortion ring + rising particle burst
+   * when an abyssal unit initiates or completes a teleport blink.
+   * @param {THREE.Vector3} position
+   * @param {number} [colorHex=0xa855f7]
+   */
+  spawnTeleport(position, colorHex = 0xa855f7) {
+    if (!position) return;
+    const cHex = colorHex || 0xa855f7;
+    this._v3.set(0, 1, 0);
+    this._spawnRing(position, this._v3, cHex, 0.25, 2.35, 0.32, false);
+    this._v3.set(0, 1, 0);
+    this._spawnRing(
+      this._v4.set(position.x, (position.y || 0) + 0.9, position.z),
+      this._v3,
+      0xe879f9,
+      0.18,
+      1.65,
+      0.26,
+      false
+    );
+
+    const sparkCount = Math.max(8, Math.round(18 * this._particleScale));
+    for (let i = 0; i < sparkCount; i++) {
+      const ang = (i / sparkCount) * TWO_PI + Math.random() * 0.25;
+      const spd = 2.0 + Math.random() * 4.2;
+      const vx = Math.cos(ang) * spd;
+      const vz = Math.sin(ang) * spd;
+      const vy = 2.8 + Math.random() * 5.2;
+      this._emitSpark(
+        position,
+        vx,
+        vy,
+        vz,
+        i % 3 === 0 ? 0xf5d0fe : cHex,
+        0.24 + Math.random() * 0.22,
+        1.1 + Math.random() * 0.65,
+        -6.0,
+        2.6
+      );
+    }
+
+    if (this._maxDynamicLights > 1) {
+      const slot = this._allocWorldLightSlot();
+      this._spawnDynamicLight(slot, position, cHex, 6.5, 8.0, 0.24);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Quality Scaling, Per-Frame Update, Reset & Disposal
   // ---------------------------------------------------------------------------
