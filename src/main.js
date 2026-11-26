@@ -373,6 +373,7 @@ function bootstrap() {
 
   // Dedicated 3D Ultimate VFX Objects (Orbital Laser Pillars, Expanding Nova Spheres, Shockwave Rings, Bastion Fortress Dome)
   const _ult3dEffects = [];
+  let _hitstopTimer = 0;
   let _bastionDomeGroup = null;
 
   function triggerUltScreenFlash(colorCss, opacity = 0.52) {
@@ -1357,6 +1358,14 @@ function bootstrap() {
     eventBus.on(EVENTS.DAMAGE_DEALT, (p) => {
       if (!playerController || !p || !p.isEnemy) return;
       playerController.addUltCharge(p.isHeadshot ? 1.8 : 0.7);
+      // Tactile Gunfeel: Micro-FOV punch & micro-hitstop on headshots / heavy hits
+      if (p.isHeadshot || p.killed) {
+        playerController.currentFov = Math.max(52, playerController.currentFov - (p.killed ? 2.4 : 1.3));
+        playerController.addScreenShake(p.killed ? 0.14 : 0.07);
+      }
+      if (p.killed && (p.isHeadshot || p.weaponId === 'railgun' || p.weaponId === 'scattergun' || p.weaponId === 'repulsor')) {
+        _hitstopTimer = Math.max(_hitstopTimer, p.weaponId === 'railgun' ? 0.036 : 0.024);
+      }
       if (p.isHeadshot && playerController.mods && playerController.mods.chainLightning && waveDirector && p.point) {
         const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
         let arcs = 0;
@@ -1420,6 +1429,10 @@ function bootstrap() {
       if (metaState.totalKillsAllTime >= 200) unlockAchievement('kills_200');
       if (telemetry.maxCombo >= 5) unlockAchievement('combo_5');
       if (waveDirector && waveDirector.headshots >= 15) unlockAchievement('hs_15');
+      if (p && p.isBoss) {
+        _hitstopTimer = Math.max(_hitstopTimer, 0.065);
+        playerController.addScreenShake(0.45);
+      }
       if (p && p.archetypeId === 'cyber_mech_boss') unlockAchievement('first_clear');
       if (
         p &&
@@ -2549,7 +2562,12 @@ function bootstrap() {
       // 3. Active Sector Environment, Interactables, WaveDirector AI & VFX
       mapManager.update(dt, elapsedTime);
       interactables.update(dt, elapsedTime, playerController, livingEnemies, weaponSystem);
-      const enemyDt = playerController && playerController.timeSlowTimer > 0 ? dt * 0.40 : dt;
+      let worldScale = 1.0;
+      if (_hitstopTimer > 0) {
+        _hitstopTimer = Math.max(0, _hitstopTimer - dt);
+        worldScale = 0.08;
+      }
+      const enemyDt = (playerController && playerController.timeSlowTimer > 0 ? dt * 0.40 : dt) * worldScale;
       waveDirector.update(
         enemyDt,
         elapsedTime,

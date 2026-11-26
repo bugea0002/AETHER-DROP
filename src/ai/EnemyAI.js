@@ -111,6 +111,7 @@ class Enemy {
 
     // Visual hit-flash & shield feedback timers
     this._hitFlashTimer = 0;
+    this._hitFlinch = 0;
     this._shieldFlashTimer = 0;
     this._phaseShieldTimer = 0;
     this.markedTimer = 0;
@@ -269,6 +270,7 @@ class Enemy {
     this._deathTimer = 0;
 
     this._hitFlashTimer = 0;
+    this._hitFlinch = 0;
     this._shieldFlashTimer = 0;
     this._phaseShieldTimer = 0;
     this.markedTimer = 0;
@@ -538,7 +540,8 @@ class Enemy {
     this.hp = Math.max(0, this.hp - dealt);
     this.lastHitWasHeadshot = Boolean(isHeadshot);
     this.lastHitWasMelee = Boolean(options && options.isMelee);
-    this._hitFlashTimer = isHeadshot ? 0.14 : 0.10;
+    this._hitFlashTimer = isHeadshot ? 0.15 : 0.11;
+    this._hitFlinch = Math.min(1.0, (this._hitFlinch || 0) + (isHeadshot ? 1.0 : 0.58));
     this._updateHealthBar();
 
     // Knockback impulse (heavier units resist pushback)
@@ -1805,15 +1808,25 @@ class Enemy {
    */
   _updateHitAndShieldFlashes(dt, elapsedTime) {
     // Emissive damage flash
+    if (this._hitFlinch > 0) {
+      this._hitFlinch = Math.max(0, this._hitFlinch - dt * 8.5);
+      if (this.rig.bodyGroup) {
+        this.rig.bodyGroup.rotation.x -= this._hitFlinch * (this.archetype.isBoss ? 0.08 : 0.24);
+      }
+      if (this.rig.headGroup) {
+        this.rig.headGroup.rotation.x -= this._hitFlinch * 0.36;
+      }
+    }
+
     if (this._hitFlashTimer > 0) {
       this._hitFlashTimer = Math.max(0, this._hitFlashTimer - dt);
-      const t = this._hitFlashTimer / 0.12;
+      const t = Math.min(1, this._hitFlashTimer / 0.12);
       const mats = this.rig.flashMaterials;
       for (let i = 0; i < mats.length; i++) {
         const m = mats[i];
         if (t > 0.01) {
-          m.emissive.lerpColors(m.userData.baseEmissive, FLASH_COLOR, Math.min(1, t));
-          m.emissiveIntensity = m.userData.baseEmissiveIntensity + t * 2.8;
+          m.emissive.lerpColors(m.userData.baseEmissive, FLASH_COLOR, t);
+          m.emissiveIntensity = m.userData.baseEmissiveIntensity + t * 4.4;
         } else {
           m.emissive.copy(m.userData.baseEmissive);
           m.emissiveIntensity = m.userData.baseEmissiveIntensity;

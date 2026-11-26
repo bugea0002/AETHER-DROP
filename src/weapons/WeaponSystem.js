@@ -313,19 +313,48 @@ class WeaponSystem {
     if (this._guardShieldGroup && pc) {
       const guarding = Boolean(pc.isGuarding);
       const targetA = guarding ? 1.0 : 0.0;
-      this._guardRaiseAlpha += (targetA - this._guardRaiseAlpha) * Math.min(1, clampedDt * 16);
+      this._guardRaiseAlpha += (targetA - this._guardRaiseAlpha) * Math.min(1, clampedDt * 18);
       this._guardShieldGroup.visible = this._guardRaiseAlpha > 0.03;
       if (this._guardShieldGroup.visible) {
         const a = this._guardRaiseAlpha;
         const flash = pc.guardHitFlash || 0;
-        this._guardShieldGroup.position.set(-0.08 * (1 - a * 0.55), -0.34 + a * 0.28, -0.58 + flash * 0.04);
-        this._guardShieldGroup.scale.setScalar(0.6 + a * 0.48 + flash * 0.08);
-        this._guardShieldGroup.rotation.z = Math.sin(this._guardElapsed * 2.2) * 0.04;
-        if (this._guardShieldFillMat) {
-          this._guardShieldFillMat.opacity = (0.20 + flash * 0.42) * a;
+        const pct = Math.max(0, Math.min(1, (pc.guardEnergy || 0) / Math.max(1, pc.maxGuardEnergy || 100)));
+        const stage = pct < 0.22 ? 3 : pct < 0.48 ? 2 : pct < 0.76 ? 1 : 0;
+
+        if (this._guardShieldFillMat && this._guardCrackTextures && stage !== this._guardCurrentStage) {
+          this._guardCurrentStage = stage;
+          this._guardShieldFillMat.map = this._guardCrackTextures[stage];
+          this._guardShieldFillMat.needsUpdate = true;
         }
-        if (this._guardShieldEdgeMat) {
-          this._guardShieldEdgeMat.opacity = Math.min(1.0, (0.78 + flash * 0.22) * a);
+
+        // Progressive stress shiver as shield gets closer to shattering
+        const shiverAmp = stage === 3 ? 0.0085 : stage === 2 ? 0.003 : 0;
+        const sx = shiverAmp > 0 ? (Math.random() - 0.5) * shiverAmp : 0;
+        const sy = shiverAmp > 0 ? (Math.random() - 0.5) * shiverAmp : 0;
+        this._guardShieldGroup.position.set(sx, -0.32 + a * 0.26 + sy, -0.58 + flash * 0.035);
+        this._guardShieldGroup.scale.setScalar(0.75 + a * 0.25 + flash * 0.03);
+        this._guardShieldGroup.rotation.z = Math.sin(this._guardElapsed * 1.8) * 0.012;
+
+        if (this._guardShieldFillMat) {
+          // Very clear low opacity when healthy; fractures glow brighter as damage mounts & on impact flash
+          const baseOp = stage === 0 ? 0.34 : stage === 1 ? 0.46 : stage === 2 ? 0.60 : 0.74;
+          const flicker = stage === 3 ? (Math.sin(this._guardElapsed * 32) > 0 ? 1.0 : 0.65) : 1.0;
+          this._guardShieldFillMat.opacity = Math.min(0.95, (baseOp + flash * 0.45) * a * flicker);
+          if (flash > 0.15) {
+            this._guardShieldFillMat.color.setHex(0xffffff);
+          } else if (stage === 3) {
+            this._guardShieldFillMat.color.setHex(0xf43f5e);
+          } else if (stage === 2) {
+            this._guardShieldFillMat.color.setHex(0xf59e0b);
+          } else {
+            this._guardShieldFillMat.color.setHex(this._guardFrameColorHex || 0x38bdf8);
+          }
+        }
+        if (this._guardRailGlowMat) {
+          const railCol = stage === 3 ? 0xef4444 : stage === 2 ? 0xf59e0b : (this._guardFrameColorHex || 0x38bdf8);
+          this._guardRailGlowMat.color.setHex(railCol);
+          if (this._guardRailGlowMat.emissive) this._guardRailGlowMat.emissive.setHex(railCol);
+          this._guardRailGlowMat.emissiveIntensity = 2.0 + flash * 4.0;
         }
       }
     }
@@ -536,65 +565,235 @@ class WeaponSystem {
     if (this._factory && typeof this._factory.setPilotFrameStyle === 'function') {
       this._factory.setPilotFrameStyle(frameId);
     }
-    if (this._guardShieldFillMat && this._guardShieldEdgeMat) {
-      const col =
-        frameId === 'bastion'
-          ? 0x22c55e
-          : frameId === 'apex'
-          ? 0xf43f5e
-          : frameId === 'strider'
-          ? 0x00f0ff
-          : 0x38bdf8;
-      this._guardShieldFillMat.color.setHex(col);
-      this._guardShieldEdgeMat.color.setHex(col);
-      if (this._guardShieldEdgeMat.emissive) this._guardShieldEdgeMat.emissive.setHex(col);
+    this._guardFrameColorHex =
+      frameId === 'bastion'
+        ? 0x22c55e
+        : frameId === 'apex'
+        ? 0xf43f5e
+        : frameId === 'strider'
+        ? 0x00f0ff
+        : 0x38bdf8;
+    if (this._guardRailGlowMat) {
+      this._guardRailGlowMat.color.setHex(this._guardFrameColorHex);
+      if (this._guardRailGlowMat.emissive) this._guardRailGlowMat.emissive.setHex(this._guardFrameColorHex);
     }
+    if (this._guardShieldFillMat) {
+      this._guardShieldFillMat.color.setHex(this._guardFrameColorHex);
+    }
+  }
+
+  _createGuardCrackTexture(stage) {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 384;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 512, 384);
+
+    // 1. Ultra-subtle edge vignette & fine hex micro-mesh (very transparent center for clear aiming!)
+    const vig = ctx.createRadialGradient(256, 192, 95, 256, 192, 275);
+    vig.addColorStop(0.0, 'rgba(200, 240, 255, 0.04)');
+    vig.addColorStop(0.72, 'rgba(160, 230, 255, 0.14)');
+    vig.addColorStop(1.0, 'rgba(210, 245, 255, 0.52)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, 512, 384);
+
+    // Subtle fine hex grid
+    ctx.strokeStyle = 'rgba(220, 245, 255, 0.12)';
+    ctx.lineWidth = 1;
+    const step = 28;
+    for (let y = 0; y < 384; y += step) {
+      for (let x = 0; x < 512; x += step * 1.5) {
+        const ox = ((y / step) % 2) * (step * 0.75);
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (k * Math.PI) / 3;
+          const px = x + ox + Math.cos(a) * 11;
+          const py = y + Math.sin(a) * 11;
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+
+    // Crisp technical corner framing lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(6, 6, 500, 372);
+
+    // 2. Progressive Ballistic Glass Crack Webs (Stages 1, 2, 3)
+    const drawCrackCluster = (cx, cy, branches, maxLen, alpha, color, width) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      // Impact bullseye rings
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.stroke();
+      if (stage >= 2) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, 18, 0.2, Math.PI * 1.7);
+        ctx.stroke();
+      }
+      let seed = Math.floor(cx * 31 + cy * 17 + stage * 97);
+      const rand = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let b = 0; b < branches; b++) {
+        let ang = (b / branches) * Math.PI * 2 + (rand() - 0.5) * 0.45;
+        let px = cx;
+        let py = cy;
+        const segs = 4 + Math.floor(rand() * 4);
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        for (let s = 0; s < segs; s++) {
+          const len = (maxLen / segs) * (0.65 + rand() * 0.7);
+          ang += (rand() - 0.5) * 0.55;
+          px += Math.cos(ang) * len;
+          py += Math.sin(ang) * len;
+          ctx.lineTo(px, py);
+          // Secondary splinter fork
+          if (s >= 1 && rand() < 0.55) {
+            const forkAng = ang + (rand() < 0.5 ? 0.65 : -0.65);
+            const fx = px + Math.cos(forkAng) * (len * 0.7);
+            const fy = py + Math.sin(forkAng) * (len * 0.7);
+            ctx.moveTo(px, py);
+            ctx.lineTo(fx, fy);
+            ctx.moveTo(px, py);
+          }
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    if (stage >= 1) {
+      // Hairline impact cracks
+      drawCrackCluster(175, 165, 6, 72, 0.72, '#e0f2fe', 1.6);
+      drawCrackCluster(355, 225, 5, 58, 0.65, '#e0f2fe', 1.4);
+    }
+    if (stage >= 2) {
+      // Deep branching structural fractures
+      drawCrackCluster(258, 195, 9, 135, 0.88, '#ffffff', 2.2);
+      drawCrackCluster(120, 260, 6, 85, 0.78, '#fde68a', 1.8);
+      drawCrackCluster(390, 125, 7, 92, 0.78, '#fde68a', 1.8);
+    }
+    if (stage >= 3) {
+      // Critical near-shatter dense spiderweb + hot stress fractures
+      drawCrackCluster(256, 192, 14, 210, 0.96, '#ffffff', 2.8);
+      drawCrackCluster(165, 115, 9, 130, 0.90, '#fca5a5', 2.1);
+      drawCrackCluster(345, 275, 9, 130, 0.90, '#fca5a5', 2.1);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
   }
 
   _buildGuardShieldMesh() {
     const g = new THREE.Group();
-    // Large, curved holographic hexagonal riot barrier right in front of the player's view
-    const hexGeo = new THREE.CircleGeometry(0.52, 6);
+    this._guardFrameColorHex = 0x38bdf8;
+    this._guardCrackTextures = [
+      this._createGuardCrackTexture(0),
+      this._createGuardCrackTexture(1),
+      this._createGuardCrackTexture(2),
+      this._createGuardCrackTexture(3),
+    ];
+    this._guardCurrentStage = 0;
+
+    // 1. Sleek Horizontally-Curved Ballistic Energy Glass Arc (low opacity so aim stays crystal clear!)
+    const arcRadius = 0.88;
+    const arcSpan = 0.86;
+    const shieldH = 0.56;
+    const glassGeo = new THREE.CylinderGeometry(
+      arcRadius,
+      arcRadius,
+      shieldH,
+      28,
+      1,
+      true,
+      Math.PI - arcSpan * 0.5,
+      arcSpan
+    );
     this._guardShieldFillMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
+      map: this._guardCrackTextures[0],
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.42,
       side: THREE.DoubleSide,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
       fog: false,
     });
-    const fill = new THREE.Mesh(hexGeo, this._guardShieldFillMat);
-    fill.renderOrder = 20;
-    g.add(fill);
+    const glassMesh = new THREE.Mesh(glassGeo, this._guardShieldFillMat);
+    glassMesh.position.z = arcRadius;
+    glassMesh.renderOrder = 20;
+    g.add(glassMesh);
 
-    const edgeGeo = new THREE.TorusGeometry(0.52, 0.022, 8, 6);
-    this._guardShieldEdgeMat = new THREE.MeshBasicMaterial({
-      color: 0x7dd3fc,
-      transparent: true,
-      opacity: 0.92,
+    // 2. Sculpted Dark Titanium-Gunmetal Top & Bottom Curved Armored Clamp Rails
+    const railMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2633,
+      metalness: 0.86,
+      roughness: 0.32,
+    });
+    this._guardRailGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: new THREE.Color(0x38bdf8),
+      emissiveIntensity: 2.2,
+      roughness: 0.2,
+      metalness: 0.2,
       fog: false,
     });
-    const edge = new THREE.Mesh(edgeGeo, this._guardShieldEdgeMat);
-    edge.renderOrder = 21;
-    g.add(edge);
+    const railGeo = new THREE.CylinderGeometry(
+      arcRadius + 0.012,
+      arcRadius + 0.012,
+      0.036,
+      24,
+      1,
+      true,
+      Math.PI - arcSpan * 0.52,
+      arcSpan * 1.04
+    );
+    const glowStripGeo = new THREE.CylinderGeometry(
+      arcRadius + 0.008,
+      arcRadius + 0.008,
+      0.010,
+      24,
+      1,
+      true,
+      Math.PI - arcSpan * 0.50,
+      arcSpan
+    );
+    for (const sy of [-1, 1]) {
+      const rail = new THREE.Mesh(railGeo, railMat);
+      rail.position.set(0, sy * (shieldH * 0.5 + 0.014), arcRadius);
+      rail.renderOrder = 21;
+      g.add(rail);
 
-    const innerGeo = new THREE.RingGeometry(0.24, 0.265, 6);
-    const inner = new THREE.Mesh(innerGeo, this._guardShieldEdgeMat);
-    inner.position.z = 0.006;
-    inner.renderOrder = 21;
-    g.add(inner);
-
-    // Subtle glowing hex-grid struts across the barrier
-    const strutGeo = new THREE.BoxGeometry(0.98, 0.012, 0.008);
-    for (let i = 0; i < 3; i++) {
-      const strut = new THREE.Mesh(strutGeo, this._guardShieldEdgeMat);
-      strut.rotation.z = (i * Math.PI) / 3;
-      strut.position.z = 0.004;
-      strut.renderOrder = 21;
-      g.add(strut);
+      const strip = new THREE.Mesh(glowStripGeo, this._guardRailGlowMat);
+      strip.position.set(0, sy * (shieldH * 0.5 - 0.004), arcRadius);
+      strip.renderOrder = 22;
+      g.add(strip);
     }
 
-    g.position.set(-0.04, -0.08, -0.55);
+    // 3. Left & Right Beveled Tactical Emitter Pods framing the curved glass
+    const emitterGeo = new THREE.BoxGeometry(0.032, shieldH + 0.04, 0.038);
+    const edgeAngle = arcSpan * 0.52;
+    for (const side of [-1, 1]) {
+      const pod = new THREE.Mesh(emitterGeo, railMat);
+      const ex = Math.sin(side * edgeAngle) * arcRadius;
+      const ez = arcRadius - Math.cos(edgeAngle) * arcRadius;
+      pod.position.set(ex, 0, ez);
+      pod.rotation.y = -side * edgeAngle;
+      pod.renderOrder = 21;
+      g.add(pod);
+    }
+
+    g.position.set(0.0, -0.06, -0.58);
     g.visible = false;
     this._guardRaiseAlpha = 0;
     this._guardElapsed = 0;

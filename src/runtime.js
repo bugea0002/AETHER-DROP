@@ -63,7 +63,7 @@ const MODULE_FILES = [
 ];
 
 async function bootModularGame() {
-  await Promise.all(MODULE_FILES.map((relPath) => import(relPath + "?v=20261126b")));
+  await Promise.all(MODULE_FILES.map((relPath) => import(relPath + "?v=20261126d")));
   globalThis.__require("src/main.js");
 }
 
