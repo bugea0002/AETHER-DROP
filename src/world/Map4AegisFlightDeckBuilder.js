@@ -835,24 +835,54 @@ class Map4AegisFlightDeckBuilder {
       this.root.add(glowArch);
     }
 
-    // 4. Two Suspended Aegis Orbital Starfighters Docked on Overhead Magnetic Clamps
+    // 4. Two Multi-Part Detailed Aegis Orbital Gunships Suspended on Overhead Magnetic Docking Clamps
     this._dockedFighters = [];
-    const fuselageGeo = this._trackGeo(new THREE.ConeGeometry(1.3, 9.5, 6));
+    const fuselageGeo = this._trackGeo(new THREE.ConeGeometry(1.25, 9.8, 6));
     fuselageGeo.rotateX(Math.PI * 0.5);
-    const wingGeo = this._trackGeo(new THREE.BoxGeometry(9.2, 0.22, 3.4));
-    const engineGeo = this._trackGeo(new THREE.TorusGeometry(0.65, 0.14, 8, 18));
+    const bodyCoreGeo = this._trackGeo(new THREE.BoxGeometry(2.1, 1.2, 5.2));
+    const canopyGeo = this._trackGeo(new THREE.BoxGeometry(1.1, 0.55, 2.4));
+    const wingGeo = this._trackGeo(new THREE.BoxGeometry(9.6, 0.20, 3.2));
+    const tailFinGeo = this._trackGeo(new THREE.BoxGeometry(0.18, 2.1, 2.2));
+    const podGeo = this._trackGeo(new THREE.CylinderGeometry(0.32, 0.32, 3.2, 8));
+    podGeo.rotateX(Math.PI * 0.5);
+    const engineGeo = this._trackGeo(new THREE.TorusGeometry(0.68, 0.15, 8, 18));
+    const clampGeo = this._trackGeo(new THREE.BoxGeometry(0.45, 5.2, 0.65));
+
     for (const fx of [-13.5, 13.5]) {
       const fighter = new THREE.Group();
-      fighter.position.set(fx, 11.2, -5.5);
-      fighter.rotation.z = fx < 0 ? 0.14 : -0.14;
+      fighter.position.set(fx, 11.4, -5.5);
+      fighter.rotation.z = fx < 0 ? 0.12 : -0.12;
       fighter.add(new THREE.Mesh(fuselageGeo, whiteHullMat));
+
+      const core = new THREE.Mesh(bodyCoreGeo, mats.darkIronMat);
+      core.position.set(0, -0.15, -1.6);
+      fighter.add(core);
+
+      const canopy = new THREE.Mesh(canopyGeo, mats.keelEmberMat);
+      canopy.position.set(0, 0.58, 0.4);
+      fighter.add(canopy);
+
       const wing = new THREE.Mesh(wingGeo, mats.hullArmorMat);
-      wing.position.set(0, -0.1, -0.8);
+      wing.position.set(0, -0.1, -1.2);
       fighter.add(wing);
-      for (const ex of [-1.8, 1.8]) {
+
+      for (const side of [-1, 1]) {
+        const fin = new THREE.Mesh(tailFinGeo, whiteHullMat);
+        fin.position.set(side * 2.2, 0.85, -3.4);
+        fin.rotation.z = side * -0.28;
+        fighter.add(fin);
+
+        const pod = new THREE.Mesh(podGeo, mats.darkIronMat);
+        pod.position.set(side * 3.4, -0.45, -0.6);
+        fighter.add(pod);
+
         const eng = new THREE.Mesh(engineGeo, mats.tungstenAmberMat);
-        eng.position.set(ex, 0, -4.6);
+        eng.position.set(side * 1.65, 0, -4.6);
         fighter.add(eng);
+
+        const clamp = new THREE.Mesh(clampGeo, mats.darkIronMat);
+        clamp.position.set(side * 1.4, 3.2, -1.2);
+        fighter.add(clamp);
       }
       this.root.add(fighter);
       this._dockedFighters.push(fighter);

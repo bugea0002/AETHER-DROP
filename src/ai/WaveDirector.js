@@ -139,6 +139,7 @@ class WaveDirector {
 
     // Wave progression, 6-map campaign transition & spawning state
     this._active = false;
+    this._tutorialMode = false;
     this._currentWaveIndex = -1;
     this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
@@ -415,6 +416,7 @@ class WaveDirector {
     }
 
     this._active = false;
+    this._tutorialMode = false;
     this._currentWaveIndex = -1;
     this._currentWaveTotalEnemies = 0;
     this._currentMapIndex = WAVES[0]?.mapIndex ?? 0;
@@ -642,8 +644,8 @@ class WaveDirector {
       // Clear any remaining queued escorts so no minions spawn after boss defeat
       this._spawnQueue.length = 0;
       // Immediately terminate all remaining living minions with chain-explosion VFX
-      for (let i = 0; i < this._activeEnemies.length; i++) {
-        const minion = this._activeEnemies[i];
+      for (let i = 0; i < this._enemies.length; i++) {
+        const minion = this._enemies[i];
         if (!minion || minion === enemy || !minion.isAlive) continue;
         minion.hp = 0;
         minion._killProcessed = true;
@@ -1116,7 +1118,7 @@ class WaveDirector {
     this._combatIntensity += (targetIntensity - this._combatIntensity) * (1 - Math.exp(-2.8 * clampedDt));
 
     // 6. Complete wave -> award bonus -> intermission or final Victory!
-    if (waveCleared) {
+    if (waveCleared && !this._tutorialMode) {
       this._completeCurrentWave(wave);
     }
   }
@@ -1216,6 +1218,7 @@ class WaveDirector {
     if (isFinalWave) {
       this._victory = true;
       this._active = false;
+    this._tutorialMode = false;
       this._combatIntensity = 0;
 
       if (this.eventBus) {
@@ -1237,6 +1240,41 @@ class WaveDirector {
    * Select an optimal out-of-sight, range-appropriate spawn point and activate a pooled Enemy.
    * @private
    */
+  spawnTutorialEnemy(archetypeId, spawnPos) {
+    this._tutorialMode = true;
+    this._active = true;
+    const archetype = ENEMY_ARCHETYPES[archetypeId];
+    if (!archetype) return null;
+    const enemyId = this._nextEnemyId++;
+    const bucket = this._enemyPool[archetypeId] || (this._enemyPool[archetypeId] = []);
+    let enemy = null;
+    for (let i = 0; i < bucket.length; i++) {
+      const candidate = bucket[i];
+      if (!candidate.isAlive && candidate.isRemoved && !this._enemies.includes(candidate)) {
+        enemy = candidate;
+        break;
+      }
+    }
+    if (enemy) {
+      enemy.activate(enemyId, spawnPos, null);
+    } else {
+      enemy = new Enemy(
+        enemyId,
+        archetype,
+        spawnPos,
+        this._enemyGroup,
+        this.collisionWorld,
+        this.modelFactory,
+        this.eventBus,
+        null,
+        this._onEnemyDeathBound
+      );
+      bucket.push(enemy);
+    }
+    this._enemies.push(enemy);
+    return enemy;
+  }
+
   _spawnEnemy(archetypeId, playerController, wave) {
     const archetype = ENEMY_ARCHETYPES[archetypeId];
     if (!archetype) return null;

@@ -823,6 +823,20 @@ class Map6OrbitalDrydockBuilder {
       ob.position.set(ox, 12, oz);
       this.root.add(ob);
 
+      const ped = new THREE.Mesh(
+        this._trackGeo(new THREE.CylinderGeometry(2.8, 3.4, 2.4, 6)),
+        mats.hullArmorMat
+      );
+      ped.position.set(ox, 1.2, oz);
+      this.root.add(ped);
+
+      const conduit = new THREE.Mesh(
+        this._trackGeo(new THREE.BoxGeometry(0.32, 22, 0.32)),
+        i % 2 === 0 ? mats.keelEmberMat : mats.tungstenAmberMat
+      );
+      conduit.position.set(ox * 0.96, 12, oz * 0.96);
+      this.root.add(conduit);
+
       const cap = new THREE.Mesh(spireCapGeo, i % 2 === 0 ? mats.tungstenAmberMat : sovereignCrimsonMat);
       cap.position.set(ox, 27.5, oz);
       this.root.add(cap);

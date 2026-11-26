@@ -4993,3 +4993,137 @@ html, body {
   background: rgba(245, 158, 11, 0.12);
   border-left: 3px solid #f59e0b;
 }
+
+
+/* === Enlarged Commanding Bottom-Center Guard & Ultimate HUD === */
+.hud-bottom-center {
+  gap: 16px !important;
+  bottom: calc(20px + var(--safe-bottom)) !important;
+}
+.tac-wing {
+  padding: 12px 16px !important;
+  min-width: 208px !important;
+}
+.tac-wing-right {
+  min-width: 185px !important;
+}
+.tac-keycap {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 12px !important;
+}
+.tac-title {
+  font-size: 13px !important;
+}
+.tac-val {
+  font-size: 15px !important;
+}
+.tac-sub {
+  font-size: 13px !important;
+}
+.tac-bar-track {
+  height: 11px !important;
+}
+.ult-core-dial {
+  width: 108px !important;
+  height: 108px !important;
+}
+.ult-ring-bg, .ult-ring-fill {
+  stroke-width: 7 !important;
+}
+.ult-pct {
+  font-size: 21px !important;
+}
+.ult-key-badge {
+  font-size: 11px !important;
+  padding: 2px 8px !important;
+}
+
+/* === ESC & [TAB] In-Game Build / Augment Inspector === */
+.tab-build-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, 92vw);
+  max-height: 76vh;
+  overflow-y: auto;
+  background: rgba(8, 14, 26, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  border-top: 3px solid #f59e0b;
+  padding: 16px 20px;
+  z-index: 60;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72);
+}
+.tab-build-overlay.hidden { display: none !important; }
+.tab-build-head {
+  font-size: 14px;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-bottom: 10px;
+  letter-spacing: 0.05em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.build-summary-box {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  background: rgba(12, 20, 36, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  text-align: left;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+.build-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.build-stat-item {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+.build-stat-item strong {
+  color: #f8fafc;
+  margin-left: 4px;
+}
+.build-syn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.build-syn-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.build-syn-pill.active {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+.build-card-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.build-card-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(30, 41, 59, 0.85);
+  border-left: 3px solid #38bdf8;
+  color: #e2e8f0;
+}

@@ -64,6 +64,7 @@ class PlayerController {
     this.ultDamageMult = 1.0;
     this.phaseInvulnTimer = 0;
     this.reloadBuffTimer = 0;
+    this.hyperBarrageTimer = 0;
     this._guardCheckVec = new THREE.Vector3();
     this.isAlive = true;
 
@@ -100,6 +101,7 @@ class PlayerController {
     this.ultDamageMult = 1.0;
     this.phaseInvulnTimer = 0;
     this.reloadBuffTimer = 0;
+    this.hyperBarrageTimer = 0;
     this.mods = this._defaultMods();
 
     // Internal locomotion & timers
@@ -688,6 +690,7 @@ class PlayerController {
     if (this.reactiveArmorTimer > 0) this.reactiveArmorTimer = Math.max(0, this.reactiveArmorTimer - clampedDt);
     if (this.phaseInvulnTimer > 0) this.phaseInvulnTimer = Math.max(0, this.phaseInvulnTimer - clampedDt);
     if (this.reloadBuffTimer > 0) this.reloadBuffTimer = Math.max(0, this.reloadBuffTimer - clampedDt);
+    if (this.hyperBarrageTimer > 0) this.hyperBarrageTimer = Math.max(0, this.hyperBarrageTimer - clampedDt);
     if (this.ultActiveTimer > 0) {
       this.ultActiveTimer = Math.max(0, this.ultActiveTimer - clampedDt);
       if (this.ultActiveTimer <= 0) this.ultDamageMult = 1.0;
@@ -697,6 +700,7 @@ class PlayerController {
     if (this.guardHitFlash > 0) this.guardHitFlash = Math.max(0, this.guardHitFlash - clampedDt * 4.5);
     if (this.guardBreakTimer > 0) this.guardBreakTimer = Math.max(0, this.guardBreakTimer - clampedDt);
 
+    const prevGuarding = this.isGuarding;
     const wantsGuard = this.input.isDown('guard');
     if (wantsGuard && this.guardBreakTimer <= 0 && this.guardEnergy > 1.0) {
       this.isGuarding = true;
@@ -707,13 +711,17 @@ class PlayerController {
       if (this._guardRegenDelay > 0) {
         this._guardRegenDelay = Math.max(0, this._guardRegenDelay - clampedDt);
       } else if (this.guardEnergy < this.maxGuardEnergy) {
-        const regenRate = this.mods && this.mods.frameId === 'bastion' ? 16.8 : 11.2;
+        const regenRate = (this.mods && this.mods.frameId === 'bastion' ? 16.8 : 11.2) * (this.mods && this.mods.guardRegenMult ? this.mods.guardRegenMult : 1.0);
         this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + regenRate * clampedDt);
       }
     }
 
+    if (this.isGuarding !== prevGuarding && this.eventBus) {
+      this.eventBus.emit('SFX_GUARD_TOGGLE', { raised: this.isGuarding });
+    }
     if (this.ultActiveTimer <= 0 && this.ultCharge < 100) {
-      this.ultCharge = Math.min(100, this.ultCharge + 0.8 * clampedDt);
+      const uMult = (this.mods && this.mods.ultChargeMult) || 1.0;
+      this.ultCharge = Math.min(100, this.ultCharge + 0.8 * uMult * clampedDt);
     }
 
     this._timeSinceDamaged += clampedDt;
@@ -773,6 +781,9 @@ class PlayerController {
 
     if (this.mods && this.mods.synergyMobility) {
       this.dashOverdriveTimer = 2.0;
+    }
+    if (this.mods && this.mods.crossHyperBarrage) {
+      this.hyperBarrageTimer = 2.5;
     }
     if (this.mods && this.mods.phaseBlink) {
       this.phaseInvulnTimer = 0.35;
@@ -1079,11 +1090,12 @@ class PlayerController {
     const prevHp = this.health;
     const prevShield = this.shield;
 
+    const hMult = (this.mods && this.mods.dropHealMult) || 1.0;
     if (hpAmount > 0) {
-      this.health = Math.min(this.maxHealth, this.health + hpAmount);
+      this.health = Math.min(this.maxHealth, this.health + hpAmount * hMult);
     }
     if (shieldAmount > 0) {
-      this.shield = Math.min(this.maxShield, this.shield + shieldAmount);
+      this.shield = Math.min(this.maxShield, this.shield + shieldAmount * hMult);
     }
 
     const healthGain = this.health - prevHp;
@@ -1110,7 +1122,8 @@ class PlayerController {
 
   addUltCharge(amount) {
     if (!Number.isFinite(amount) || amount <= 0 || this.ultActiveTimer > 0) return;
-    this.ultCharge = Math.min(100, this.ultCharge + amount);
+    const uMult = (this.mods && this.mods.ultChargeMult) || 1.0;
+    this.ultCharge = Math.min(100, this.ultCharge + amount * uMult);
   }
 
   /**

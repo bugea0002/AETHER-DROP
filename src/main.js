@@ -1,6 +1,6 @@
 // Module: src/main.js
 __define("src/main.js", (__exports, __require) => {
-const { EVENTS, QUALITY_PRESETS, META_UPGRADES, SYNERGIES, TACTICAL_CARDS, PILOT_FRAMES, PILOT_FRAME_ART, HEAT_CONTRACTS, DAILY_MODIFIERS, ACHIEVEMENTS, getTodayDailyModifier } = __require("src/config/constants.js");
+const { EVENTS, QUALITY_PRESETS, META_UPGRADES, SYNERGIES, CROSS_SYNERGIES, TACTICAL_CARDS, PILOT_FRAMES, PILOT_FRAME_ART, HEAT_CONTRACTS, DAILY_MODIFIERS, ACHIEVEMENTS, getTodayDailyModifier } = __require("src/config/constants.js");
 const { WAVES } = __require("src/config/waves.js");
 const { WEAPONS } = __require("src/config/weapons.js");
 const { WeaponModelFactory } = __require("src/weapons/WeaponModelFactory.js");
@@ -43,6 +43,10 @@ function bootstrap() {
   const titleQualityBadge = byId('title-quality-badge');
   const titleMenuMain = byId('title-menu-main');
   const btnDeploy = byId('btn-deploy');
+  const btnTutorial = byId('btn-tutorial');
+  const btnTutExit = byId('btn-tut-exit');
+  if (btnTutorial) btnTutorial.addEventListener('click', () => startTutorialRun());
+  if (btnTutExit) btnTutExit.addEventListener('click', () => finishTutorial(false));
   const titleGoldBadge = byId('title-gold-badge');
   const btnTitleArmory = byId('btn-title-armory');
   const panelArmory = byId('title-panel-armory');
@@ -394,6 +398,28 @@ function bootstrap() {
 
   // Dedicated 3D Ultimate VFX Objects (Orbital Laser Pillars, Expanding Nova Spheres, Shockwave Rings, Bastion Fortress Dome)
   const _ult3dEffects = [];
+  const _preloadedCardArt = [];
+  (function preloadAllCardArt() {
+    const srcs = [
+      "./assets/card-tungsten_core.webp", "./assets/card-overclock_mag.webp",
+      "./assets/card-precision_refund.webp", "./assets/card-thruster_tune.webp",
+      "./assets/card-slide_reload.webp", "./assets/card-aerial_gunner.webp",
+      "./assets/card-siphon_boost.webp", "./assets/card-beacon_resonance.webp",
+      "./assets/card-reactive_armor.webp", "./assets/card-repulsor_slam.webp",
+      "./assets/card-mark_contagion.webp", "./assets/card-thermal_nova.webp",
+      "./assets/card-slide_overclock.webp", "./assets/card-shield_counter.webp",
+      "./assets/card-field_medic.webp", "./assets/card-ult_accelerator.webp",
+      "./assets/card-ult_overdrive.webp", "./assets/card-auto_forge.webp",
+      "./assets/card-scavenger_protocol.webp", "./assets/card-shield_to_ult.webp",
+    ];
+    for (let i = 0; i < srcs.length; i++) {
+      const img = new Image();
+      img.decoding = 'sync';
+      img.src = srcs[i];
+      if (typeof img.decode === 'function') img.decode().catch(() => {});
+      _preloadedCardArt.push(img);
+    }
+  })();
   let _hitstopTimer = 0;
 
   // === Dedicated 6-Step Interactive Tutorial Controller (Map 6: TutorialMapBuilder) ===
@@ -457,9 +483,9 @@ function bootstrap() {
     tutorialState.step = nextStep;
     if (nextStep === 2 && waveDirector && arenaData) {
       tutorialState.killsInStep = 0;
-      if (typeof waveDirector._spawnEnemy === 'function') {
-        waveDirector._spawnEnemy('rusher_drone', new THREE.Vector3(-4.5, 0.2, -13.5));
-        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(4.5, 0.05, -14.5));
+      if (typeof waveDirector.spawnTutorialEnemy === 'function') {
+        waveDirector.spawnTutorialEnemy('rusher_drone', new THREE.Vector3(-4.5, 0.2, -13.5));
+        waveDirector.spawnTutorialEnemy('tactical_trooper', new THREE.Vector3(4.5, 0.05, -14.5));
       }
     } else if (nextStep === 3 && playerController) {
       tutorialState.guardHoldSec = 0;
@@ -482,13 +508,13 @@ function bootstrap() {
       tutorialState.enteredBeacon = false;
       tutorialState.usedUlt = false;
       playerController.ultCharge = 100;
-      if (typeof interactables.setControlZoneActive === 'function') {
-        interactables.setControlZoneActive(true);
+      if (typeof interactables.setZoneActive === 'function') {
+        interactables.setZoneActive(true);
       }
-      if (typeof waveDirector._spawnEnemy === 'function') {
-        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(-5.0, 0.05, -13.0));
-        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(0.0, 0.05, -14.5));
-        waveDirector._spawnEnemy('rusher_drone', new THREE.Vector3(5.0, 0.2, -13.0));
+      if (typeof waveDirector.spawnTutorialEnemy === 'function') {
+        waveDirector.spawnTutorialEnemy('tactical_trooper', new THREE.Vector3(-5.0, 0.05, -13.0));
+        waveDirector.spawnTutorialEnemy('tactical_trooper', new THREE.Vector3(0.0, 0.05, -14.5));
+        waveDirector.spawnTutorialEnemy('rusher_drone', new THREE.Vector3(5.0, 0.2, -13.0));
       }
     } else if (nextStep === 6) {
       if (typeof openUpgradeDraft === 'function') {
@@ -609,8 +635,21 @@ function bootstrap() {
     core.position.y = 22;
     g.add(core);
 
+    const scorchGeo = new THREE.CircleGeometry(3.8, 24);
+    scorchGeo.rotateX(-Math.PI * 0.5);
+    const scorchMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const scorch = new THREE.Mesh(scorchGeo, scorchMat);
+    scorch.position.y = 0.08;
+    g.add(scorch);
+
     engine.scene.add(g);
-    _ult3dEffects.push({ type: 'pillar', mesh: g, mats: [outerMat, coreMat], geos: [outerGeo, coreGeo], age: 0, maxAge: 1.15 });
+    _ult3dEffects.push({ type: 'pillar', mesh: g, mats: [outerMat, coreMat, scorchMat], geos: [outerGeo, coreGeo, scorchGeo], age: 0, maxAge: 1.25 });
   }
 
   function spawnUltShockRing(pos, maxRadius, colorHex, maxAge = 0.85, tiltX = 0) {
@@ -698,6 +737,7 @@ function bootstrap() {
         fx.mesh.scale.set(sc, 1.0, sc);
         fx.mats[0].opacity = 0.72 * (1 - t);
         fx.mats[1].opacity = 0.92 * (1 - t);
+        if (fx.mats[2]) fx.mats[2].opacity = 0.65 * (1 - t);
       } else if (fx.type === 'ring') {
         const r = 1.0 + (fx.maxRadius - 1.0) * (1 - Math.pow(1 - t, 2.2));
         fx.mesh.scale.set(r, r, r);
@@ -739,6 +779,67 @@ function bootstrap() {
     if (!_frameBadgeEl) _frameBadgeEl = document.getElementById('hud-frame-badge');
     if (!_frameStatusEl) _frameStatusEl = document.getElementById('hud-frame-status');
   }
+
+  function renderBuildSummaryInto(el) {
+    if (!el) return;
+    const { mods, tagCounts } = computePlayerMods();
+    const statsHtml = `
+      <div class="build-stat-grid">
+        <div class="build-stat-item">화력 배율<strong>${Math.round(mods.damageMult * 100)}%</strong></div>
+        <div class="build-stat-item">이동 속도<strong>${Math.round(mods.moveSpeedMult * 100)}%</strong></div>
+        <div class="build-stat-item">방패 최대<strong>${mods.guardMax}</strong></div>
+        <div class="build-stat-item">방패 충전<strong>${Math.round(mods.guardRegenMult * 100)}%</strong></div>
+        <div class="build-stat-item">궁극기 충전<strong>${Math.round(mods.ultChargeMult * 100)}%</strong></div>
+        <div class="build-stat-item">드랍 회복<strong>${Math.round(mods.dropHealMult * 100)}%</strong></div>
+      </div>`;
+    let synHtml = '<div class="build-syn-row">';
+    for (const key of ['assault', 'mobility', 'vanguard', 'tactical']) {
+      const s = SYNERGIES[key];
+      const cnt = tagCounts[key] || 0;
+      const tier = cnt >= 4 ? '4/4 MAX' : cnt >= 2 ? '2/4 활성' : `${cnt}/2`;
+      synHtml += `<span class="build-syn-pill ${cnt >= 2 ? 'active' : ''}" style="border-left:3px solid ${s.color}">${s.tagLabel} ${tier}</span>`;
+    }
+    for (let i = 0; i < CROSS_SYNERGIES.length; i++) {
+      const csyn = CROSS_SYNERGIES[i];
+      const ok = csyn.requires.every((r) => (tagCounts[r] || 0) >= 2);
+      if (ok) synHtml += `<span class="build-syn-pill active">★ ${csyn.name}</span>`;
+    }
+    synHtml += '</div>';
+
+    let cardsHtml = '<div class="build-card-list">';
+    if (runCards.length === 0) {
+      cardsHtml += '<span style="opacity:0.65;">아직 획득한 전술 카드가 없습니다.</span>';
+    } else {
+      for (let i = 0; i < runCards.length; i++) {
+        const cid = runCards[i];
+        const card = TACTICAL_CARDS.find((c) => c.id === cid);
+        if (!card) continue;
+        const s = SYNERGIES[card.tag] || SYNERGIES.assault;
+        cardsHtml += `<span class="build-card-chip" style="border-left-color:${s.color}" title="${card.desc}">[${s.tagLabel}] ${card.name}</span>`;
+      }
+    }
+    cardsHtml += '</div>';
+    el.innerHTML = statsHtml + synHtml + cardsHtml;
+  }
+
+  // [TAB] Hold Live Build Inspector
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Tab' && gameState === 'playing') {
+      e.preventDefault();
+      const ov = document.getElementById('tab-build-overlay');
+      const ct = document.getElementById('tab-build-content');
+      if (ov && ct) {
+        renderBuildSummaryInto(ct);
+        ov.classList.remove('hidden');
+      }
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Tab') {
+      const ov = document.getElementById('tab-build-overlay');
+      if (ov) ov.classList.add('hidden');
+    }
+  });
 
   function updateTacticalFrameHudOverlay(pSnap, mods) {
     ensureTacticalFrameHudOverlay();
@@ -862,7 +963,24 @@ function bootstrap() {
       if (dm.shieldBonus) mods.maxShieldBonus += dm.shieldBonus;
     }
 
-    const tagCounts = { assault: 0, mobility: 0, vanguard: 0 };
+    mods.guardRegenMult = 1.0;
+    mods.ultChargeMult = 1.0;
+    mods.ultDamageBonus = 1.0;
+    mods.ultDurationBonus = 0;
+    mods.dropHealMult = 1.0;
+    mods.shieldCounter = false;
+    mods.shieldToUlt = false;
+    mods.autoForgeBonus = 0;
+    mods.killGuardBonus = 0;
+    mods.synergyTactical = false;
+    mods.synergyAssault4 = false;
+    mods.synergyMobility4 = false;
+    mods.synergyVanguard4 = false;
+    mods.synergyTactical4 = false;
+    mods.crossHyperBarrage = false;
+    mods.crossAegisConverter = false;
+
+    const tagCounts = { assault: 0, mobility: 0, vanguard: 0, tactical: 0 };
     for (let i = 0; i < runCards.length; i++) {
       const card = runCards[i];
       if (tagCounts[card.tag] !== undefined) tagCounts[card.tag]++;
@@ -873,7 +991,7 @@ function bootstrap() {
         case 'thruster_tune': mods.moveSpeedMult *= 1.12; mods.dashCooldownMult *= 0.75; break;
         case 'slide_reload': mods.slideReload = true; break;
         case 'aerial_gunner': mods.airDamageBonus += 0.28; break;
-        case 'siphon_boost': mods.maxShieldBonus += 25; mods.killShieldBonus += 15; break;
+        case 'siphon_boost': mods.maxShieldBonus += 25; mods.guardMax += 40; mods.guardRegenMult += 0.30; break;
         case 'beacon_resonance': mods.zoneRegenHp += 7; mods.zoneDamageBonus += 0.2; break;
         case 'reactive_armor': mods.reactiveArmor = true; break;
         case 'repulsor_slam': mods.repulsorSlam = true; break;
@@ -891,6 +1009,7 @@ function bootstrap() {
           mods.shieldRegenMult *= 1.35;
           break;
         case 'kinetic_momentum':
+          mods.killGuardBonus += 10;
           mods.moveSpeedMult *= 1.10;
           mods.dashCooldownMult *= 0.85;
           mods.killShieldBonus += 10;
@@ -900,12 +1019,57 @@ function bootstrap() {
           mods.fireRateMult *= 1.16;
           mods.orbitalOverload = true;
           break;
+        case 'shield_counter':
+          mods.shieldCounter = true;
+          mods.guardMax += 35;
+          break;
+        case 'field_medic':
+          mods.dropHealMult += 0.55;
+          mods.guardRegenMult += 0.35;
+          break;
+        case 'ult_accelerator':
+          mods.ultChargeMult += 0.40;
+          break;
+        case 'ult_overdrive':
+          mods.ultDamageBonus += 0.45;
+          mods.ultDurationBonus += 2.0;
+          break;
+        case 'auto_forge':
+          mods.autoForgeBonus += 0.12;
+          mods.reloadSpeedMult += 0.18;
+          break;
+        case 'scavenger_protocol':
+          mods.salvageGoldMult += 0.30;
+          mods.dropHealMult += 0.25;
+          mods.ultChargeMult += 0.15;
+          break;
+        case 'shield_to_ult':
+          mods.shieldToUlt = true;
+          break;
       }
     }
 
     mods.synergyAssault = tagCounts.assault >= 2;
     mods.synergyMobility = tagCounts.mobility >= 2;
     mods.synergyVanguard = tagCounts.vanguard >= 2;
+    mods.synergyTactical = tagCounts.tactical >= 2;
+    if (mods.synergyVanguard) {
+      mods.guardMax = Math.round(mods.guardMax * 1.40);
+      mods.guardRegenMult += 0.30;
+    }
+    if (mods.synergyTactical) {
+      mods.ultChargeMult += 0.30;
+      mods.dropHealMult += 0.25;
+    }
+    if (tagCounts.assault >= 4) { mods.synergyAssault4 = true; mods.damageMult *= 1.25; }
+    if (tagCounts.mobility >= 4) { mods.synergyMobility4 = true; mods.moveSpeedMult *= 1.18; mods.dashCooldownMult *= 0.70; }
+    if (tagCounts.vanguard >= 4) { mods.synergyVanguard4 = true; }
+    if (tagCounts.tactical >= 4) { mods.synergyTactical4 = true; }
+    if (tagCounts.assault >= 2 && tagCounts.mobility >= 2) { mods.crossHyperBarrage = true; }
+    if (tagCounts.vanguard >= 2 && tagCounts.tactical >= 2) {
+      mods.crossAegisConverter = true;
+      mods.guardCostMult = Math.max(0.25, mods.guardCostMult * 0.75);
+    }
     return { mods, tagCounts };
   }
 
@@ -1128,6 +1292,7 @@ function bootstrap() {
         assault: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
         mobility: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h8l-1 8 11-12h-8l0-8z"/></svg>',
         vanguard: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"/></svg>',
+        tactical: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
       };
       const tagIco = TAG_ICONS[card.tag] || TAG_ICONS.assault;
       const CARD_ART_MAP = {
@@ -1148,9 +1313,16 @@ function bootstrap() {
         aegis_capacitor: "./assets/card-reactive_armor.webp",
         kinetic_momentum: "./assets/card-thruster_tune.webp",
         orbital_overload: "./assets/card-mark_contagion.webp",
+        shield_counter: "./assets/card-shield_counter.webp",
+        field_medic: "./assets/card-field_medic.webp",
+        ult_accelerator: "./assets/card-ult_accelerator.webp",
+        ult_overdrive: "./assets/card-ult_overdrive.webp",
+        auto_forge: "./assets/card-auto_forge.webp",
+        scavenger_protocol: "./assets/card-scavenger_protocol.webp",
+        shield_to_ult: "./assets/card-shield_to_ult.webp",
       };
       const cardArtSrc = CARD_ART_MAP[card.id] || CARD_ART_MAP.tungsten_core;
-      const cardArt = `<img class="tactical-card-img" src="${cardArtSrc}" alt="${card.name} 일러스트" />`;
+      const cardArt = `<img class="tactical-card-img" loading="eager" decoding="sync" src="${cardArtSrc}" alt="${card.name} 일러스트" />`;
       btn.innerHTML = `
         <div class="tactical-card-top">
           <span class="tactical-tag-wrap">${tagIco}<span class="tactical-tag">${syn.tagLabel} (${nextCount}/${syn.threshold})</span></span>
@@ -1159,8 +1331,8 @@ function bootstrap() {
         <div class="tactical-card-art" aria-hidden="true">${cardArt}</div>
         <div class="tactical-card-title">${card.rare ? '<span class="rare-pill">RARE</span> ' : ''}${card.name}</div>
         <div class="tactical-card-desc">${card.desc}</div>
-        <div class="tactical-synergy-hint ${willTrigger ? 'ready' : ''}">
-          ${willTrigger ? `<span class="syn-badge">SYNERGY</span>[${syn.name}] ${syn.desc}` : alreadyActive ? `시너지 활성 중: [${syn.name}]` : `2장 시너지 [${syn.name}]: ${syn.desc}`}
+        <div class="tactical-synergy-hint ${willTrigger || nextCount === 4 ? 'ready' : ''}">
+          ${nextCount === 4 ? `<span class="syn-badge">MAX 4/4</span>[${syn.name}] 최종 강화 해금!` : willTrigger ? `<span class="syn-badge">SYNERGY 2/4</span>[${syn.name}] 활성!` : alreadyActive ? `시너지 활성 (${nextCount}/4) · 4장 달성 시 최종 강화` : `2장/4장 시너지 [${syn.name}]: ${syn.desc}`}
         </div>
       `;
       const pickIdx = i;
@@ -1549,6 +1721,19 @@ function bootstrap() {
 
     // VANGUARD-09 Special: Tactical Reload grants 2.5s rapid fire & stability
     eventBus.on(EVENTS.WEAPON_RELOADED, () => {
+      if (playerController && playerController.mods && playerController.mods.thermalNova && waveDirector) {
+        const pPos = playerController.position;
+        const look = playerController.getLookDirection();
+        const activeE = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+        for (let ei = 0; ei < activeE.length; ei++) {
+          const e = activeE[ei];
+          if (!e || !e.isAlive) continue;
+          if (e.position.distanceTo(pPos) <= 9.0) {
+            e.applyDamage(75, e.center || e.position, false, look, { isExplosion: true, knockback: 10 });
+          }
+        }
+        if (vfxManager) vfxManager.spawnExplosion(pPos, 4.8, 0xf97316);
+      }
       if (playerController && playerController.mods && playerController.mods.tacticalReload) {
         playerController.reloadBuffTimer = 2.5;
         if (hudManager && typeof hudManager.showAnnouncement === 'function') {
@@ -1633,6 +1818,41 @@ function bootstrap() {
         const col = playerController.mods && playerController.mods.frameId === 'bastion' ? 0x22c55e : 0x38bdf8;
         vfxManager.spawnExplosion(sparkPos, p && p.guardBroken ? 2.4 : 1.0, col);
       }
+      if (playerController && playerController.mods) {
+        const gm = playerController.mods;
+        if (gm.shieldToUlt && p && p.amount > 0) {
+          playerController.addUltCharge(p.amount * 0.60);
+        }
+        if (gm.crossAegisConverter) {
+          playerController.addUltCharge(4.0);
+        }
+        if (gm.shieldCounter && waveDirector) {
+          const pPos = playerController.position;
+          const look = playerController.getLookDirection();
+          const activeE = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < activeE.length; ei++) {
+            const e = activeE[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 9.0) {
+              e.applyDamage(45, e.center || e.position, false, look, { isExplosion: true, knockback: 12 });
+            }
+          }
+          spawnUltShockRing(pPos, 9.0, 0x38bdf8, 0.45);
+        }
+        if (p && p.guardBroken && gm.synergyVanguard4 && waveDirector) {
+          const pPos = playerController.position;
+          const activeE = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < activeE.length; ei++) {
+            const e = activeE[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 10.0) {
+              const dir = e.position.clone().sub(pPos).normalize();
+              e.applyDamage(110, e.center || e.position, false, dir, { isExplosion: true, knockback: 18 });
+            }
+          }
+          spawnUltShockRing(pPos, 10.5, 0x38bdf8, 0.65);
+        }
+      }
       if (p && p.guardBroken && hudManager && typeof hudManager.showAnnouncement === 'function') {
         hudManager.showAnnouncement('에너지 방패 파괴!', '2초 후 재충전 시작', 'danger');
       }
@@ -1652,6 +1872,9 @@ function bootstrap() {
       // Item 8: No HP or Shield recovery on kill
       if (p && p.combo > telemetry.maxCombo) {
         telemetry.maxCombo = p.combo;
+      }
+      if (playerController.mods && playerController.mods.killGuardBonus > 0 && playerController.guardBreakTimer <= 0) {
+        playerController.guardEnergy = Math.min(playerController.maxGuardEnergy, playerController.guardEnergy + playerController.mods.killGuardBonus);
       }
       // APEX-ZERO Special: Kill instantly restores 1 dash + 2.5s Overdrive (infinite ammo + 30% RPM)
       if (playerController.mods && playerController.mods.apexOverdrive) {
@@ -2696,7 +2919,16 @@ function bootstrap() {
       // 1.6. Frame Ultimate Activation on [X]
       if (input.consumePressed('ultimate') && playerController && playerController.ultCharge >= 100) {
         const fid = (playerController.mods && playerController.mods.frameId) || 'vanguard';
+        eventBus.emit(EVENTS.ULTIMATE_USED, { frameId: fid });
+        const uDmgM = (playerController.mods && playerController.mods.ultDamageBonus) || 1.0;
+        const uDurAdd = (playerController.mods && playerController.mods.ultDurationBonus) || 0;
         playerController.ultCharge = 0;
+        if (playerController.mods && playerController.mods.synergyTactical4) {
+          playerController.guardEnergy = playerController.maxGuardEnergy;
+          playerController.guardBreakTimer = 0;
+          playerController.ultDamageMult = Math.max(playerController.ultDamageMult || 1.0, 1.35);
+          playerController.ultActiveTimer = Math.max(playerController.ultActiveTimer || 0, 4.0);
+        }
         if (tutorialState.active && tutorialState.step === 5) { tutorialState.usedUlt = true; updateTutorialBannerUI(); }
         const pPos = playerController.position;
         const activeEnemies = waveDirector && waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
@@ -2723,7 +2955,7 @@ function bootstrap() {
               if (!e || !e.isAlive) continue;
               if (e.position.distanceTo(tPos) <= 7.5) {
                 const dir = e.position.clone().sub(tPos).normalize();
-                e.applyDamage(180, e.center || e.position, false, dir, { isExplosion: true, knockback: 18 });
+                e.applyDamage(Math.round(180 * uDmgM), e.center || e.position, false, dir, { isExplosion: true, knockback: 18 });
               }
             }
           }
@@ -2734,9 +2966,9 @@ function bootstrap() {
           }
         } else if (fid === 'strider') {
           // STRIDER-04: PHASE OVERCLOCK (6s 60% enemy time-dilation + hyper speed + infinite ammo)
-          playerController.timeSlowTimer = 6.0;
-          playerController.ultActiveTimer = 6.0;
-          playerController.dashOverdriveTimer = 6.0;
+          playerController.timeSlowTimer = 6.0 + uDurAdd;
+          playerController.ultActiveTimer = Math.max(playerController.ultActiveTimer, 6.0 + uDurAdd);
+          playerController.dashOverdriveTimer = 6.0 + uDurAdd;
           if (vfxManager) vfxManager.spawnExplosion(pPos, 5.0, 0x00f0ff);
           spawnUltNovaSphere(pPos, 24.0, 0x00f0ff, 1.1);
           spawnUltShockRing(pPos, 26.0, 0x38bdf8, 1.0);
@@ -2747,8 +2979,8 @@ function bootstrap() {
           }
         } else if (fid === 'bastion') {
           // BASTION-12: AEGIS FORTRESS (7s invulnerability + 12m periodic electric shockwaves + 100% guard refill)
-          playerController.ultInvulnTimer = 7.0;
-          playerController.ultActiveTimer = 7.0;
+          playerController.ultInvulnTimer = 7.0 + uDurAdd;
+          playerController.ultActiveTimer = Math.max(playerController.ultActiveTimer, 7.0 + uDurAdd);
           playerController.guardEnergy = playerController.maxGuardEnergy;
           playerController.guardBreakTimer = 0;
           telemetry._bastionPulseTimer = 0.05;
@@ -2761,9 +2993,9 @@ function bootstrap() {
           }
         } else if (fid === 'apex') {
           // APEX-ZERO: APOCALYPSE NOVA (28m 260 dmg + stagger nova + 5s 1.6x damage overdrive)
-          playerController.ultActiveTimer = 5.0;
-          playerController.ultDamageMult = 1.6;
-          playerController.dashOverdriveTimer = 5.0;
+          playerController.ultActiveTimer = Math.max(playerController.ultActiveTimer, 5.0 + uDurAdd);
+          playerController.ultDamageMult = Math.max(playerController.ultDamageMult, 1.6 * uDmgM);
+          playerController.dashOverdriveTimer = 5.0 + uDurAdd;
           if (vfxManager) vfxManager.spawnExplosion(pPos, 9.5, 0xef4444);
           spawnUltNovaSphere(pPos, 28.0, 0xef4444, 1.2);
           spawnUltShockRing(pPos, 28.0, 0xf59e0b, 1.05, 0.0);
@@ -2775,7 +3007,7 @@ function bootstrap() {
             if (!e || !e.isAlive) continue;
             if (e.position.distanceTo(pPos) <= 28.0) {
               const dir = e.position.clone().sub(pPos).normalize();
-              e.applyDamage(260, e.center || e.position, false, dir, { isExplosion: true, knockback: 22 });
+              e.applyDamage(Math.round(260 * uDmgM), e.center || e.position, false, dir, { isExplosion: true, knockback: 22 });
             }
           }
           playerController.addScreenShake(0.55);
@@ -2797,7 +3029,7 @@ function bootstrap() {
             if (!e || !e.isAlive) continue;
             if (e.position.distanceTo(pPos) <= 12.0) {
               const dir = e.position.clone().sub(pPos).normalize();
-              e.applyDamage(45, e.center || e.position, false, dir, { isExplosion: true, knockback: 10 });
+              e.applyDamage(Math.round(45 * ((playerController.mods && playerController.mods.ultDamageBonus) || 1.0)), e.center || e.position, false, dir, { isExplosion: true, knockback: 10 });
             }
           }
           if (vfxManager) vfxManager.spawnExplosion(pPos, 4.5, 0x22c55e);

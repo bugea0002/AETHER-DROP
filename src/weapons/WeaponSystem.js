@@ -1509,8 +1509,9 @@ class WeaponSystem {
           this._hitNormal.copy(this._rayDir).negate();
         }
 
-        const overclockMult = 1 + (this.weaponOverclock[this.currentIndex] || 0) * 0.18;
-        let totalDmgMult = overclockMult * (mods ? mods.damageMult : 1.0) * (pc && pc.ultDamageMult ? pc.ultDamageMult : 1.0);
+        const ocStep = 0.18 + (mods && mods.autoForgeBonus ? mods.autoForgeBonus : 0);
+        const overclockMult = 1 + (this.weaponOverclock[this.currentIndex] || 0) * ocStep;
+        let totalDmgMult = overclockMult * (mods ? mods.damageMult : 1.0) * (pc && pc.ultDamageMult ? pc.ultDamageMult : 1.0) * (pc && pc.hyperBarrageTimer > 0 ? 1.35 : 1.0);
         if (pc && pc.inZoneBuff) totalDmgMult *= 1.15 + (mods ? mods.zoneDamageBonus : 0);
         if (pc && mods && mods.airDamageBonus > 0 && (!pc.isGrounded || pc.isSliding)) {
           totalDmgMult *= 1 + mods.airDamageBonus;

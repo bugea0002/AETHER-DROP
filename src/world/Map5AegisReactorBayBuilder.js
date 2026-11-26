@@ -810,9 +810,26 @@ class Map5AegisReactorBayBuilder {
     beamMesh.position.y = 14;
     coreHub.add(beamMesh);
 
-    const innerCoreGeo = this._trackGeo(new THREE.OctahedronGeometry(2.6, 1));
+    const innerCoreGeo = this._trackGeo(new THREE.OctahedronGeometry(2.4, 1));
     const innerCore = new THREE.Mesh(innerCoreGeo, mats.tungstenAmberMat);
     coreHub.add(innerCore);
+
+    // 4 Heavy Armored Vertical Containment Struts & Layered Accelerator Coils around Central Core
+    const strutGeo = this._trackGeo(new THREE.BoxGeometry(0.75, 11.5, 1.1));
+    for (let s = 0; s < 4; s++) {
+      const ang = (s / 4) * Math.PI * 2 + Math.PI / 4;
+      const strut = new THREE.Mesh(strutGeo, mats.darkIronMat);
+      strut.position.set(Math.cos(ang) * 4.4, 2.5, Math.sin(ang) * 4.4);
+      strut.rotation.y = -ang;
+      coreHub.add(strut);
+    }
+    const coilGeo = this._trackGeo(new THREE.TorusGeometry(3.4, 0.22, 8, 28));
+    coilGeo.rotateX(Math.PI * 0.5);
+    for (const cy of [-2.4, 2.6, 5.8]) {
+      const coil = new THREE.Mesh(coilGeo, mats.keelEmberMat);
+      coil.position.y = cy;
+      coreHub.add(coil);
+    }
 
     const ringAGeo = this._trackGeo(new THREE.TorusGeometry(6.8, 0.34, 10, 36));
     ringAGeo.rotateX(Math.PI * 0.5);

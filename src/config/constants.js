@@ -271,7 +271,8 @@ const SYNERGIES = Object.freeze({
     tagLabel: '화력',
     color: '#f59e0b',
     threshold: 2,
-    desc: '헤드샷 시 반경 4m 폭발 충격(+35 피해)',
+    tier4Threshold: 4,
+    desc: '2장: 헤드샷 시 4m 폭발(+35) · 4장: 전 무기 피해 +25% & 폭발 반경 7m',
   },
   mobility: {
     id: 'mobility',
@@ -279,19 +280,46 @@ const SYNERGIES = Object.freeze({
     tagLabel: '기동',
     color: '#22c55e',
     threshold: 2,
-    desc: '대시 후 2초간 연사속도 +30% & 탄약 미소모',
+    tier4Threshold: 4,
+    desc: '2장: 대시 후 2초 탄약무한·연사 +30% · 4장: 이속 +18% & 대시 쿨 -30%',
   },
   vanguard: {
     id: 'vanguard',
-    name: '선봉 요새',
+    name: '철벽 방벽',
     tagLabel: '방어',
     color: '#38bdf8',
     threshold: 2,
-    desc: '쉴드 50% 이상 유지 시 전 무기 피해 +20%',
+    tier4Threshold: 4,
+    desc: '2장: [E] 방패 내구도 +40% & 충전 +30% · 4장: 방패 파괴 시 10m 충격파(110 피해)',
+  },
+  tactical: {
+    id: 'tactical',
+    name: '전술 과충전',
+    tagLabel: '전술',
+    color: '#c084fc',
+    threshold: 2,
+    tier4Threshold: 4,
+    desc: '2장: 궁극기 충전 +30% & 드랍 회복 +25% · 4장: 궁극기 발동 시 방패 완충 + 4초 화력 +35%',
   },
 });
 
+const CROSS_SYNERGIES = Object.freeze([
+  {
+    id: 'hyper_barrage',
+    name: '초음속 탄막',
+    requires: ['assault', 'mobility'],
+    desc: '[화력2 + 기동2] 대시 후 2.5초간 사격 피해 1.35배 증폭',
+  },
+  {
+    id: 'aegis_converter',
+    name: '절대 방벽 변환',
+    requires: ['vanguard', 'tactical'],
+    desc: '[방어2 + 전술2] 방패 소모 -25% & 방패로 막을 때마다 궁극기 +4% 충전',
+  },
+]);
+
 const TACTICAL_CARDS = [
+  // === ASSAULT (화력 6장) ===
   {
     id: 'tungsten_core',
     tag: 'assault',
@@ -311,6 +339,28 @@ const TACTICAL_CARDS = [
     desc: '헤드샷 배율 +0.4x, 적 처치 시 탄창 3발 즉시 환급',
   },
   {
+    id: 'armor_piercer',
+    tag: 'assault',
+    name: '아머 피어서',
+    desc: '모든 무기 피해 +14%, 헤드샷 배율 +0.35x, 방패·보스 대상 추가 피해 +22%',
+  },
+  {
+    id: 'mark_contagion',
+    tag: 'assault',
+    rare: true,
+    name: '표식 전이',
+    desc: '표식/헤드샷 적 처치 시 반경 10m 내 적 2기에게 표식 전이 + 25 피해',
+  },
+  {
+    id: 'thermal_nova',
+    tag: 'assault',
+    rare: true,
+    name: '과열 폭발',
+    desc: 'W-01 과열 도달 또는 재장전 완료 시 전방 9m 화염 폭발(75 피해)',
+  },
+
+  // === MOBILITY (기동 6장) ===
+  {
     id: 'thruster_tune',
     tag: 'mobility',
     name: '추진기 튜닝',
@@ -329,10 +379,32 @@ const TACTICAL_CARDS = [
     desc: '공중 또는 슬라이드 중 무기 피해량 +28%',
   },
   {
+    id: 'kinetic_momentum',
+    tag: 'mobility',
+    name: '운동 에너지 순환',
+    desc: '이동 속도 +12%, 대시 쿨타임 -18%, 적 처치 시 탄창 3발 회수 & 방패 에너지 +10',
+  },
+  {
+    id: 'repulsor_slam',
+    tag: 'mobility',
+    rare: true,
+    name: '충격 강하',
+    desc: '공중·로켓점프 후 착지 시 반경 7.5m 적에게 60 충격 피해 + 강넉백',
+  },
+  {
+    id: 'slide_overclock',
+    tag: 'mobility',
+    rare: true,
+    name: '슬라이드 폭주',
+    desc: '슬라이드 중 사격 시 탄약·열기 미소모 + 확정 치명타(피해 1.6배)',
+  },
+
+  // === VANGUARD (방어 6장 — 전방 방패 & 드랍 생존 특화!) ===
+  {
     id: 'siphon_boost',
     tag: 'vanguard',
-    name: '쉴드 사이펀 증폭',
-    desc: '최대 쉴드 +25, 처치 시 쉴드 회복량 +15',
+    name: '강화 방패 셀',
+    desc: '최대 쉴드 +25, [E] 전방 방패 최대 내구도 +40 & 방패 충전 속도 +30%',
   },
   {
     id: 'beacon_resonance',
@@ -344,60 +416,67 @@ const TACTICAL_CARDS = [
     id: 'reactive_armor',
     tag: 'vanguard',
     name: '반응형 충격 장갑',
-    desc: '피격 시 주변 6m 적에게 35 반사 피해 + 넉백',
-  },
-  {
-    id: 'repulsor_slam',
-    tag: 'mobility',
-    rare: true,
-    name: '충격 강하',
-    desc: '공중·로켓점프 후 착지 시 반경 7.5m 적에게 55 충격 피해 + 강넉백',
-  },
-  {
-    id: 'mark_contagion',
-    tag: 'assault',
-    rare: true,
-    name: '표식 전이',
-    desc: 'T-4 표식 적 처치 시 반경 10m 내 적 2기에게 표식 자동 전이 + 20 피해',
-  },
-  {
-    id: 'thermal_nova',
-    tag: 'assault',
-    rare: true,
-    name: '과열 폭발',
-    desc: 'W-01 열기 100% 도달 시 과열 잠금 대신 전방 9m 화염 폭발(75 피해) + 즉시 55% 냉각',
-  },
-  {
-    id: 'slide_overclock',
-    tag: 'mobility',
-    rare: true,
-    name: '슬라이드 폭주',
-    desc: '슬라이드 중 사격 시 탄약·열기 미소모 + 확정 치명타(피해 1.6배)',
-  },
-  {
-    id: 'armor_piercer',
-    tag: 'assault',
-    name: '아머 피어서',
-    desc: '모든 무기 피해 +14%, 헤드샷 배율 +0.35x, 방패·보스 대상 추가 관통 피해 +22%',
+    desc: '피격 시 주변 6m 적에게 40 반사 피해 + 넉백',
   },
   {
     id: 'aegis_capacitor',
     tag: 'vanguard',
     name: '이지스 캐패시터',
-    desc: '최대 체력 +30, 최대 쉴드 +30, 쉴드 자동 재생 속도 +35%',
+    desc: '최대 체력 +35, 최대 쉴드 +35, [E] 방패 피격 소모량 -22%',
   },
   {
-    id: 'kinetic_momentum',
-    tag: 'mobility',
-    name: '운동 에너지 순환',
-    desc: '이동 속도 +10%, 옴니 대시 쿨타임 -15%, 적 처치 시 쉴드 +10 & 탄창 2발 회수',
+    id: 'shield_counter',
+    tag: 'vanguard',
+    rare: true,
+    name: '방패 역충격',
+    desc: '[E] 방패로 탄환을 막을 때 전방 9m 충격파 반사(45 피해) & 방패 최대치 +35',
+  },
+  {
+    id: 'field_medic',
+    tag: 'vanguard',
+    name: '야전 보급 효율',
+    desc: '바닥 회복/쉴드 드랍 아이템 회복량 +55% & [E] 방패 충전 속도 +35%',
+  },
+
+  // === TACTICAL (전술 6장 — 궁극기 · 자동 업그레이드 · 드랍 특화!) ===
+  {
+    id: 'ult_accelerator',
+    tag: 'tactical',
+    name: '궁극기 가속 코어',
+    desc: '[X] 궁극기 게이지 충전 속도 +40%',
+  },
+  {
+    id: 'auto_forge',
+    tag: 'tactical',
+    name: '자동 병기 제련',
+    desc: '무기 자동 업그레이드(MK)당 추가 피해 +12% & 재장전 속도 +18%',
+  },
+  {
+    id: 'scavenger_protocol',
+    tag: 'tactical',
+    name: '전리품 탐색기',
+    desc: '획득 골드 +30% & 바닥 아이템 회복량 +25% & 궁극기 충전 +15%',
   },
   {
     id: 'orbital_overload',
-    tag: 'assault',
+    tag: 'tactical',
     rare: true,
     name: '궤도 과부하',
     desc: '연사 속도 +16%, 헤드샷 처치 시 주변 7.5m 적에게 65 아크 충격파 연쇄 피해',
+  },
+  {
+    id: 'ult_overdrive',
+    tag: 'tactical',
+    rare: true,
+    name: '초임계 궁극기',
+    desc: '[X] 궁극기 피해량 +45% & 궁극기 지속시간 +2초',
+  },
+  {
+    id: 'shield_to_ult',
+    tag: 'tactical',
+    rare: true,
+    name: '에너지 변환 장치',
+    desc: '[E] 방패로 막은 피해의 60%를 [X] 궁극기 게이지로 즉시 전환',
   },
 ];
 
@@ -584,6 +663,7 @@ const SCORE_CONFIG = {
   __exports.SCORE_CONFIG = SCORE_CONFIG;
   __exports.META_UPGRADES = META_UPGRADES;
   __exports.SYNERGIES = SYNERGIES;
+  __exports.CROSS_SYNERGIES = CROSS_SYNERGIES;
   __exports.TACTICAL_CARDS = TACTICAL_CARDS;
   __exports.PILOT_FRAMES = PILOT_FRAMES;
   __exports.PILOT_FRAME_ART = PILOT_FRAME_ART;
