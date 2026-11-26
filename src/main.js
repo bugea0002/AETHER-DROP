@@ -1,0 +1,2121 @@
+// Module: src/main.js
+__define("src/main.js", (__exports, __require) => {
+const { EVENTS, QUALITY_PRESETS, META_UPGRADES, SYNERGIES, TACTICAL_CARDS, PILOT_FRAMES, PILOT_FRAME_ART, HEAT_CONTRACTS, DAILY_MODIFIERS, ACHIEVEMENTS, getTodayDailyModifier } = __require("src/config/constants.js");
+const { WAVES } = __require("src/config/waves.js");
+const { WEAPONS } = __require("src/config/weapons.js");
+const { WeaponModelFactory } = __require("src/weapons/WeaponModelFactory.js");
+const { EventBus } = __require("src/core/EventBus.js");
+const { Engine } = __require("src/core/Engine.js");
+const { InputManager } = __require("src/core/InputManager.js");
+const { CollisionWorld } = __require("src/physics/CollisionWorld.js");
+const { PlayerController } = __require("src/player/PlayerController.js");
+const { MapManager } = __require("src/world/MapManager.js");
+const { Interactables } = __require("src/world/Interactables.js");
+const { VfxManager } = __require("src/vfx/VfxManager.js");
+const { WeaponSystem } = __require("src/weapons/WeaponSystem.js");
+const { WaveDirector } = __require("src/ai/WaveDirector.js");
+const { SoundEngine } = __require("src/audio/SoundEngine.js");
+const { HudManager } = __require("src/ui/HudManager.js");
+const { TouchOverlay } = __require("src/ui/TouchOverlay.js");
+
+const FADE_DURATION_MS = 300;
+const ENDING_LINGER_SEC = 0.5;
+const ENDING_SLOWMO_SCALE = 0.25;
+
+/**
+ * AETHER DROP: RECLAIM EARTH — Independent 3-Scene Architecture (TITLE / PLAYING / RESULT),
+ * Lazy Zero-Stutter GPU Initialization, 3-Map Campaign Transition & 60FPS Game Loop.
+ */
+function bootstrap() {
+  const byId = (id) => document.getElementById(id);
+
+  // Independent Scene Containers & Global Curtains
+  const sceneTitle = byId('scene-title');
+  const scenePlaying = byId('scene-playing');
+  const sceneResult = byId('scene-result');
+  const sceneFade = byId('scene-fade');
+  const fallbackEl = byId('webgl-fallback');
+  const fallbackMsg = byId('webgl-fallback-msg');
+  const canvas = byId('game-canvas');
+
+  // Title Scene Controls & Sub-Panels
+  const titleDeviceBadge = byId('title-device-badge');
+  const titleQualityBadge = byId('title-quality-badge');
+  const titleMenuMain = byId('title-menu-main');
+  const btnDeploy = byId('btn-deploy');
+  const titleGoldBadge = byId('title-gold-badge');
+  const btnTitleArmory = byId('btn-title-armory');
+  const panelArmory = byId('title-panel-armory');
+  const btnArmoryBack = byId('btn-armory-back');
+  const armoryGoldAmount = byId('armory-gold-amount');
+  const armoryGrid = byId('armory-grid');
+  const upgradePanel = byId('upgrade-panel');
+  const upgradeKicker = byId('upgrade-kicker');
+  const upgradeCardsGrid = byId('upgrade-cards-grid');
+  const btnTitleArsenal = byId('btn-title-arsenal');
+  const btnTitleControls = byId('btn-title-controls');
+  const btnTitleSettings = byId('btn-title-settings');
+  const btnTitleAchievements = byId('btn-title-achievements');
+  const titleAchBadge = byId('title-ach-badge');
+
+  const panelArsenal = byId('title-panel-arsenal');
+  const btnArsenalBack = byId('btn-arsenal-back');
+  const panelControls = byId('title-panel-controls');
+  const btnControlsBack = byId('btn-controls-back');
+  const panelSettings = byId('title-panel-settings');
+  const btnSettingsBack = byId('btn-settings-back');
+  const panelAchievements = byId('title-panel-achievements');
+  const btnAchievementsBack = byId('btn-achievements-back');
+  const achievementsGrid = byId('achievements-grid');
+  const achProgressText = byId('ach-progress-text');
+  const achProgressFill = byId('ach-progress-fill');
+  const achStatsInline = byId('ach-stats-inline');
+
+  const titleSelQuality = byId('title-setting-quality');
+  const titleSelControls = byId('title-setting-controls');
+  const titleRngSensitivity = byId('title-setting-sensitivity');
+  const titleValSensitivity = byId('title-setting-sensitivity-val');
+  const titleRngVolume = byId('title-setting-volume');
+  const titleValVolume = byId('title-setting-volume-val');
+  const titleChkMusic = byId('title-setting-music');
+  const titleChkFps = byId('title-setting-fps');
+
+  // Playing Scene HUD / Pause Controls
+  const btnHudPause = byId('hud-pause-btn');
+  const pausePanel = byId('pause-panel');
+  const btnResume = byId('btn-resume');
+  const btnRestartPause = byId('btn-restart-pause');
+  const btnQuitTitle = byId('btn-quit-title');
+
+  const pauseSelQuality = byId('setting-quality');
+  const pauseSelControls = byId('setting-controls');
+  const pauseRngSensitivity = byId('setting-sensitivity');
+  const pauseValSensitivity = byId('setting-sensitivity-val');
+  const pauseRngVolume = byId('setting-volume');
+  const pauseValVolume = byId('setting-volume-val');
+  const pauseChkMusic = byId('setting-music');
+  const pauseChkFps = byId('setting-fps');
+  const fpsCounterEl = byId('fps-counter');
+
+  // Result Scene Actions
+  const btnRedeploy = byId('btn-redeploy');
+  const btnEndTitle = byId('btn-end-title');
+
+  // ---------------------------------------------------------------------------
+  // 1. Coarse-Pointer Device Detection & Bi-Directional Settings State
+  // ---------------------------------------------------------------------------
+  const coarseMediaQuery =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)')
+      : null;
+
+  function isCoarsePointer() {
+    if (coarseMediaQuery) {
+      return Boolean(coarseMediaQuery.matches);
+    }
+    return Boolean(
+      typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(pointer: coarse)').matches
+    );
+  }
+
+  function isTouchActive() {
+    if (settings.controlMode === 'pc') return false;
+    if (settings.controlMode === 'touch') return true;
+    if (!isCoarsePointer()) return false;
+    return runtimeReady && input ? input.isTouchMode() : true;
+  }
+
+  const settings = {
+    quality: (titleSelQuality && titleSelQuality.value) || 'medium',
+    controlMode: (titleSelControls && titleSelControls.value) || 'auto',
+    sensitivity: parseFloat((titleRngSensitivity && titleRngSensitivity.value) || '1.0') || 1.0,
+    volume: parseInt((titleRngVolume && titleRngVolume.value) || '78', 10),
+    music: titleChkMusic ? Boolean(titleChkMusic.checked) : true,
+    showFps: titleChkFps ? Boolean(titleChkFps.checked) : false,
+  };
+  if (!Number.isFinite(settings.volume)) settings.volume = 78;
+
+  // ---------------------------------------------------------------------------
+  // 1.5. Persistent Gold & Meta Armory + In-Run Tactical Cards & Synergies
+  // ---------------------------------------------------------------------------
+  const META_STORAGE_KEY = 'aether_drop_meta_v1';
+  const metaState = {
+    gold: 0,
+    levels: { firepower: 0, hull: 0, shield: 0, thruster: 0, reload: 0, crit: 0, siphon: 0, salvage: 0 },
+    ownedFrames: ['vanguard'],
+    equippedFrame: 'vanguard',
+    achievements: [],
+    bestEndlessWave: 0,
+    totalKillsAllTime: 0,
+  };
+  try {
+    const raw = window.localStorage.getItem(META_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Number.isFinite(parsed.gold)) metaState.gold = Math.max(0, Math.floor(parsed.gold));
+      if (parsed.levels) {
+        for (const k of Object.keys(metaState.levels)) {
+          if (Number.isFinite(parsed.levels[k])) {
+            metaState.levels[k] = Math.max(0, Math.min(10, Math.floor(parsed.levels[k])));
+          }
+        }
+      }
+      if (Array.isArray(parsed.ownedFrames)) {
+        metaState.ownedFrames = Array.from(new Set(['vanguard', ...parsed.ownedFrames]));
+      }
+      if (typeof parsed.equippedFrame === 'string' && metaState.ownedFrames.includes(parsed.equippedFrame)) {
+        metaState.equippedFrame = parsed.equippedFrame;
+      }
+      if (Array.isArray(parsed.achievements)) {
+        metaState.achievements = Array.from(new Set(parsed.achievements));
+      }
+      if (Number.isFinite(parsed.bestEndlessWave)) {
+        metaState.bestEndlessWave = Math.max(0, Math.floor(parsed.bestEndlessWave));
+      }
+      if (Number.isFinite(parsed.totalKillsAllTime)) {
+        metaState.totalKillsAllTime = Math.max(0, Math.floor(parsed.totalKillsAllTime));
+      }
+    }
+  } catch {}
+
+  function getEquippedFrame() {
+    return PILOT_FRAMES.find((f) => f.id === metaState.equippedFrame) || PILOT_FRAMES[0];
+  }
+
+  let selectedMissionMode = 'campaign'; // 'campaign' | 'endless' | 'daily'
+  let selectedHeatLevel = 0; // 0..3
+
+  let activeAchCategory = 'all';
+
+  function unlockAchievement(id) {
+    if (metaState.achievements.includes(id)) return;
+    const ach = ACHIEVEMENTS.find((a) => a.id === id);
+    if (!ach) return;
+    metaState.achievements.push(id);
+    if (ach.reward > 0) {
+      metaState.gold += ach.reward;
+      if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+    }
+    saveMetaState();
+    renderMedalsStrip();
+    if (eventBus) {
+      eventBus.emit(EVENTS.ANNOUNCEMENT, {
+        kicker: ach.reward ? `도전과제 달성 (+${ach.reward} G)` : '도전과제 달성',
+        title: ach.name,
+        subtitle: ach.desc,
+        duration: 3.0,
+      });
+    }
+  }
+
+  function renderMedalsStrip() {
+    const unlockedCount = metaState.achievements.length;
+    const totalCount = ACHIEVEMENTS.length;
+    if (titleAchBadge) {
+      titleAchBadge.textContent = `${unlockedCount}/${totalCount}`;
+    }
+    if (achProgressText) {
+      achProgressText.textContent = `달성 ${unlockedCount} / ${totalCount}`;
+    }
+    if (achProgressFill) {
+      achProgressFill.style.width = `${Math.round((unlockedCount / Math.max(1, totalCount)) * 100)}%`;
+    }
+    if (achStatsInline) {
+      achStatsInline.textContent = `누적 처치 ${metaState.totalKillsAllTime || 0} · 무한 최고 W${metaState.bestEndlessWave || 0}`;
+    }
+    if (!achievementsGrid) return;
+
+    let html = '';
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
+      const a = ACHIEVEMENTS[i];
+      if (activeAchCategory !== 'all' && a.cat !== activeAchCategory) continue;
+      const unlocked = metaState.achievements.includes(a.id);
+      html += `
+        <article class="ach-card ${unlocked ? 'unlocked' : ''}">
+          <div class="ach-card-top">
+            <span class="ach-cat-tag">${a.catLabel || '기록'}</span>
+            <span class="ach-reward">${unlocked ? '달성 완료' : `+${a.reward || 0} G`}</span>
+          </div>
+          <h3 class="ach-name">${a.name}</h3>
+          <p class="ach-desc">${a.desc}</p>
+        </article>`;
+    }
+    achievementsGrid.innerHTML = html;
+  }
+
+  // Lazy one-shot orthographic 3D side-profile renderer for Arsenal Briefing
+  let arsenalPreviewsRendered = false;
+  function renderArsenalPreviews() {
+    if (arsenalPreviewsRendered) return;
+    arsenalPreviewsRendered = true;
+    const boxes = document.querySelectorAll('[data-weapon-preview]');
+    if (!boxes.length || typeof THREE === 'undefined') return;
+
+    let renderer = null;
+    let factory = null;
+    const builtRigs = [];
+    try {
+      const W = 440;
+      const H = 132;
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.28;
+
+      const scene = new THREE.Scene();
+      const hemi = new THREE.HemisphereLight(0xfff7ed, 0x292524, 1.35);
+      const key = new THREE.DirectionalLight(0xfff3d6, 2.35);
+      key.position.set(3.5, 4.2, 2.2);
+      const rim = new THREE.DirectionalLight(0xf59e0b, 1.15);
+      rim.position.set(-2.5, 2.2, -3.2);
+      const fill = new THREE.DirectionalLight(0x94a3b8, 0.9);
+      fill.position.set(2.2, -1.6, -2.5);
+      scene.add(hemi, key, rim, fill);
+
+      const cam = new THREE.OrthographicCamera(-1, 1, 0.3, -0.3, 0.05, 20);
+      factory = new WeaponModelFactory();
+      const aspect = W / H;
+
+      boxes.forEach((boxEl) => {
+        const wid = boxEl.getAttribute('data-weapon-preview');
+        const cfg = WEAPONS.find((w) => w.id === wid) || WEAPONS[0];
+        const rig = factory.createWeaponRig(cfg);
+        builtRigs.push(rig);
+        if (rig.leftHand) rig.leftHand.visible = false;
+        if (rig.rightHand) rig.rightHand.visible = false;
+        if (rig.reticleMesh) rig.reticleMesh.visible = false;
+
+        scene.add(rig.root);
+        rig.root.updateMatrixWorld(true);
+
+        const bbox = new THREE.Box3().setFromObject(rig.root);
+        const center = new THREE.Vector3();
+        const size = new THREE.Vector3();
+        bbox.getCenter(center);
+        bbox.getSize(size);
+
+        // Camera on +X looking toward -X => weapon barrel (-Z) points right, stock (+Z) on left
+        const pad = 1.16;
+        const halfW = Math.max(size.z * 0.5 * pad, (size.y * 0.5 * pad) * aspect, 0.12);
+        const halfH = halfW / aspect;
+        cam.left = -halfW;
+        cam.right = halfW;
+        cam.top = halfH;
+        cam.bottom = -halfH;
+        cam.position.set(center.x + 2.8, center.y, center.z);
+        cam.lookAt(center);
+        cam.updateProjectionMatrix();
+
+        renderer.clear();
+        renderer.render(scene, cam);
+        const dataUrl = renderer.domElement.toDataURL('image/png');
+        scene.remove(rig.root);
+
+        boxEl.innerHTML = `<img class="weapon-preview-img" src="${dataUrl}" alt="${cfg.name} 3D 측면도" />`;
+      });
+    } catch (err) {
+      boxes.forEach((boxEl) => {
+        boxEl.innerHTML = '<span class="weapon-preview-loading">3D PREVIEW UNAVAILABLE</span>';
+      });
+    } finally {
+      for (let i = 0; i < builtRigs.length; i++) {
+        builtRigs[i].dispose();
+      }
+      if (factory) factory.dispose();
+      if (renderer) renderer.dispose();
+    }
+  }
+
+  function updateMissionConfigUI() {
+    const heat = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
+    const daily = getTodayDailyModifier();
+    const heatBtn = byId('btn-heat-cycle');
+    const descEl = byId('mission-mode-desc');
+    for (const m of ['campaign', 'endless', 'daily']) {
+      const b = byId(`mode-${m}`);
+      if (b) b.classList.toggle('active', selectedMissionMode === m);
+    }
+    if (heatBtn) {
+      heatBtn.textContent = heat.label;
+      heatBtn.classList.toggle('hot', selectedHeatLevel > 0);
+    }
+    if (descEl) {
+      if (selectedMissionMode === 'endless') {
+        descEl.textContent = `무한 강하: 5웨이브마다 적 강화 루프 (최고 W${metaState.bestEndlessWave || 0}) · ${heat.desc}`;
+      } else if (selectedMissionMode === 'daily') {
+        descEl.textContent = `오늘의 작전 [${daily.name}]: ${daily.desc} · ${heat.desc}`;
+      } else {
+        descEl.textContent = `표준 5웨이브 궤도 수복 작전 · ${heat.desc}`;
+      }
+    }
+  }
+
+  function saveMetaState() {
+    try {
+      window.localStorage.setItem(META_STORAGE_KEY, JSON.stringify(metaState));
+    } catch {}
+  }
+
+  let runCards = [];
+  let draftChoices = [];
+
+  function computePlayerMods() {
+    const lv = metaState.levels;
+    const frame = getEquippedFrame();
+    const mods = {
+      frameId: frame.id,
+      frameName: frame.name,
+      dashMax: frame.dashMax || 2,
+      dashSlam: Boolean(frame.dashSlam),
+      apexOverdrive: Boolean(frame.apexOverdrive),
+      damageMult: (1.0 + (lv.firepower || 0) * 0.04) * (frame.dmgMult || 1.0),
+      headshotBonus: (lv.crit || 0) * 0.08,
+      reloadSpeedMult: 1.0 + (lv.reload || 0) * 0.05,
+      fireRateMult: 1.0 + (lv.reload || 0) * 0.02,
+      moveSpeedMult: (1.0 + (lv.thruster || 0) * 0.025) * (frame.speedMult || 1.0),
+      dashCooldownMult: Math.max(0.42, (1.0 - (lv.thruster || 0) * 0.045) * (frame.dashCdMult || 1.0)),
+      shieldRegenMult: 1.0 + (lv.shield || 0) * 0.08,
+      killShieldBonus: (frame.killShield || 0) + (lv.siphon || 0) * 3,
+      maxHealthBonus: (lv.hull || 0) * 12 + (frame.hpBonus || 0),
+      maxShieldBonus: (lv.shield || 0) * 12 + (frame.shieldBonus || 0),
+      salvageGoldMult: 1.0 + (lv.salvage || 0) * 0.08,
+      killAmmoRefund: 0,
+      slideReload: false,
+      airDamageBonus: frame.airBonus || 0.0,
+      zoneRegenHp: 0,
+      zoneDamageBonus: 0.0,
+      reactiveArmor: false,
+      repulsorSlam: false,
+      markContagion: false,
+      thermalNova: false,
+      slideOverclock: false,
+      synergyAssault: false,
+      synergyMobility: false,
+      synergyVanguard: false,
+    };
+
+    if (selectedMissionMode === 'daily') {
+      const dm = getTodayDailyModifier();
+      if (dm.speedMult) mods.moveSpeedMult *= dm.speedMult;
+      if (dm.dashCdMult) mods.dashCooldownMult *= dm.dashCdMult;
+      if (dm.headshotBonus) mods.headshotBonus += dm.headshotBonus;
+      if (dm.dmgMult) mods.damageMult *= dm.dmgMult;
+      if (dm.killShield) mods.killShieldBonus += dm.killShield;
+      if (dm.shieldBonus) mods.maxShieldBonus += dm.shieldBonus;
+    }
+
+    const tagCounts = { assault: 0, mobility: 0, vanguard: 0 };
+    for (let i = 0; i < runCards.length; i++) {
+      const card = runCards[i];
+      if (tagCounts[card.tag] !== undefined) tagCounts[card.tag]++;
+      switch (card.id) {
+        case 'tungsten_core': mods.damageMult *= 1.18; break;
+        case 'overclock_mag': mods.reloadSpeedMult *= 1.3; mods.fireRateMult *= 1.12; break;
+        case 'precision_refund': mods.headshotBonus += 0.4; mods.killAmmoRefund += 3; break;
+        case 'thruster_tune': mods.moveSpeedMult *= 1.12; mods.dashCooldownMult *= 0.75; break;
+        case 'slide_reload': mods.slideReload = true; break;
+        case 'aerial_gunner': mods.airDamageBonus += 0.28; break;
+        case 'siphon_boost': mods.maxShieldBonus += 25; mods.killShieldBonus += 15; break;
+        case 'beacon_resonance': mods.zoneRegenHp += 7; mods.zoneDamageBonus += 0.2; break;
+        case 'reactive_armor': mods.reactiveArmor = true; break;
+        case 'repulsor_slam': mods.repulsorSlam = true; break;
+        case 'mark_contagion': mods.markContagion = true; break;
+        case 'thermal_nova': mods.thermalNova = true; break;
+        case 'slide_overclock': mods.slideOverclock = true; break;
+      }
+    }
+
+    mods.synergyAssault = tagCounts.assault >= 2;
+    mods.synergyMobility = tagCounts.mobility >= 2;
+    mods.synergyVanguard = tagCounts.vanguard >= 2;
+    return { mods, tagCounts };
+  }
+
+  function getActiveSynergiesList() {
+    const { mods } = computePlayerMods();
+    const list = [];
+    if (mods.synergyAssault) list.push(SYNERGIES.assault);
+    if (mods.synergyMobility) list.push(SYNERGIES.mobility);
+    if (mods.synergyVanguard) list.push(SYNERGIES.vanguard);
+    return list;
+  }
+
+  function renderArmoryUI() {
+    if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+    if (armoryGoldAmount) armoryGoldAmount.textContent = `${metaState.gold} G`;
+    const eqFrame = getEquippedFrame();
+    const unitBadge = byId('title-unit-badge');
+    if (unitBadge) unitBadge.textContent = eqFrame.name;
+    const pauseKicker = byId('pause-unit-kicker');
+    if (pauseKicker) pauseKicker.textContent = `${eqFrame.name} 전술 터미널`;
+
+    if (armoryGrid) {
+      armoryGrid.innerHTML = '';
+      const ARMORY_ICONS = {
+        firepower: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
+        hull: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"/></svg>',
+        shield: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>',
+        thruster: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h8l-1 8 11-12h-8l0-8z"/></svg>',
+        reload: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
+        crit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+        siphon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+        salvage: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5c0-1 1-1.5 2.5-1.5s2.5.6 2.5 1.5-1 1.5-2.5 1.5-2.5.6-2.5 1.5 1 1.5 2.5 1.5 2.5-.5 2.5-1.5"/></svg>',
+      };
+
+      for (let i = 0; i < META_UPGRADES.length; i++) {
+        const upg = META_UPGRADES[i];
+        const lv = metaState.levels[upg.id] || 0;
+        const isMax = lv >= upg.maxLevel;
+        const cost = upg.baseCost + lv * upg.costStep;
+        const ico = ARMORY_ICONS[upg.id] || ARMORY_ICONS.hull;
+        let pipsHtml = '';
+        for (let p = 0; p < upg.maxLevel; p++) {
+          pipsHtml += `<span class="armory-pip ${p < lv ? 'filled' : ''}"></span>`;
+        }
+        const curBonusText = typeof upg.formatBonus === 'function' ? upg.formatBonus(lv) : `LV ${lv}`;
+
+        const card = document.createElement('div');
+        card.className = 'armory-item';
+        card.innerHTML = `
+          <div class="armory-item-head">
+            <div class="armory-item-title-wrap">
+              <span class="armory-ico-badge" aria-hidden="true">${ico}</span>
+              <span class="armory-item-name">${upg.name}</span>
+            </div>
+            <span class="armory-item-lv">LV ${lv} / ${upg.maxLevel}</span>
+          </div>
+          <div class="armory-pips" aria-hidden="true">${pipsHtml}</div>
+          <div class="armory-cur-bonus">현재 적용: ${curBonusText}</div>
+          <p class="armory-item-desc">${upg.desc}</p>
+          <button class="mil-btn armory-buy-btn" type="button" ${isMax || metaState.gold < cost ? 'disabled' : ''}>
+            ${isMax ? '최대 강화 완료' : `강화 (${cost} G)`}
+          </button>
+        `;
+        const btn = card.querySelector('button');
+        if (btn && !isMax) {
+          btn.addEventListener('click', () => {
+            if (metaState.gold < cost || (metaState.levels[upg.id] || 0) >= upg.maxLevel) return;
+            metaState.gold -= cost;
+            metaState.levels[upg.id] = (metaState.levels[upg.id] || 0) + 1;
+            saveMetaState();
+            renderArmoryUI();
+          });
+        }
+        armoryGrid.appendChild(card);
+      }
+    }
+
+    // Render Pilot Frame Shop Grid (4 Real Robot Concept Art Portraits)
+    const framesGrid = byId('frames-shop-grid');
+    if (framesGrid) {
+      framesGrid.innerHTML = '';
+      for (let i = 0; i < PILOT_FRAMES.length; i++) {
+        const f = PILOT_FRAMES[i];
+        const owned = metaState.ownedFrames.includes(f.id);
+        const equipped = metaState.equippedFrame === f.id;
+        const canBuy = !owned && metaState.gold >= f.cost;
+        const artSrc = (PILOT_FRAME_ART && PILOT_FRAME_ART[f.id]) || '';
+        const hpVal = 100 + (f.hpBonus || 0);
+        const shVal = 100 + (f.shieldBonus || 0);
+        const spdPct = Math.round((f.speedMult || 1.0) * 100);
+
+        const card = document.createElement('article');
+        card.className = `frame-showcase-card ${equipped ? 'equipped' : ''}`;
+        card.style.setProperty('--frame-accent', f.color);
+        card.innerHTML = `
+          <div class="frame-portrait-wrap">
+            <img class="frame-portrait-img" src="${artSrc}" alt="${f.name} 기체 일러스트" />
+            <div class="frame-portrait-scrim"></div>
+            <span class="frame-tier-pill">${f.tier}</span>
+          </div>
+          <div class="frame-card-body">
+            <h3 class="frame-card-name" style="color:${f.color}">${f.name}</h3>
+            <div class="frame-stat-chips">
+              <div class="frame-stat-chip"><span>HP</span>${hpVal}</div>
+              <div class="frame-stat-chip"><span>SHIELD</span>${shVal}</div>
+              <div class="frame-stat-chip"><span>DASH</span>${f.dashMax}회</div>
+              <div class="frame-stat-chip"><span>SPEED</span>${spdPct}%</div>
+            </div>
+            <div class="frame-special-box">
+              <strong>특수능력 · ${f.specialName}</strong>
+              ${f.specialDesc}
+            </div>
+            <button class="mil-btn armory-buy-btn" type="button" ${!owned && !canBuy ? 'disabled' : ''}>
+              ${equipped ? '현재 장착 중' : owned ? '기체 장착' : `구매 (${f.cost} G)`}
+            </button>
+          </div>
+        `;
+        const btn = card.querySelector('button');
+        if (btn && !equipped) {
+          btn.addEventListener('click', () => {
+            if (owned) {
+              metaState.equippedFrame = f.id;
+              saveMetaState();
+              renderArmoryUI();
+            } else if (metaState.gold >= f.cost) {
+              metaState.gold -= f.cost;
+              metaState.ownedFrames.push(f.id);
+              metaState.equippedFrame = f.id;
+              saveMetaState();
+              renderArmoryUI();
+            }
+          });
+        }
+        framesGrid.appendChild(card);
+      }
+    }
+  }
+
+  // Wire Mission Mode & Heat Contract buttons once
+  for (const m of ['campaign', 'endless', 'daily']) {
+    const btn = byId(`mode-${m}`);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        selectedMissionMode = m;
+        updateMissionConfigUI();
+      });
+    }
+  }
+  const btnHeatCycle = byId('btn-heat-cycle');
+  if (btnHeatCycle) {
+    btnHeatCycle.addEventListener('click', () => {
+      selectedHeatLevel = (selectedHeatLevel + 1) % HEAT_CONTRACTS.length;
+      updateMissionConfigUI();
+    });
+  }
+  updateMissionConfigUI();
+  renderMedalsStrip();
+
+  // Wire Armory 2-tab switcher (completely separated full-panel views)
+  const tabStatsBtn = byId('tab-armory-stats');
+  const tabFramesBtn = byId('tab-armory-frames');
+  const viewStatsEl = byId('armory-view-stats');
+  const viewFramesEl = byId('armory-view-frames');
+  if (tabStatsBtn && tabFramesBtn && viewStatsEl && viewFramesEl) {
+    tabStatsBtn.addEventListener('click', () => {
+      tabStatsBtn.classList.add('active');
+      tabFramesBtn.classList.remove('active');
+      viewStatsEl.classList.remove('hidden');
+      viewFramesEl.classList.add('hidden');
+    });
+    tabFramesBtn.addEventListener('click', () => {
+      tabFramesBtn.classList.add('active');
+      tabStatsBtn.classList.remove('active');
+      viewFramesEl.classList.remove('hidden');
+      viewStatsEl.classList.add('hidden');
+      renderArmoryUI();
+    });
+  }
+
+  function openUpgradeDraft(waveNum) {
+    if (!upgradePanel || !upgradeCardsGrid || gameState !== 'playing') return;
+    gameState = 'upgrading';
+    hadPointerLock = false;
+    document.body.classList.remove('playing-active');
+    if (input) {
+      input.exitPointerLock();
+      input.resetAll();
+    }
+    if (touchOverlay) touchOverlay.setVisible(false);
+    if (waveDirector) waveDirector.setDraftPaused(true);
+
+    // Pick 3 distinct random cards (prefer unpicked cards first)
+    const ownedIds = new Set(runCards.map((c) => c.id));
+    let pool = TACTICAL_CARDS.filter((c) => !ownedIds.has(c.id));
+    if (pool.length < 3) pool = TACTICAL_CARDS.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+    }
+    draftChoices = pool.slice(0, 3);
+
+    const { tagCounts } = computePlayerMods();
+    if (upgradeKicker) upgradeKicker.textContent = `WAVE 0${waveNum} 클리어 // 전술 강화 선택`;
+    upgradeCardsGrid.innerHTML = '';
+
+    for (let i = 0; i < draftChoices.length; i++) {
+      const card = draftChoices[i];
+      const syn = SYNERGIES[card.tag];
+      const nextCount = (tagCounts[card.tag] || 0) + 1;
+      const willTrigger = nextCount === syn.threshold;
+      const alreadyActive = (tagCounts[card.tag] || 0) >= syn.threshold;
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = card.rare ? 'tactical-card rare-card' : 'tactical-card';
+      btn.style.setProperty('--card-tag-color', card.rare ? '#fbbf24' : syn.color);
+      const TAG_ICONS = {
+        assault: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
+        mobility: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h8l-1 8 11-12h-8l0-8z"/></svg>',
+        vanguard: '<svg class="tactical-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"/></svg>',
+      };
+      const tagIco = TAG_ICONS[card.tag] || TAG_ICONS.assault;
+      const CARD_ART_MAP = {
+        tungsten_core: "./assets/card-tungsten_core.webp",
+        overclock_mag: "./assets/card-overclock_mag.webp",
+        precision_refund: "./assets/card-precision_refund.webp",
+        thruster_tune: "./assets/card-thruster_tune.webp",
+        slide_reload: "./assets/card-slide_reload.webp",
+        aerial_gunner: "./assets/card-aerial_gunner.webp",
+        siphon_boost: "./assets/card-siphon_boost.webp",
+        beacon_resonance: "./assets/card-beacon_resonance.webp",
+        reactive_armor: "./assets/card-reactive_armor.webp",
+        repulsor_slam: "./assets/card-repulsor_slam.webp",
+        mark_contagion: "./assets/card-mark_contagion.webp",
+        thermal_nova: "./assets/card-thermal_nova.webp",
+        slide_overclock: "./assets/card-slide_overclock.webp",
+      };
+      const cardArtSrc = CARD_ART_MAP[card.id] || CARD_ART_MAP.tungsten_core;
+      const cardArt = `<img class="tactical-card-img" src="${cardArtSrc}" alt="${card.name} 일러스트" />`;
+      btn.innerHTML = `
+        <div class="tactical-card-top">
+          <span class="tactical-tag-wrap">${tagIco}<span class="tactical-tag">${syn.tagLabel} (${nextCount}/${syn.threshold})</span></span>
+          <span class="tactical-key">[${i + 1}]</span>
+        </div>
+        <div class="tactical-card-art" aria-hidden="true">${cardArt}</div>
+        <div class="tactical-card-title">${card.rare ? '<span class="rare-pill">RARE</span> ' : ''}${card.name}</div>
+        <div class="tactical-card-desc">${card.desc}</div>
+        <div class="tactical-synergy-hint ${willTrigger ? 'ready' : ''}">
+          ${willTrigger ? `<span class="syn-badge">SYNERGY</span>[${syn.name}] ${syn.desc}` : alreadyActive ? `시너지 활성 중: [${syn.name}]` : `2장 시너지 [${syn.name}]: ${syn.desc}`}
+        </div>
+      `;
+      const pickIdx = i;
+      btn.addEventListener('click', () => selectUpgradeCard(pickIdx));
+      upgradeCardsGrid.appendChild(btn);
+    }
+
+    upgradePanel.classList.remove('hidden');
+  }
+
+  function selectUpgradeCard(idx) {
+    if (gameState !== 'upgrading' || !draftChoices[idx]) return;
+    const chosen = draftChoices[idx];
+    runCards.push(chosen);
+    draftChoices = [];
+
+    const { mods } = computePlayerMods();
+    if (playerController) {
+      playerController.applyModifiers(mods, false);
+    }
+    if (upgradePanel) upgradePanel.classList.add('hidden');
+    if (eventBus) {
+      eventBus.emit(EVENTS.UPGRADE_SELECTED, { card: chosen });
+      const synActive =
+        (chosen.tag === 'assault' && mods.synergyAssault) ||
+        (chosen.tag === 'mobility' && mods.synergyMobility) ||
+        (chosen.tag === 'vanguard' && mods.synergyVanguard);
+      if (synActive) eventBus.emit('SFX_SYNERGY', { tag: chosen.tag });
+    }
+    if (hudManager) {
+      hudManager.showOnboardingTip(`전술 강화 적용: ${chosen.name}`, 3.0);
+    }
+
+    gameState = 'playing';
+    document.body.classList.add('playing-active');
+    if (waveDirector) waveDirector.setDraftPaused(false);
+    syncTouchOverlayVisibility();
+    if (input) {
+      input.resetAll();
+      if (!isTouchActive()) input.requestPointerLock();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. Scene State Machine & Lazy Runtime Handles (0% WebGL on TITLE / RESULT)
+  // ---------------------------------------------------------------------------
+  /** @type {'title' | 'playing' | 'paused' | 'ending' | 'result'} */
+  let gameState = 'title';
+  let activeTitleSubpanel = 'main';
+  let isTransitioning = false;
+  let rafId = null;
+
+  // Lazy-initialized 3D & Combat Subsystems (null until first DEPLOY click!)
+  let runtimeReady = false;
+  let eventBus = null;
+  let soundEngine = null;
+  let engine = null;
+  let collisionWorld = null;
+  let input = null;
+  let playerController = null;
+  let mapManager = null;
+  let arenaData = null;
+  let interactables = null;
+  let vfxManager = null;
+  let weaponSystem = null;
+  let waveDirector = null;
+  let hudManager = null;
+  let touchOverlay = null;
+
+  let hadPointerLock = false;
+  let pauseDebounce = 0;
+  let lastAdsFov = null;
+  let zoneAmmoRefilled = false;
+  let lastWeaponState = null;
+
+  // 0.5s Slow-Mo Ending Linger State
+  let endingTimer = 0;
+  let endingIsVictory = false;
+  let endingFadeStarted = false;
+
+  // Match Telemetry
+  const STYLE_TIERS = [
+    { grade: 'D', min: 0, color: '#a8a29e', goldMult: 1.0, shieldMult: 1.0 },
+    { grade: 'C', min: 20, color: '#38bdf8', goldMult: 1.05, shieldMult: 1.05 },
+    { grade: 'B', min: 40, color: '#22c55e', goldMult: 1.10, shieldMult: 1.12 },
+    { grade: 'A', min: 60, color: '#f59e0b', goldMult: 1.15, shieldMult: 1.20 },
+    { grade: 'S', min: 78, color: '#fb923c', goldMult: 1.30, shieldMult: 1.35 },
+    { grade: 'SSS', min: 92, color: '#ef4444', goldMult: 1.50, shieldMult: 1.50 },
+  ];
+
+  const telemetry = {
+    shotsFired: 0,
+    shotsHit: 0,
+    shotSeq: 0,
+    lastHitShotSeq: -1,
+    maxCombo: 1,
+    elapsedSec: 0,
+    styleMeter: 0,
+    styleTierIdx: 0,
+    maxStyleTierIdx: 0,
+    lastStyleCallout: 'STYLE',
+    lastSwapTime: -99,
+    wasGroundedPrev: true,
+    airTimeAccum: 0,
+    airKills: 0,
+    slideKills: 0,
+    swapKills: 0,
+    meleeKills: 0,
+    weaponKills: {},
+  };
+
+  function getStyleTier(meter) {
+    let idx = 0;
+    for (let i = STYLE_TIERS.length - 1; i >= 0; i--) {
+      if (meter >= STYLE_TIERS[i].min) {
+        idx = i;
+        break;
+      }
+    }
+    return idx;
+  }
+
+  let _lastStylePct = -1;
+  let _lastStyleGrade = '';
+  let _lastStyleCallout = '';
+  function updateStyleHudUI() {
+    const pct = Math.round(Math.max(0, Math.min(100, telemetry.styleMeter)));
+    const tier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
+    if (pct === _lastStylePct && tier.grade === _lastStyleGrade && telemetry.lastStyleCallout === _lastStyleCallout) {
+      return;
+    }
+    const cardEl = byId('style-rank-card');
+    const gradeEl = byId('style-grade');
+    const barEl = byId('style-bar-fill');
+    const callEl = byId('style-callout');
+    if (tier.grade !== _lastStyleGrade) {
+      _lastStyleGrade = tier.grade;
+      if (cardEl) cardEl.style.setProperty('--style-color', tier.color);
+      if (gradeEl) gradeEl.textContent = tier.grade;
+    }
+    if (pct !== _lastStylePct) {
+      _lastStylePct = pct;
+      if (barEl) barEl.style.width = `${pct}%`;
+    }
+    if (telemetry.lastStyleCallout !== _lastStyleCallout) {
+      _lastStyleCallout = telemetry.lastStyleCallout;
+      if (callEl) callEl.textContent = telemetry.lastStyleCallout;
+    }
+  }
+
+  function addStylePoints(pts, label) {
+    const prevTier = telemetry.styleTierIdx;
+    telemetry.styleMeter = Math.min(100, telemetry.styleMeter + pts);
+    telemetry.styleTierIdx = getStyleTier(telemetry.styleMeter);
+    if (telemetry.styleTierIdx > prevTier && eventBus) {
+      eventBus.emit('SFX_RANK_UP', { tier: telemetry.styleTierIdx });
+    }
+    if (telemetry.styleTierIdx > telemetry.maxStyleTierIdx) {
+      telemetry.maxStyleTierIdx = telemetry.styleTierIdx;
+    }
+    if (telemetry.styleTierIdx >= 3) unlockAchievement('style_a');
+    if (telemetry.styleTierIdx >= 4) unlockAchievement('style_s');
+    if (telemetry.styleTierIdx >= 5) unlockAchievement('style_sss');
+    if (label) telemetry.lastStyleCallout = label;
+    updateStyleHudUI();
+  }
+
+  function resetTelemetry() {
+    telemetry.shotsFired = 0;
+    telemetry.shotsHit = 0;
+    telemetry.shotSeq = 0;
+    telemetry.lastHitShotSeq = -1;
+    telemetry.maxCombo = 1;
+    telemetry.elapsedSec = 0;
+    telemetry.styleMeter = 0;
+    telemetry.styleTierIdx = 0;
+    telemetry.maxStyleTierIdx = 0;
+    telemetry.lastStyleCallout = 'STYLE';
+    telemetry.lastSwapTime = -99;
+    telemetry.wasGroundedPrev = true;
+    telemetry.airTimeAccum = 0;
+    telemetry.airKills = 0;
+    telemetry.slideKills = 0;
+    telemetry.swapKills = 0;
+    telemetry.meleeKills = 0;
+    telemetry.weaponKills = {};
+    updateStyleHudUI();
+  }
+
+  // Zero-GC Frame Buffers
+  const mergedTargets = [];
+  const playerUpdateOpts = {
+    adsFov: null,
+    aimAssistTargets: null,
+    allowAds: true,
+  };
+  const hudSnapshot = {
+    player: null,
+    weapon: null,
+    crosshairSpread: 0.018,
+    wave: null,
+    boss: null,
+    zone: null,
+    enemies: null,
+    pickups: null,
+    fps: 60,
+  };
+
+  let lastTime = 0;
+  let elapsedTime = 0;
+
+  // ---------------------------------------------------------------------------
+  // 3. Scene Fade Transition Guard (300ms Blackout, Double-Click Safe)
+  // ---------------------------------------------------------------------------
+  function runFadeTransition(onBlackout, onComplete = null) {
+    if (isTransitioning) return false;
+    isTransitioning = true;
+
+    if (sceneFade) {
+      sceneFade.classList.add('active');
+    }
+
+    window.setTimeout(() => {
+      try {
+        if (typeof onBlackout === 'function') {
+          onBlackout();
+        }
+      } finally {
+        window.requestAnimationFrame(() => {
+          if (sceneFade) {
+            sceneFade.classList.remove('active');
+          }
+          window.setTimeout(() => {
+            isTransitioning = false;
+            if (typeof onComplete === 'function') {
+              onComplete();
+            }
+          }, FADE_DURATION_MS);
+        });
+      }
+    }, FADE_DURATION_MS);
+
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Audio Gesture Unlock & Lazy GPU Runtime Initialization
+  // ---------------------------------------------------------------------------
+  function unlockAudioOnGesture() {
+    if (!eventBus) {
+      eventBus = new EventBus();
+    }
+    if (!soundEngine) {
+      soundEngine = new SoundEngine(eventBus, engine ? engine.camera : null);
+      soundEngine.setMasterVolume(settings.volume / 100);
+      soundEngine.setMusicEnabled(settings.music);
+    }
+    soundEngine.unlock();
+  }
+
+  function showWebGLFallback(reason) {
+    stopLoop();
+    gameState = 'title';
+    document.body.classList.remove('playing-active', 'touch-active', 'force-touch');
+    if (sceneTitle) sceneTitle.classList.add('hidden');
+    if (scenePlaying) scenePlaying.classList.add('hidden');
+    if (sceneResult) sceneResult.classList.add('hidden');
+    if (fallbackEl) fallbackEl.classList.remove('hidden');
+    if (fallbackMsg && reason) {
+      fallbackMsg.textContent = `Unable to initialize WebGL 3D Renderer (${reason}). Please enable hardware acceleration and reload.`;
+    }
+  }
+
+  /**
+   * Construct Engine, MapManager, WaveDirector & all 3D subsystems lazily on first DEPLOY
+   * inside the 300ms #scene-fade blackout so Title screen boots with 0% GPU cost.
+   */
+  function ensureRuntimeInitialized() {
+    if (runtimeReady) return true;
+    if (!canvas) {
+      showWebGLFallback('canvas element unavailable');
+      return false;
+    }
+
+    try {
+      engine = new Engine(canvas, settings.quality);
+    } catch (err) {
+      showWebGLFallback(err && err.message ? err.message : 'context creation failed');
+      return false;
+    }
+
+    if (!eventBus) {
+      eventBus = new EventBus();
+    }
+
+    collisionWorld = new CollisionWorld();
+    input = new InputManager(canvas);
+    input.setSensitivity(settings.sensitivity);
+    input.setControlMode(settings.controlMode);
+    if (settings.controlMode === 'auto') {
+      input.setTouchMode(isCoarsePointer());
+    }
+
+    playerController = new PlayerController(engine.camera, input, collisionWorld, eventBus);
+    mapManager = new MapManager(engine.scene, collisionWorld, engine);
+    arenaData = mapManager.loadMap(0);
+
+    interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
+    vfxManager = new VfxManager(
+      engine.scene,
+      engine.viewmodelScene,
+      engine.camera,
+      engine.getQualityConfig()
+    );
+
+    weaponSystem = new WeaponSystem(
+      engine.viewmodelScene,
+      engine.scene,
+      engine.camera,
+      playerController,
+      input,
+      collisionWorld,
+      vfxManager,
+      eventBus
+    );
+
+    waveDirector = new WaveDirector(
+      engine.scene,
+      collisionWorld,
+      eventBus,
+      arenaData,
+      vfxManager
+    );
+
+    if (!soundEngine) {
+      soundEngine = new SoundEngine(eventBus, engine.camera);
+    } else {
+      soundEngine.camera = engine.camera;
+    }
+    soundEngine.setMasterVolume(settings.volume / 100);
+    soundEngine.setMusicEnabled(settings.music);
+
+    hudManager = new HudManager(eventBus, engine.camera);
+    touchOverlay = new TouchOverlay(input, weaponSystem, () => {
+      if (gameState === 'playing') {
+        pauseGame();
+      }
+    });
+
+    // Cross-subsystem hooks
+    waveDirector.setSoundEngine(soundEngine);
+    waveDirector.setInteractables(interactables);
+    hudManager.setArenaData(arenaData, collisionWorld);
+    hudManager.setWeaponSwitchHandler((slotIndex) => {
+      if (gameState === 'playing' && !isTransitioning) {
+        weaponSystem.switchLoadoutSlot(slotIndex);
+      }
+    });
+
+    // Zero-stutter prewarm inside blackout: 23 pooled Enemy rigs + shadows + shader compilation
+    waveDirector.prewarm();
+    engine.bakeStaticShadows();
+    engine.prewarmShaders();
+
+    // EventBus combat & campaign wiring
+    bindRuntimeEvents();
+
+    // PC canvas click re-locks pointer & unlocks Web Audio cleanly
+    canvas.addEventListener('pointerdown', () => {
+      unlockAudioOnGesture();
+      if (gameState === 'playing' && !isTransitioning && !isTouchActive() && !input.isPointerLocked()) {
+        input.requestPointerLock();
+      }
+    });
+
+    runtimeReady = true;
+    return true;
+  }
+
+  function bindRuntimeEvents() {
+    eventBus.on(EVENTS.WEAPON_SWITCHED, () => {
+      telemetry.lastSwapTime = telemetry.elapsedSec;
+    });
+
+    eventBus.on(EVENTS.ENEMY_KILLED, (p) => {
+      if (!playerController) return;
+      const tier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
+      playerController.onEnemyKill(Boolean(p && p.isHeadshot));
+      // Extra shield absorb bonus from high Style Rank (A/S/SSS)
+      if (tier.shieldMult > 1.0 && playerController.shield < playerController.maxShield) {
+        const bonusShield = Math.round(14 * (tier.shieldMult - 1.0));
+        playerController.shield = Math.min(playerController.maxShield, playerController.shield + bonusShield);
+      }
+      if (p && p.combo > telemetry.maxCombo) {
+        telemetry.maxCombo = p.combo;
+      }
+      // APEX-ZERO Special: Kill instantly restores 1 dash + 2.5s Overdrive (infinite ammo + 30% RPM)
+      if (playerController.mods && playerController.mods.apexOverdrive) {
+        const maxD = playerController.mods.dashMax || 3;
+        playerController.dashCharges = Math.min(maxD, (playerController.dashCharges || 0) + 1);
+        playerController.dashOverdriveTimer = Math.max(playerController.dashOverdriveTimer || 0, 2.5);
+      }
+
+      // Track style points & combat highlight categories
+      let pts = 12;
+      let tag = '적 격파';
+      const isAir = !playerController.isGrounded;
+      const isSlide = Boolean(playerController.isSliding);
+      const isQuickSwap = telemetry.elapsedSec - telemetry.lastSwapTime <= 2.5;
+      const isHs = Boolean(p && p.isHeadshot);
+      const isMelee = Boolean(p && p.isMelee);
+
+      metaState.totalKillsAllTime = (metaState.totalKillsAllTime || 0) + 1;
+      if (metaState.totalKillsAllTime >= 1) unlockAchievement('first_blood');
+      if (metaState.totalKillsAllTime >= 50) unlockAchievement('kills_50');
+      if (metaState.totalKillsAllTime >= 200) unlockAchievement('kills_200');
+      if (telemetry.maxCombo >= 5) unlockAchievement('combo_5');
+      if (waveDirector && waveDirector.headshots >= 15) unlockAchievement('hs_15');
+
+      if (isMelee) { pts += 18; tag = '근접 처치!'; telemetry.meleeKills++; if (telemetry.meleeKills >= 5) unlockAchievement('melee_ace'); }
+      else if (isAir) { pts += 18; tag = '공중 처치!'; telemetry.airKills++; if (telemetry.airKills >= 5) unlockAchievement('air_ace'); }
+      else if (isSlide) { pts += 16; tag = '슬라이드 킬!'; telemetry.slideKills++; if (telemetry.slideKills >= 5) unlockAchievement('slide_ace'); }
+      else if (isQuickSwap) { pts += 14; tag = '무기 전환 킬!'; telemetry.swapKills++; if (telemetry.swapKills >= 5) unlockAchievement('swap_ace'); }
+      else if (isHs) { pts += 12; tag = '정밀 헤드샷!'; }
+      if (isHs && tag !== '정밀 헤드샷!') pts += 8;
+      addStylePoints(pts, tag);
+
+      // Track weapon kill count for debrief summary
+      const activeW = weaponSystem && weaponSystem.getActiveWeapon ? weaponSystem.getActiveWeapon() : null;
+      if (activeW && activeW.shortName) {
+        telemetry.weaponKills[activeW.shortName] = (telemetry.weaponKills[activeW.shortName] || 0) + 1;
+      }
+
+      // Elite Variant Death Effects & Golden Supply Drone Jackpot
+      const killedUnit = p && p.enemy;
+      if (killedUnit && killedUnit.eliteAffix) {
+        if (killedUnit.eliteAffix === 'supply_drone') {
+          if (interactables) {
+            interactables.spawnGoldDrop(killedUnit.position, 45);
+            const dropPool = [1, 2, 3, 5, 6];
+            interactables.spawnWeaponDrop(killedUnit.position, dropPool[Math.floor(Math.random() * dropPool.length)]);
+          }
+          addStylePoints(28, '보급 드론 격추!');
+          unlockAchievement('drone_hunter');
+        } else if (killedUnit.eliteAffix === 'overcharged' && waveDirector) {
+          // Overcharged elite explodes on death, damaging nearby enemies too!
+          if (vfxManager) vfxManager.spawnExplosion(killedUnit.position, 6.2, 0xef4444);
+          const nearList = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < nearList.length; ei++) {
+            const e = nearList[ei];
+            if (!e || !e.isAlive || e === killedUnit) continue;
+            if (e.position.distanceTo(killedUnit.position) <= 6.5) {
+              e.applyDamage(45, e.center || e.position, false, null, { isExplosion: true });
+            }
+          }
+          if (playerController && playerController.position.distanceTo(killedUnit.position) <= 5.5) {
+            playerController.applyDamage(18, killedUnit.position);
+          }
+        } else if (killedUnit.eliteAffix === 'splitter' && interactables) {
+          interactables.spawnGoldDrop(killedUnit.position, 15);
+          if (vfxManager) vfxManager.spawnExplosion(killedUnit.position, 3.2, 0xf59e0b);
+        }
+      }
+
+      // Rare Card: Mark Contagion (jump T-4 mark to 2 nearest enemies within 10m)
+      const mods = playerController.mods;
+      const deadEnemy = p && p.enemy;
+      if (mods && mods.markContagion && deadEnemy && deadEnemy.markedTimer > 0 && waveDirector) {
+        const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+        const nearby = [];
+        for (let ei = 0; ei < activeEnemies.length; ei++) {
+          const e = activeEnemies[ei];
+          if (!e || !e.isAlive || e === deadEnemy) continue;
+          const dist = e.position.distanceTo(deadEnemy.position);
+          if (dist <= 10.0) nearby.push({ e, dist });
+        }
+        nearby.sort((a, b) => a.dist - b.dist);
+        for (let ni = 0; ni < Math.min(2, nearby.length); ni++) {
+          nearby[ni].e.markedTimer = 4.0;
+          nearby[ni].e.applyDamage(20, nearby[ni].e.center || nearby[ni].e.position, false, null, { isExplosion: false });
+        }
+      }
+    });
+
+    eventBus.on(EVENTS.BARREL_EXPLODED, (p) => {
+      if (vfxManager && p && p.position) {
+        vfxManager.spawnExplosion(p.position, p.radius, 0xff6a00);
+      }
+    });
+
+    eventBus.on(EVENTS.WEAPON_FIRED, () => {
+      if (gameState !== 'playing') return;
+      telemetry.shotsFired++;
+      telemetry.shotSeq++;
+    });
+
+    eventBus.on(EVENTS.DAMAGE_DEALT, (p) => {
+      if (gameState !== 'playing' || !p) return;
+      if (!p.isMelee && p.isEnemy && telemetry.lastHitShotSeq !== telemetry.shotSeq) {
+        telemetry.lastHitShotSeq = telemetry.shotSeq;
+        telemetry.shotsHit++;
+      }
+    });
+
+    eventBus.on(EVENTS.PLAYER_DAMAGED, (p) => {
+      if (gameState === 'playing' && p && (p.healthDamage > 0 || p.shieldDamage > 0)) {
+        telemetry.styleMeter = Math.max(0, telemetry.styleMeter - 20);
+        telemetry.styleTierIdx = getStyleTier(telemetry.styleMeter);
+        updateStyleHudUI();
+      }
+      if (gameState === 'playing' && p && p.isFatal) {
+        beginEndingSequence(false);
+      }
+    });
+
+    eventBus.on(EVENTS.GOLD_COLLECTED, (p) => {
+      if (!p || !p.amount) return;
+      const styleTier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
+      const heat = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
+      const salvageMult = 1.0 + ((metaState.levels && metaState.levels.salvage) || 0) * 0.08;
+      metaState.gold += Math.max(1, Math.round(p.amount * styleTier.goldMult * heat.goldMult * salvageMult));
+      saveMetaState();
+      if (titleGoldBadge) titleGoldBadge.textContent = `${metaState.gold} G`;
+    });
+
+    eventBus.on(EVENTS.WAVE_CLEARED, (p) => {
+      if (gameState === 'playing' && p && !p.isFinalWave) {
+        window.setTimeout(() => {
+          if (gameState === 'playing') openUpgradeDraft(p.wave || 1);
+        }, 550);
+      }
+    });
+
+    eventBus.on(EVENTS.WAVE_STARTED, () => {
+      zoneAmmoRefilled = false;
+    });
+
+    eventBus.on(EVENTS.ZONE_PROGRESS, (p) => {
+      if (gameState !== 'playing' || !p) return;
+      if (p.captured && !zoneAmmoRefilled) {
+        zoneAmmoRefilled = true;
+        weaponSystem.addAmmo(1.0);
+      } else if (!p.active || p.progress < 0.05) {
+        zoneAmmoRefilled = false;
+      }
+    });
+
+    eventBus.on(EVENTS.MAP_TRANSITION, (p) => {
+      if (gameState !== 'playing' || !p) return;
+      handleMapTransition(p.nextMapIndex);
+    });
+
+    eventBus.on(EVENTS.GAME_STATE, (p) => {
+      const next = typeof p === 'string' ? p : p && p.state;
+      if (next === 'victory' && gameState === 'playing') {
+        beginEndingSequence(true);
+      } else if (next === 'gameover' && gameState === 'playing') {
+        beginEndingSequence(false);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. Title Sub-Panels, Badges & Bi-Directional Settings Sync
+  // ---------------------------------------------------------------------------
+  function showTitleSubpanel(panelName) {
+    activeTitleSubpanel = panelName;
+    if (sceneTitle) sceneTitle.classList.toggle('subpanel-open', panelName !== 'main');
+    if (panelName === 'armory') renderArmoryUI();
+    if (panelName === 'arsenal') renderArsenalPreviews();
+    if (panelName === 'achievements') renderMedalsStrip();
+    if (titleMenuMain) titleMenuMain.classList.toggle('hidden', panelName !== 'main');
+    if (panelArmory) panelArmory.classList.toggle('hidden', panelName !== 'armory');
+    if (panelArsenal) panelArsenal.classList.toggle('hidden', panelName !== 'arsenal');
+    if (panelControls) panelControls.classList.toggle('hidden', panelName !== 'controls');
+    if (panelSettings) panelSettings.classList.toggle('hidden', panelName !== 'settings');
+    if (panelAchievements) panelAchievements.classList.toggle('hidden', panelName !== 'achievements');
+  }
+
+  function updateDeviceBadge() {
+    const coarse = isCoarsePointer();
+    if (titleDeviceBadge) {
+      if (settings.controlMode === 'pc') {
+        titleDeviceBadge.textContent = 'INPUT: PC // MOUSE+KB';
+      } else if (settings.controlMode === 'touch') {
+        titleDeviceBadge.textContent = 'INPUT: TOUCH // MANUAL';
+      } else {
+        titleDeviceBadge.textContent = coarse
+          ? 'INPUT: AUTO // TOUCH'
+          : 'INPUT: AUTO // PC';
+      }
+    }
+    if (runtimeReady && input && settings.controlMode === 'auto') {
+      input.setTouchMode(coarse);
+    }
+    syncTouchOverlayVisibility();
+  }
+
+  function applyControlMode(mode) {
+    const key = mode === 'pc' || mode === 'touch' ? mode : 'auto';
+    settings.controlMode = key;
+
+    if (titleSelControls && titleSelControls.value !== key) titleSelControls.value = key;
+    if (pauseSelControls && pauseSelControls.value !== key) pauseSelControls.value = key;
+
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('force-touch', key === 'touch');
+    }
+
+    if (runtimeReady && input) {
+      input.setControlMode(key);
+      if (key === 'auto') {
+        input.setTouchMode(isCoarsePointer());
+      } else if (key === 'touch') {
+        input.exitPointerLock();
+      }
+    }
+
+    updateDeviceBadge();
+  }
+
+  function applyQuality(preset) {
+    const key = String(preset || 'medium').toLowerCase();
+    if (!QUALITY_PRESETS[key]) return;
+    settings.quality = key;
+
+    if (titleSelQuality && titleSelQuality.value !== key) titleSelQuality.value = key;
+    if (pauseSelQuality && pauseSelQuality.value !== key) pauseSelQuality.value = key;
+    if (titleQualityBadge) {
+      titleQualityBadge.textContent = `QUALITY: ${QUALITY_PRESETS[key].label || key.toUpperCase()}`;
+    }
+
+    if (runtimeReady && engine) {
+      engine.setQuality(key);
+      const qCfg = engine.getQualityConfig();
+      if (mapManager) mapManager.setQuality(qCfg);
+      if (vfxManager) vfxManager.setQuality(qCfg);
+      engine.bakeStaticShadows();
+    }
+  }
+
+  function applySensitivity(val) {
+    const s = Math.max(0.3, Math.min(2.5, Number(val) || 1.0));
+    settings.sensitivity = s;
+    const strVal = s.toFixed(2);
+    const label = `${strVal}x`;
+
+    if (titleRngSensitivity && titleRngSensitivity.value !== strVal) titleRngSensitivity.value = strVal;
+    if (pauseRngSensitivity && pauseRngSensitivity.value !== strVal) pauseRngSensitivity.value = strVal;
+    if (titleValSensitivity) titleValSensitivity.textContent = label;
+    if (pauseValSensitivity) pauseValSensitivity.textContent = label;
+
+    if (runtimeReady && input) {
+      input.setSensitivity(s);
+    }
+  }
+
+  function applyVolume(val) {
+    const v = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    settings.volume = v;
+    const strVal = String(v);
+    const label = `${v}%`;
+
+    if (titleRngVolume && titleRngVolume.value !== strVal) titleRngVolume.value = strVal;
+    if (pauseRngVolume && pauseRngVolume.value !== strVal) pauseRngVolume.value = strVal;
+    if (titleValVolume) titleValVolume.textContent = label;
+    if (pauseValVolume) pauseValVolume.textContent = label;
+
+    if (soundEngine) {
+      soundEngine.setMasterVolume(v / 100);
+    }
+  }
+
+  function applyMusic(enabled) {
+    const on = Boolean(enabled);
+    settings.music = on;
+
+    if (titleChkMusic && titleChkMusic.checked !== on) titleChkMusic.checked = on;
+    if (pauseChkMusic && pauseChkMusic.checked !== on) pauseChkMusic.checked = on;
+
+    if (soundEngine) {
+      soundEngine.setMusicEnabled(on);
+    }
+  }
+
+  function applyShowFps(enabled) {
+    const on = Boolean(enabled);
+    settings.showFps = on;
+
+    if (titleChkFps && titleChkFps.checked !== on) titleChkFps.checked = on;
+    if (pauseChkFps && pauseChkFps.checked !== on) pauseChkFps.checked = on;
+    if (fpsCounterEl) fpsCounterEl.classList.toggle('hidden', !on);
+  }
+
+  function syncTouchOverlayVisibility() {
+    if (!touchOverlay) return;
+    const show = gameState === 'playing' && isTouchActive();
+    touchOverlay.setVisible(show, settings.controlMode === 'touch');
+  }
+
+  function syncHudImmediate() {
+    if (!runtimeReady || !hudManager || !playerController || !weaponSystem || !waveDirector || !interactables) {
+      return;
+    }
+    hudSnapshot.player = playerController.getStateSnapshot();
+    hudSnapshot.weapon = weaponSystem.getCurrentWeaponState();
+    hudSnapshot.crosshairSpread = 0.018;
+    hudSnapshot.wave = waveDirector.getHudState();
+    hudSnapshot.boss = waveDirector.getBossState();
+    hudSnapshot.zone = interactables.getZoneState();
+    hudSnapshot.enemies = waveDirector.getTargets();
+    hudSnapshot.pickups = interactables.getPickups();
+    hudSnapshot.fps = engine ? engine.fps : 60;
+    hudManager.update(0.016, hudSnapshot);
+    if (touchOverlay) touchOverlay.syncState(hudSnapshot);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. Independent Scene State Machine & 3-Map Campaign Transitions
+  // ---------------------------------------------------------------------------
+  function startLoop() {
+    if (rafId !== null) return;
+    lastTime = performance.now();
+    rafId = window.requestAnimationFrame(frame);
+  }
+
+  function stopLoop() {
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  function startNewGame() {
+    if (isTransitioning) return;
+    unlockAudioOnGesture();
+
+    runFadeTransition(
+      () => {
+        // Hide Title / Result / Pause & reveal Playing scene underneath opaque fade curtain
+        if (sceneTitle) sceneTitle.classList.add('hidden');
+        if (sceneResult) {
+          sceneResult.classList.add('hidden');
+          sceneResult.classList.remove('victory', 'defeat');
+        }
+        if (pausePanel) pausePanel.classList.add('hidden');
+        if (upgradePanel) upgradePanel.classList.add('hidden');
+        if (scenePlaying) scenePlaying.classList.remove('hidden');
+
+        // Lazy WebGL init on first deploy (or reuse warmed runtime)
+        const ok = ensureRuntimeInitialized();
+        if (!ok) return;
+
+        // Always start fresh campaign on Map 0 (SEC-09 Dead Metropolis)
+        if (mapManager.getCurrentMapIndex() !== 0) {
+          if (interactables) {
+            interactables.dispose();
+            interactables = null;
+          }
+          arenaData = mapManager.loadMap(0);
+          interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
+        } else {
+          interactables.reset();
+        }
+        waveDirector.setArenaData(arenaData, interactables);
+        hudManager.setArenaData(arenaData, collisionWorld);
+
+        resetTelemetry();
+        lastAdsFov = null;
+        hadPointerLock = false;
+        zoneAmmoRefilled = false;
+        endingTimer = 0;
+        endingIsVictory = false;
+        endingFadeStarted = false;
+
+        input.resetAll();
+        input.setControlMode(settings.controlMode);
+        if (settings.controlMode === 'auto') {
+          input.setTouchMode(isCoarsePointer());
+        }
+        touchOverlay.reset();
+        hudManager.reset();
+        vfxManager.reset();
+        waveDirector.reset();
+        runCards = [];
+        draftChoices = [];
+        if (upgradePanel) upgradePanel.classList.add('hidden');
+        const { mods: startMods } = computePlayerMods();
+        playerController.applyModifiers(startMods, true);
+        playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
+        weaponSystem.reset();
+        lastWeaponState = weaponSystem.getCurrentWeaponState();
+
+        engine.viewmodelScene.visible = true;
+        engine.resize();
+        engine.setFov(playerController.currentFov);
+        engine.bakeStaticShadows();
+        engine.prewarmShaders();
+
+        hudManager.setVisible(true);
+        gameState = 'playing';
+        document.body.classList.add('playing-active');
+        syncTouchOverlayVisibility();
+
+        eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+        const heatCfg = HEAT_CONTRACTS[selectedHeatLevel] || HEAT_CONTRACTS[0];
+    const dailyHpMult = selectedMissionMode === 'daily' ? (getTodayDailyModifier().enemyHpMult || 1.0) : 1.0;
+    waveDirector.endlessMode = selectedMissionMode === 'endless';
+    waveDirector.endlessLoop = 0;
+    waveDirector.globalEnemyHpMult = heatCfg.enemyHpMult * dailyHpMult;
+    waveDirector.start();
+        syncHudImmediate();
+
+        // Render one pre-warmed frame during blackout to bake shadows & upload textures
+        engine.render();
+        startLoop();
+      },
+      () => {
+        if (gameState === 'playing' && runtimeReady && !isTouchActive()) {
+          input.requestPointerLock();
+        }
+      }
+    );
+  }
+
+  function handleMapTransition(nextMapIndex) {
+    if (!runtimeReady || gameState !== 'playing') return;
+
+    runFadeTransition(() => {
+      if (gameState !== 'playing') return;
+
+      input.resetAll();
+      touchOverlay.reset();
+      hudManager.clearCombatOverlays();
+      zoneAmmoRefilled = false;
+
+      if (interactables) {
+        interactables.dispose();
+        interactables = null;
+      }
+
+      arenaData = mapManager.loadMap(nextMapIndex);
+      interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
+      vfxManager.reset();
+
+      // Reset position/velocity to new sector spawn while preserving health, score, combo & ammo,
+      // and granting a full Orbital Drop shield top-off
+      const savedHealth = playerController.health;
+      const savedShield = playerController.shield;
+      playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
+      playerController.health = Math.max(1, Math.min(playerController.maxHealth, savedHealth));
+      playerController.shield = Math.max(0, Math.min(playerController.maxShield, savedShield));
+      playerController.heal(0, playerController.maxShield);
+
+      hudManager.setArenaData(arenaData, collisionWorld);
+      engine.setFov(playerController.currentFov);
+      engine.bakeStaticShadows();
+      engine.prewarmShaders();
+
+      waveDirector.completeMapTransition(arenaData, interactables);
+      syncHudImmediate();
+      engine.render();
+    });
+  }
+
+  function pauseGame() {
+    if (!runtimeReady || gameState !== 'playing' || isTransitioning) return;
+    gameState = 'paused';
+    pauseDebounce = 0.2;
+    hadPointerLock = false;
+
+    document.body.classList.remove('playing-active');
+    input.exitPointerLock();
+    input.resetAll();
+    touchOverlay.setVisible(false);
+
+    if (pausePanel) pausePanel.classList.remove('hidden');
+    eventBus.emit(EVENTS.GAME_STATE, { state: 'paused' });
+  }
+
+  function resumeFromPause() {
+    if (!runtimeReady || gameState !== 'paused' || isTransitioning) return;
+    unlockAudioOnGesture();
+
+    if (pausePanel) pausePanel.classList.add('hidden');
+    gameState = 'playing';
+    pauseDebounce = 0.15;
+    input.resetAll();
+    document.body.classList.add('playing-active');
+    syncTouchOverlayVisibility();
+    eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+
+    if (!isTouchActive()) {
+      input.requestPointerLock();
+    }
+  }
+
+  /**
+   * 0.5s Death/Victory Slow-Motion Linger (0.25x sim speed, input disabled)
+   * followed by 300ms fade curtain -> stopLoop() -> hide #scene-playing -> #scene-result.
+   */
+  function beginEndingSequence(isVictory) {
+    if (gameState !== 'playing') return;
+    gameState = 'ending';
+    endingIsVictory = Boolean(isVictory);
+    endingTimer = ENDING_LINGER_SEC;
+    endingFadeStarted = false;
+    hadPointerLock = false;
+    lastAdsFov = null;
+
+    document.body.classList.remove('playing-active');
+    if (pausePanel) pausePanel.classList.add('hidden');
+
+    if (input) {
+      input.exitPointerLock();
+      input.resetAll();
+    }
+    if (touchOverlay) {
+      touchOverlay.setVisible(false);
+    }
+
+    if (!endingIsVictory && eventBus && waveDirector) {
+      const waveHud = waveDirector.getHudState();
+      eventBus.emit(EVENTS.GAME_STATE, {
+        state: 'gameover',
+        score: waveHud.score,
+        kills: waveHud.kills,
+        headshots: waveHud.headshots,
+        wave: waveHud.wave,
+      });
+    }
+  }
+
+  function enterResultScene(isVictory) {
+    stopLoop();
+    gameState = 'result';
+    hadPointerLock = false;
+    document.body.classList.remove('playing-active');
+
+    if (input) {
+      input.exitPointerLock();
+      input.resetAll();
+    }
+    if (touchOverlay) touchOverlay.setVisible(false);
+    if (hudManager) {
+      hudManager.setVisible(false);
+      hudManager.clearCombatOverlays();
+    }
+    if (soundEngine) {
+      soundEngine.setCombatIntensity(0);
+    }
+    if (pausePanel) pausePanel.classList.add('hidden');
+    if (scenePlaying) scenePlaying.classList.add('hidden');
+    if (sceneTitle) sceneTitle.classList.add('hidden');
+
+    const waveHud = waveDirector ? waveDirector.getHudState() : {};
+    // Compute personalized Combat Persona Title & Build Summary
+    const maxStyle = (STYLE_TIERS[telemetry.maxStyleTierIdx] || STYLE_TIERS[0]).grade;
+    let topWep = 'M41-A';
+    let topWepKills = -1;
+    for (const [k, v] of Object.entries(telemetry.weaponKills)) {
+      if (v > topWepKills) { topWepKills = v; topWep = k; }
+    }
+    const runKills = waveHud.kills || 0;
+    const runHs = waveHud.headshots || 0;
+    const hsRate = runKills > 0 ? runHs / runKills : 0;
+    let personaTitle = '[강철의 선봉장]';
+    if (telemetry.maxStyleTierIdx >= 5) personaTitle = '[SSS 전장의 화신]';
+    else if (telemetry.airKills >= 5) personaTitle = '[하늘의 학살자]';
+    else if (telemetry.slideKills >= 5) personaTitle = '[슬라이드 폭주족]';
+    else if (telemetry.meleeKills >= 4) personaTitle = '[고열 블레이드 검귀]';
+    else if (hsRate >= 0.45 && runHs >= 5) personaTitle = '[냉혈 정밀 저격수]';
+    else if (telemetry.swapKills >= 4) personaTitle = '[전술 무장 달인]';
+
+    const titleEl = byId('debrief-persona-title');
+    const sumEl = byId('debrief-build-summary');
+    if (titleEl) titleEl.textContent = personaTitle;
+    if (sumEl) {
+      sumEl.textContent = `최고 스타일 ${maxStyle} · 핵심 무장 ${topWep} · 공중 ${telemetry.airKills} / 슬라이드 ${telemetry.slideKills} / 전환 ${telemetry.swapKills} 처치`;
+    }
+
+    // Update Endless Best Wave & Check End-of-Run Achievements
+    const totalReachedWave = (waveDirector && waveDirector.endlessLoop ? waveDirector.endlessLoop * WAVES.length : 0) + Math.max(1, waveHud.wave || 1);
+    if (selectedMissionMode === 'endless' && totalReachedWave > metaState.bestEndlessWave) {
+      metaState.bestEndlessWave = totalReachedWave;
+      saveMetaState();
+    }
+    if (selectedMissionMode === 'endless' && totalReachedWave >= 8) unlockAchievement('endless_8');
+    if (isVictory) {
+      unlockAchievement('first_clear');
+      if (selectedHeatLevel >= 2) unlockAchievement('heat_clear');
+    }
+    saveMetaState();
+    renderMedalsStrip();
+    updateMissionConfigUI();
+
+    const resFrame = getEquippedFrame();
+    const resImg = byId('result-pilot-img');
+    const resName = byId('result-pilot-name');
+    const resTier = byId('result-pilot-tier');
+    if (resImg && PILOT_FRAME_ART && PILOT_FRAME_ART[resFrame.id]) {
+      resImg.src = PILOT_FRAME_ART[resFrame.id];
+    }
+    if (resName) {
+      resName.textContent = resFrame.name;
+      resName.style.color = resFrame.color || '#f5f5f4';
+    }
+    if (resTier) resTier.textContent = resFrame.tier || '전술 기체';
+
+    if (hudManager) {
+      hudManager.showEndScreen(isVictory, {
+        score: waveHud.score || 0,
+        kills: waveHud.kills || 0,
+        headshots: waveHud.headshots || 0,
+        shotsFired: telemetry.shotsFired,
+        shotsHit: telemetry.shotsHit,
+        maxCombo: Math.max(telemetry.maxCombo, waveHud.combo || 1),
+        wave: Math.max(1, waveHud.wave || 1),
+        totalWaves: waveHud.totalWaves || WAVES.length,
+        elapsedSec: telemetry.elapsedSec,
+      });
+    } else if (sceneResult) {
+      sceneResult.classList.remove('hidden');
+    }
+  }
+
+  function returnToTitle() {
+    if (isTransitioning) return;
+
+    runFadeTransition(() => {
+      stopLoop();
+      gameState = 'title';
+      hadPointerLock = false;
+      lastAdsFov = null;
+      zoneAmmoRefilled = false;
+      endingTimer = 0;
+      endingFadeStarted = false;
+      document.body.classList.remove('playing-active');
+
+      if (runtimeReady) {
+        input.exitPointerLock();
+        input.resetAll();
+        touchOverlay.setVisible(false);
+        hudManager.setVisible(false);
+        hudManager.hideEndScreen();
+        hudManager.reset();
+        waveDirector.reset();
+        if (interactables) interactables.reset();
+        vfxManager.reset();
+        weaponSystem.reset();
+        if (soundEngine) soundEngine.setCombatIntensity(0);
+        eventBus.emit(EVENTS.GAME_STATE, { state: 'title' });
+      }
+
+      if (pausePanel) pausePanel.classList.add('hidden');
+      if (upgradePanel) upgradePanel.classList.add('hidden');
+      renderArmoryUI();
+      if (scenePlaying) scenePlaying.classList.add('hidden');
+      if (sceneResult) {
+        sceneResult.classList.add('hidden');
+        sceneResult.classList.remove('victory', 'defeat');
+      }
+      if (sceneTitle) sceneTitle.classList.remove('hidden');
+      showTitleSubpanel('main');
+      updateDeviceBadge();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6.5. Lightweight Title / Hangar Mechanical UI Switch Audio (Zero WebGL)
+  // ---------------------------------------------------------------------------
+  let uiAudioCtx = null;
+  function playUiSfx(kind = 'click') {
+    try {
+      const vol = Math.max(0, Math.min(1, (settings.volume || 78) / 100));
+      if (vol <= 0.01) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!uiAudioCtx) uiAudioCtx = new AC();
+      if (uiAudioCtx.state === 'suspended') uiAudioCtx.resume();
+      const now = uiAudioCtx.currentTime;
+      const gain = uiAudioCtx.createGain();
+      gain.connect(uiAudioCtx.destination);
+      const osc = uiAudioCtx.createOscillator();
+      if (kind === 'buy') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(320, now + 0.09);
+        gain.gain.setValueAtTime(0.14 * vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      } else {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(180, now + 0.032);
+        gain.gain.setValueAtTime(0.08 * vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.038);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + 0.042);
+      }
+    } catch {}
+  }
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('button') : null;
+    if (!btn || btn.disabled) return;
+    if (btn.classList.contains('armory-buy-btn')) playUiSfx('buy');
+    else if (gameState !== 'playing') playUiSfx('click');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 7. DOM Event Bindings (Title, Pause, Result & Live Settings Sync)
+  // ---------------------------------------------------------------------------
+  if (btnDeploy) btnDeploy.addEventListener('click', () => startNewGame());
+  if (btnTitleArmory) btnTitleArmory.addEventListener('click', () => showTitleSubpanel('armory'));
+  if (btnArmoryBack) btnArmoryBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnTitleArsenal) btnTitleArsenal.addEventListener('click', () => showTitleSubpanel('arsenal'));
+  if (btnTitleControls) btnTitleControls.addEventListener('click', () => showTitleSubpanel('controls'));
+  if (btnTitleSettings) btnTitleSettings.addEventListener('click', () => showTitleSubpanel('settings'));
+  if (btnTitleAchievements) btnTitleAchievements.addEventListener('click', () => showTitleSubpanel('achievements'));
+
+  if (btnArsenalBack) btnArsenalBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnControlsBack) btnControlsBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnSettingsBack) btnSettingsBack.addEventListener('click', () => showTitleSubpanel('main'));
+  if (btnAchievementsBack) btnAchievementsBack.addEventListener('click', () => showTitleSubpanel('main'));
+
+  document.querySelectorAll('[data-ach-cat]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeAchCategory = btn.getAttribute('data-ach-cat') || 'all';
+      document.querySelectorAll('[data-ach-cat]').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+      });
+      renderMedalsStrip();
+    });
+  });
+
+  if (btnHudPause) {
+    btnHudPause.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (gameState === 'playing') pauseGame();
+    });
+  }
+  if (btnResume) btnResume.addEventListener('click', () => resumeFromPause());
+  if (btnRestartPause) btnRestartPause.addEventListener('click', () => startNewGame());
+  if (btnQuitTitle) btnQuitTitle.addEventListener('click', () => returnToTitle());
+  if (btnRedeploy) btnRedeploy.addEventListener('click', () => startNewGame());
+  if (btnEndTitle) btnEndTitle.addEventListener('click', () => returnToTitle());
+
+  // ESC closes open Title sub-panels; 1/2/3 selects Tactical Upgrade Card cleanly
+  window.addEventListener('keydown', (e) => {
+    if (gameState === 'title' && e.code === 'Escape' && activeTitleSubpanel !== 'main') {
+      showTitleSubpanel('main');
+    } else if (gameState === 'upgrading') {
+      if (e.code === 'Digit1') selectUpgradeCard(0);
+      else if (e.code === 'Digit2') selectUpgradeCard(1);
+      else if (e.code === 'Digit3') selectUpgradeCard(2);
+    }
+  });
+
+  // Auto-pause cleanly when PC player presses ESC to exit PointerLock
+  document.addEventListener('pointerlockchange', () => {
+    if (!runtimeReady || !input) return;
+    const locked = input.isPointerLocked();
+    if (locked) {
+      hadPointerLock = true;
+    } else if (hadPointerLock && gameState === 'playing' && !isTouchActive() && !isTransitioning) {
+      hadPointerLock = false;
+      pauseGame();
+    }
+  });
+
+  // React to dynamic pointer capability changes (e.g., tablet keyboard/mouse dock)
+  if (coarseMediaQuery && typeof coarseMediaQuery.addEventListener === 'function') {
+    coarseMediaQuery.addEventListener('change', updateDeviceBadge);
+  }
+
+  // Bi-directional live settings controls (Title <-> Pause)
+  if (titleSelQuality) titleSelQuality.addEventListener('change', () => applyQuality(titleSelQuality.value));
+  if (pauseSelQuality) pauseSelQuality.addEventListener('change', () => applyQuality(pauseSelQuality.value));
+  if (titleSelControls) titleSelControls.addEventListener('change', () => applyControlMode(titleSelControls.value));
+  if (pauseSelControls) pauseSelControls.addEventListener('change', () => applyControlMode(pauseSelControls.value));
+
+  if (titleRngSensitivity) {
+    titleRngSensitivity.addEventListener('input', () => applySensitivity(titleRngSensitivity.value));
+  }
+  if (pauseRngSensitivity) {
+    pauseRngSensitivity.addEventListener('input', () => applySensitivity(pauseRngSensitivity.value));
+  }
+
+  if (titleRngVolume) {
+    titleRngVolume.addEventListener('input', () => applyVolume(titleRngVolume.value));
+  }
+  if (pauseRngVolume) {
+    pauseRngVolume.addEventListener('input', () => applyVolume(pauseRngVolume.value));
+  }
+
+  if (titleChkMusic) titleChkMusic.addEventListener('change', () => applyMusic(titleChkMusic.checked));
+  if (pauseChkMusic) pauseChkMusic.addEventListener('change', () => applyMusic(pauseChkMusic.checked));
+  if (titleChkFps) titleChkFps.addEventListener('change', () => applyShowFps(titleChkFps.checked));
+  if (pauseChkFps) pauseChkFps.addEventListener('change', () => applyShowFps(pauseChkFps.checked));
+
+  // Initialize Title state & badges (ZERO WebGL, ZERO rAF!)
+  applyQuality(settings.quality);
+  applySensitivity(settings.sensitivity);
+  applyVolume(settings.volume);
+  applyMusic(settings.music);
+  applyShowFps(settings.showFps);
+  applyControlMode(settings.controlMode);
+  renderArmoryUI();
+  showTitleSubpanel('main');
+
+  // ---------------------------------------------------------------------------
+  // 8. Main 60FPS Combat Loop (Active ONLY in 'playing' | 'paused' | 'ending')
+  // ---------------------------------------------------------------------------
+  function frame(now) {
+    if (rafId === null || gameState === 'title' || gameState === 'result') {
+      rafId = null;
+      return;
+    }
+    rafId = window.requestAnimationFrame(frame);
+
+    const rawDt = Math.max(0.0001, (now - lastTime) * 0.001);
+    lastTime = now;
+    const dt = rawDt > 0.05 ? 0.05 : rawDt;
+
+    if (pauseDebounce > 0) {
+      pauseDebounce = Math.max(0, pauseDebounce - dt);
+    }
+
+    if (gameState === 'playing') {
+      // Freeze combat simulation during 300ms mid-campaign map transition fade
+      if (isTransitioning) {
+        elapsedTime += dt;
+        mapManager.update(dt, elapsedTime);
+        vfxManager.update(dt);
+        soundEngine.update(dt);
+        input.endFrame();
+        engine.recordFrame(rawDt);
+        engine.render();
+        return;
+      }
+
+      elapsedTime += dt;
+      telemetry.elapsedSec += dt;
+
+      // Style meter gentle decay over time
+      if (telemetry.styleMeter > 0) {
+        const decayRate = 3.2 + telemetry.styleTierIdx * 1.1;
+        telemetry.styleMeter = Math.max(0, telemetry.styleMeter - decayRate * dt);
+        const newIdx = getStyleTier(telemetry.styleMeter);
+        if (newIdx !== telemetry.styleTierIdx) {
+          telemetry.styleTierIdx = newIdx;
+          if (newIdx === 0) telemetry.lastStyleCallout = 'STYLE';
+        }
+        updateStyleHudUI();
+      }
+
+      // BASTION-12 Special: Dash Slam shockwave on dash trigger
+      if (playerController && playerController.mods && playerController.mods.dashSlam) {
+        const isDashingNow = (playerController.dashTimer || 0) > 0;
+        if (isDashingNow && !telemetry.wasDashingPrev && waveDirector) {
+          const pPos = playerController.position;
+          const activeEnemies = waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+          for (let ei = 0; ei < activeEnemies.length; ei++) {
+            const e = activeEnemies[ei];
+            if (!e || !e.isAlive) continue;
+            if (e.position.distanceTo(pPos) <= 6.5) {
+              const dir = e.position.clone().sub(pPos).normalize();
+              e.applyDamage(45, e.center || e.position, false, dir, { isExplosion: true, knockback: 15 });
+            }
+          }
+          if (vfxManager) vfxManager.spawnExplosion(pPos, 4.2, 0x22c55e);
+        }
+        telemetry.wasDashingPrev = isDashingNow;
+      }
+
+      // Rare Card: Repulsor Slam (landing shockwave after airborne >= 0.28s)
+      if (playerController) {
+        const groundedNow = Boolean(playerController.isGrounded);
+        if (!groundedNow) {
+          telemetry.airTimeAccum += dt;
+        } else {
+          if (!telemetry.wasGroundedPrev && telemetry.airTimeAccum >= 0.28 && playerController.mods && playerController.mods.repulsorSlam) {
+            const pPos = playerController.position;
+            const activeEnemies = waveDirector && waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
+            let slamHits = 0;
+            for (let ei = 0; ei < activeEnemies.length; ei++) {
+              const e = activeEnemies[ei];
+              if (!e || !e.isAlive) continue;
+              const d = e.position.distanceTo(pPos);
+              if (d <= 7.5) {
+                const dir = e.position.clone().sub(pPos).normalize();
+                e.applyDamage(55, e.center || e.position, false, dir, { isExplosion: true, knockback: 14 });
+                slamHits++;
+              }
+            }
+            if (vfxManager) vfxManager.spawnExplosion(pPos, 4.8, 0x22c55e);
+            if (slamHits > 0) addStylePoints(14, '충격 강하!');
+          }
+          telemetry.airTimeAccum = 0;
+        }
+        telemetry.wasGroundedPrev = groundedNow;
+      }
+      syncTouchOverlayVisibility();
+
+      // Build zero-GC merged target list (living enemies + alive explosive fuel drums)
+      const livingEnemies = waveDirector.getTargets();
+      const activeBarrels = interactables.getDestructibleTargets();
+      mergedTargets.length = 0;
+      for (let i = 0; i < livingEnemies.length; i++) {
+        mergedTargets.push(livingEnemies[i]);
+      }
+      for (let i = 0; i < activeBarrels.length; i++) {
+        mergedTargets.push(activeBarrels[i]);
+      }
+
+      // 1. Player 3C locomotion, camera & touch aim-assist
+      playerUpdateOpts.adsFov = lastAdsFov;
+      playerUpdateOpts.aimAssistTargets = livingEnemies;
+      playerUpdateOpts.allowAds = !(
+        lastWeaponState &&
+        (lastWeaponState.isReloading || lastWeaponState.isSwapping || lastWeaponState.isMeleeing)
+      );
+      playerController.update(dt, playerUpdateOpts);
+      engine.setFov(playerController.currentFov);
+      engine.camera.updateMatrixWorld();
+
+      // 1.5. Floor Weapon Swap on [F] / Touch Pickup Button
+      if (input.consumePressed('interact') && interactables) {
+        interactables.trySwapNearbyWeapon(playerController.position, weaponSystem);
+      }
+
+      // 2. Weapon inputs, ballistics, thermal pry-blade melee & 1P viewmodel animation
+      const weaponRes = weaponSystem.update(dt, mergedTargets);
+      lastAdsFov = weaponRes.adsFov;
+      lastWeaponState = weaponSystem.getCurrentWeaponState();
+
+      // 3. Active Sector Environment, Interactables, WaveDirector AI & VFX
+      mapManager.update(dt, elapsedTime);
+      interactables.update(dt, elapsedTime, playerController, livingEnemies, weaponSystem);
+      waveDirector.update(
+        dt,
+        elapsedTime,
+        playerController,
+        interactables.getZoneState(),
+        interactables
+      );
+      vfxManager.update(dt);
+
+      // 4. Spatial 3D Audio & Adaptive Combat Pulse
+      const waveHud = waveDirector.getHudState();
+      soundEngine.setCombatIntensity(waveHud.combatIntensity);
+      soundEngine.update(dt);
+
+      // 5. Zero-GC HUD & Touch Overlay State Sync
+      hudSnapshot.player = playerController.getStateSnapshot();
+      hudSnapshot.weapon = lastWeaponState;
+      hudSnapshot.crosshairSpread = weaponRes.crosshairSpread;
+      hudSnapshot.wave = waveHud;
+      hudSnapshot.boss = waveDirector.getBossState();
+      hudSnapshot.zone = interactables.getZoneState();
+      hudSnapshot.enemies = livingEnemies;
+      hudSnapshot.pickups = interactables.getPickups();
+      hudSnapshot.fps = engine.fps;
+      hudSnapshot.gold = metaState.gold;
+      hudSnapshot.loadout = weaponSystem.getLoadoutInfo();
+      hudSnapshot.activeSynergies = getActiveSynergiesList();
+      const nearDrop = interactables.getNearbyWeaponDrop(playerController.position);
+      if (nearDrop) {
+        const dropW = __require("src/config/weapons.js").WEAPONS[nearDrop.weaponIndex];
+        const lo = hudSnapshot.loadout;
+        const isSec = dropW && dropW.category === 'secondary';
+        const curIdx = isSec ? lo.secondaryIndex : lo.primaryIndex;
+        const curW = isSec ? lo.secondaryWeapon : lo.primaryWeapon;
+        hudSnapshot.nearbyWeapon = dropW
+          ? { weapon: dropW, isSame: curIdx === nearDrop.weaponIndex, currentName: curW ? curW.shortName : '' }
+          : null;
+      } else {
+        hudSnapshot.nearbyWeapon = null;
+      }
+
+      hudManager.update(dt, hudSnapshot);
+      touchOverlay.syncState(hudSnapshot);
+
+      // Safety death transition check
+      if (!playerController.isAlive && gameState === 'playing') {
+        beginEndingSequence(false);
+      }
+
+      // Pause key check (P / ESC)
+      if (pauseDebounce <= 0 && input.consumePressed('pause') && gameState === 'playing') {
+        pauseGame();
+      }
+
+      input.endFrame();
+    } else if (gameState === 'paused') {
+      if (pauseDebounce <= 0 && input.consumePressed('pause')) {
+        resumeFromPause();
+      }
+      input.endFrame();
+    } else if (gameState === 'ending') {
+      // 0.5s slow-motion death/victory linger (0.25x residual animation/VFX, input disabled)
+      endingTimer -= dt;
+      const simDt = dt * ENDING_SLOWMO_SCALE;
+      elapsedTime += simDt;
+
+      if (!endingIsVictory) {
+        playerController.update(simDt, playerUpdateOpts);
+      }
+      mapManager.update(simDt, elapsedTime);
+      interactables.update(simDt, elapsedTime, null, null, null);
+      vfxManager.update(simDt);
+      soundEngine.setCombatIntensity(0);
+      soundEngine.update(dt);
+      input.endFrame();
+
+      if (endingTimer <= 0 && !endingFadeStarted) {
+        endingFadeStarted = true;
+        runFadeTransition(() => enterResultScene(endingIsVictory));
+      }
+    }
+
+    engine.recordFrame(rawDt);
+    engine.render();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+} else {
+  bootstrap();
+}
+});
