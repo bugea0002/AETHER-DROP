@@ -364,65 +364,234 @@ function bootstrap() {
   let runCards = [];
   let draftChoices = [];
 
-  let _frameHudRoot = null;
   let _visorEl = null;
+  let _ultFlashEl = null;
   let _guardFillEl = null;
   let _guardTextEl = null;
   let _ultFillEl = null;
   let _ultTextEl = null;
 
-  function ensureTacticalFrameHudOverlay() {
-    if (_frameHudRoot) return;
-    _visorEl = document.createElement('div');
-    _visorEl.id = 'frame-visor-overlay';
-    _visorEl.style.cssText =
-      'position:fixed;inset:0;pointer-events:none;z-index:12;transition:box-shadow 0.35s ease,border-color 0.35s ease;border:2px solid transparent;display:none;';
-    document.body.appendChild(_visorEl);
+  // Dedicated 3D Ultimate VFX Objects (Orbital Laser Pillars, Expanding Nova Spheres, Shockwave Rings, Bastion Fortress Dome)
+  const _ult3dEffects = [];
+  let _bastionDomeGroup = null;
 
-    _frameHudRoot = document.createElement('div');
-    _frameHudRoot.id = 'frame-tactical-bars';
-    _frameHudRoot.style.cssText =
-      'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:none;gap:14px;align-items:center;pointer-events:none;z-index:25;font-family:monospace;font-size:11px;letter-spacing:0.06em;';
-    _frameHudRoot.innerHTML = `
-      <div style="background:rgba(8,14,26,0.78);border:1px solid rgba(56,189,248,0.45);border-radius:6px;padding:5px 10px;min-width:155px;">
-        <div style="display:flex;justify-content:space-between;color:#bae6fd;margin-bottom:3px;"><span>[E] 전방 방패</span><span id="hud-guard-val">100%</span></div>
-        <div style="height:6px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;"><div id="hud-guard-fill" style="height:100%;width:100%;background:#38bdf8;transition:width 0.06s linear;"></div></div>
-      </div>
-      <div style="background:rgba(8,14,26,0.78);border:1px solid rgba(251,191,36,0.5);border-radius:6px;padding:5px 10px;min-width:165px;">
-        <div style="display:flex;justify-content:space-between;color:#fde68a;margin-bottom:3px;"><span>[X] 궁극기</span><span id="hud-ult-val">0%</span></div>
-        <div style="height:6px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden;"><div id="hud-ult-fill" style="height:100%;width:0%;background:#f59e0b;transition:width 0.08s linear;"></div></div>
-      </div>`;
-    document.body.appendChild(_frameHudRoot);
-    _guardFillEl = document.getElementById('hud-guard-fill');
-    _guardTextEl = document.getElementById('hud-guard-val');
-    _ultFillEl = document.getElementById('hud-ult-fill');
-    _ultTextEl = document.getElementById('hud-ult-val');
+  function triggerUltScreenFlash(colorCss, opacity = 0.52) {
+    ensureTacticalFrameHudOverlay();
+    if (!_ultFlashEl) return;
+    _ultFlashEl.style.background = `radial-gradient(circle, ${colorCss} 0%, transparent 72%)`;
+    _ultFlashEl.style.opacity = String(opacity);
+    _ultFlashEl.dataset.alpha = String(opacity);
+  }
+
+  function spawnUltBeamPillar(pos, colorHex) {
+    if (!engine || !engine.scene) return;
+    const g = new THREE.Group();
+    g.position.set(pos.x, pos.y, pos.z);
+    const outerGeo = new THREE.CylinderGeometry(1.25, 1.85, 44, 16, 1, true);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const outer = new THREE.Mesh(outerGeo, outerMat);
+    outer.position.y = 22;
+    g.add(outer);
+
+    const coreGeo = new THREE.CylinderGeometry(0.45, 0.72, 44, 12, 1, true);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = 22;
+    g.add(core);
+
+    engine.scene.add(g);
+    _ult3dEffects.push({ type: 'pillar', mesh: g, mats: [outerMat, coreMat], geos: [outerGeo, coreGeo], age: 0, maxAge: 1.15 });
+  }
+
+  function spawnUltShockRing(pos, maxRadius, colorHex, maxAge = 0.85, tiltX = 0) {
+    if (!engine || !engine.scene) return;
+    const geo = new THREE.TorusGeometry(1.0, 0.14, 10, 36);
+    geo.rotateX(Math.PI * 0.5 + tiltX);
+    const mat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(pos.x, Math.max(0.25, pos.y + 0.35), pos.z);
+    engine.scene.add(mesh);
+    _ult3dEffects.push({ type: 'ring', mesh, mats: [mat], geos: [geo], age: 0, maxAge, maxRadius });
+  }
+
+  function spawnUltNovaSphere(pos, maxRadius, colorHex, maxAge = 1.05) {
+    if (!engine || !engine.scene) return;
+    const geo = new THREE.SphereGeometry(1.0, 20, 14);
+    const mat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.58,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(pos.x, pos.y + 1.0, pos.z);
+    engine.scene.add(mesh);
+    _ult3dEffects.push({ type: 'sphere', mesh, mats: [mat], geos: [geo], age: 0, maxAge, maxRadius });
+  }
+
+  function updateUlt3dEffects(dt) {
+    if (_ultFlashEl) {
+      const a = parseFloat(_ultFlashEl.dataset.alpha || '0');
+      if (a > 0.005) {
+        const na = Math.max(0, a - dt * 1.35);
+        _ultFlashEl.dataset.alpha = String(na);
+        _ultFlashEl.style.opacity = String(na);
+      }
+    }
+    // Bastion 3D Emerald Fortress Dome following player while ultInvulnTimer > 0
+    if (playerController && playerController.ultInvulnTimer > 0 && engine && engine.scene) {
+      if (!_bastionDomeGroup) {
+        _bastionDomeGroup = new THREE.Group();
+        const domeGeo = new THREE.SphereGeometry(2.65, 18, 12);
+        const domeMat = new THREE.MeshBasicMaterial({
+          color: 0x22c55e,
+          transparent: true,
+          opacity: 0.22,
+          wireframe: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        _bastionDomeGroup.add(new THREE.Mesh(domeGeo, domeMat));
+        const eqGeo = new THREE.TorusGeometry(2.7, 0.08, 8, 32);
+        eqGeo.rotateX(Math.PI * 0.5);
+        const eqMat = new THREE.MeshBasicMaterial({
+          color: 0x4ade80,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        _bastionDomeGroup.add(new THREE.Mesh(eqGeo, eqMat));
+        engine.scene.add(_bastionDomeGroup);
+      }
+      _bastionDomeGroup.visible = true;
+      _bastionDomeGroup.position.set(playerController.position.x, playerController.position.y + 1.1, playerController.position.z);
+      _bastionDomeGroup.rotation.y += dt * 1.8;
+    } else if (_bastionDomeGroup) {
+      _bastionDomeGroup.visible = false;
+    }
+
+    for (let i = _ult3dEffects.length - 1; i >= 0; i--) {
+      const fx = _ult3dEffects[i];
+      fx.age += dt;
+      const t = Math.min(1, fx.age / fx.maxAge);
+      if (fx.type === 'pillar') {
+        const sc = 1.0 - t * 0.65;
+        fx.mesh.scale.set(sc, 1.0, sc);
+        fx.mats[0].opacity = 0.72 * (1 - t);
+        fx.mats[1].opacity = 0.92 * (1 - t);
+      } else if (fx.type === 'ring') {
+        const r = 1.0 + (fx.maxRadius - 1.0) * (1 - Math.pow(1 - t, 2.2));
+        fx.mesh.scale.set(r, r, r);
+        fx.mats[0].opacity = 0.92 * (1 - t);
+      } else if (fx.type === 'sphere') {
+        const r = 1.0 + (fx.maxRadius - 1.0) * (1 - Math.pow(1 - t, 2.5));
+        fx.mesh.scale.setScalar(r);
+        fx.mats[0].opacity = 0.58 * (1 - t);
+      }
+      if (fx.age >= fx.maxAge) {
+        if (fx.mesh.parent) fx.mesh.parent.remove(fx.mesh);
+        for (let g = 0; g < fx.geos.length; g++) fx.geos[g].dispose();
+        for (let k = 0; k < fx.mats.length; k++) fx.mats[k].dispose();
+        _ult3dEffects.splice(i, 1);
+      }
+    }
+  }
+
+  function ensureTacticalFrameHudOverlay() {
+    if (!_visorEl) {
+      _visorEl = document.createElement('div');
+      _visorEl.id = 'frame-visor-overlay';
+      _visorEl.style.cssText =
+        'position:fixed;inset:0;pointer-events:none;z-index:12;transition:box-shadow 0.35s ease,border-color 0.35s ease;border:2px solid transparent;display:none;';
+      document.body.appendChild(_visorEl);
+    }
+    if (!_ultFlashEl) {
+      _ultFlashEl = document.createElement('div');
+      _ultFlashEl.id = 'ult-screen-flash';
+      _ultFlashEl.style.cssText =
+        'position:fixed;inset:0;pointer-events:none;z-index:14;opacity:0;';
+      document.body.appendChild(_ultFlashEl);
+    }
+    if (!_guardFillEl) _guardFillEl = document.getElementById('hud-guard-fill');
+    if (!_guardTextEl) _guardTextEl = document.getElementById('hud-guard-val');
+    if (!_ultFillEl) _ultFillEl = document.getElementById('hud-ult-fill');
+    if (!_ultTextEl) _ultTextEl = document.getElementById('hud-ult-val');
   }
 
   function updateTacticalFrameHudOverlay(pSnap, mods) {
     ensureTacticalFrameHudOverlay();
     const visible = gameState === 'playing' && pSnap && pSnap.isAlive;
-    _visorEl.style.display = visible ? 'block' : 'none';
-    _frameHudRoot.style.display = visible ? 'flex' : 'none';
+    if (_visorEl) _visorEl.style.display = visible ? 'block' : 'none';
     if (!visible) return;
 
     const fid = (mods && mods.frameId) || 'vanguard';
     const vCol = (mods && mods.visorColor) || 'rgba(245, 158, 11, 0.24)';
     const fCol = (mods && mods.frameColor) || '#f59e0b';
     const spread = fid === 'bastion' ? '52px' : fid === 'strider' ? '26px' : '38px';
-    const activeGlow = pSnap.ultActiveTimer > 0 ? `inset 0 0 80px ${fCol}` : `inset 0 0 ${spread} ${vCol}`;
-    _visorEl.style.boxShadow = activeGlow;
-    _visorEl.style.borderColor = fid === 'bastion' ? 'rgba(34,197,94,0.42)' : fid === 'apex' ? 'rgba(239,68,68,0.38)' : fid === 'strider' ? 'rgba(56,189,248,0.36)' : 'rgba(245,158,11,0.22)';
+    const activeGlow =
+      pSnap.ultActiveTimer > 0
+        ? `inset 0 0 95px ${fCol}`
+        : pSnap.isGuarding
+        ? `inset 0 0 60px rgba(56, 189, 248, 0.35)`
+        : `inset 0 0 ${spread} ${vCol}`;
+    if (_visorEl) {
+      _visorEl.style.boxShadow = activeGlow;
+      _visorEl.style.borderColor =
+        fid === 'bastion'
+          ? 'rgba(34,197,94,0.42)'
+          : fid === 'apex'
+          ? 'rgba(239,68,68,0.38)'
+          : fid === 'strider'
+          ? 'rgba(56,189,248,0.36)'
+          : 'rgba(245,158,11,0.22)';
+    }
 
-    const gPct = Math.max(0, Math.min(100, Math.round((pSnap.guardEnergy / Math.max(1, pSnap.maxGuardEnergy)) * 100)));
-    _guardFillEl.style.width = gPct + '%';
-    _guardFillEl.style.background = pSnap.guardBreakTimer > 0 ? '#ef4444' : fid === 'bastion' ? '#22c55e' : '#38bdf8';
-    _guardTextEl.textContent = pSnap.guardBreakTimer > 0 ? '파괴됨' : gPct + '%';
+    if (_guardFillEl && _guardTextEl) {
+      const gPct = Math.max(0, Math.min(100, Math.round((pSnap.guardEnergy / Math.max(1, pSnap.maxGuardEnergy)) * 100)));
+      _guardFillEl.style.width = gPct + '%';
+      _guardFillEl.style.background =
+        pSnap.guardBreakTimer > 0
+          ? 'linear-gradient(90deg,#dc2626,#ef4444)'
+          : fid === 'bastion'
+          ? 'linear-gradient(90deg,#16a34a,#4ade80)'
+          : 'linear-gradient(90deg,#0284c7,#38bdf8)';
+      _guardTextEl.textContent = pSnap.guardBreakTimer > 0 ? '파괴됨' : pSnap.isGuarding ? `방어 ${gPct}%` : gPct + '%';
+    }
 
-    const uPct = Math.max(0, Math.min(100, Math.round(pSnap.ultCharge || 0)));
-    _ultFillEl.style.width = (pSnap.ultActiveTimer > 0 ? 100 : uPct) + '%';
-    _ultFillEl.style.background = pSnap.ultActiveTimer > 0 ? '#22c55e' : uPct >= 100 ? '#f43f5e' : fCol;
-    _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? '발동 중!' : uPct >= 100 ? 'READY [X]' : uPct + '%';
+    if (_ultFillEl && _ultTextEl) {
+      const uPct = Math.max(0, Math.min(100, Math.round(pSnap.ultCharge || 0)));
+      _ultFillEl.style.width = (pSnap.ultActiveTimer > 0 ? 100 : uPct) + '%';
+      _ultFillEl.style.background =
+        pSnap.ultActiveTimer > 0
+          ? 'linear-gradient(90deg,#16a34a,#4ade80)'
+          : uPct >= 100
+          ? 'linear-gradient(90deg,#e11d48,#f43f5e)'
+          : `linear-gradient(90deg,#d97706,${fCol})`;
+      _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? '발동 중!' : uPct >= 100 ? 'READY' : uPct + '%';
+    }
   }
 
   function computePlayerMods() {
@@ -2126,6 +2295,7 @@ function bootstrap() {
         elapsedTime += dt;
         mapManager.update(dt, elapsedTime);
         vfxManager.update(dt);
+      updateUlt3dEffects(dt);
         soundEngine.update(dt);
         input.endFrame();
         engine.recordFrame(rawDt);
@@ -2282,6 +2452,8 @@ function bootstrap() {
               if (typeof vfxManager.spawnTracer === 'function') vfxManager.spawnTracer(skyOrigin, tPos, 0xf59e0b, 0.28, true);
               vfxManager.spawnExplosion(tPos, 5.5, 0xf59e0b);
             }
+            spawnUltBeamPillar(tPos, 0xf59e0b);
+            spawnUltShockRing(tPos, 8.5, 0xfbbf24, 0.95);
             for (let ei = 0; ei < activeEnemies.length; ei++) {
               const e = activeEnemies[ei];
               if (!e || !e.isAlive) continue;
@@ -2291,6 +2463,7 @@ function bootstrap() {
               }
             }
           }
+          triggerUltScreenFlash('rgba(245,158,11,0.75)', 0.55);
           playerController.addScreenShake(0.45);
           if (hudManager && typeof hudManager.showAnnouncement === 'function') {
             hudManager.showAnnouncement('궁극기: 궤도 포격!', 'ORBITAL BARRAGE — 5연쇄 궤도 타격 투하', 'info');
@@ -2301,6 +2474,10 @@ function bootstrap() {
           playerController.ultActiveTimer = 6.0;
           playerController.dashOverdriveTimer = 6.0;
           if (vfxManager) vfxManager.spawnExplosion(pPos, 5.0, 0x00f0ff);
+          spawnUltNovaSphere(pPos, 24.0, 0x00f0ff, 1.1);
+          spawnUltShockRing(pPos, 26.0, 0x38bdf8, 1.0);
+          spawnUltShockRing(pPos, 18.0, 0x7dd3fc, 0.7, 0.25);
+          triggerUltScreenFlash('rgba(0,240,255,0.72)', 0.55);
           if (hudManager && typeof hudManager.showAnnouncement === 'function') {
             hudManager.showAnnouncement('궁극기: 타임 다이레이션!', '6초간 적 시간 60% 감속 · 초고속 무한 사격', 'info');
           }
@@ -2312,6 +2489,9 @@ function bootstrap() {
           playerController.guardBreakTimer = 0;
           telemetry._bastionPulseTimer = 0.05;
           if (vfxManager) vfxManager.spawnExplosion(pPos, 6.0, 0x22c55e);
+          spawnUltNovaSphere(pPos, 12.0, 0x22c55e, 0.9);
+          spawnUltShockRing(pPos, 13.0, 0x4ade80, 0.85);
+          triggerUltScreenFlash('rgba(34,197,94,0.68)', 0.50);
           if (hudManager && typeof hudManager.showAnnouncement === 'function') {
             hudManager.showAnnouncement('궁극기: 이지스 포트리스!', '7초간 완전 무적 돔 전개 · 주변 12m 전기 충격', 'info');
           }
@@ -2321,6 +2501,11 @@ function bootstrap() {
           playerController.ultDamageMult = 1.6;
           playerController.dashOverdriveTimer = 5.0;
           if (vfxManager) vfxManager.spawnExplosion(pPos, 9.5, 0xef4444);
+          spawnUltNovaSphere(pPos, 28.0, 0xef4444, 1.2);
+          spawnUltShockRing(pPos, 28.0, 0xf59e0b, 1.05, 0.0);
+          spawnUltShockRing(pPos, 26.0, 0xf43f5e, 1.05, 0.45);
+          spawnUltShockRing(pPos, 26.0, 0xfbbf24, 1.05, -0.45);
+          triggerUltScreenFlash('rgba(239,68,68,0.85)', 0.65);
           for (let ei = 0; ei < activeEnemies.length; ei++) {
             const e = activeEnemies[ei];
             if (!e || !e.isAlive) continue;
@@ -2352,6 +2537,7 @@ function bootstrap() {
             }
           }
           if (vfxManager) vfxManager.spawnExplosion(pPos, 4.5, 0x22c55e);
+          spawnUltShockRing(pPos, 12.5, 0x4ade80, 0.65);
         }
       }
 
@@ -2372,6 +2558,7 @@ function bootstrap() {
         interactables
       );
       vfxManager.update(dt);
+      updateUlt3dEffects(dt);
 
       // 4. Spatial 3D Audio & Adaptive Combat Pulse
       const waveHud = waveDirector.getHudState();

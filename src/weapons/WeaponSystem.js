@@ -325,7 +325,7 @@ class WeaponSystem {
           this._guardShieldFillMat.opacity = (0.20 + flash * 0.42) * a;
         }
         if (this._guardShieldEdgeMat) {
-          this._guardShieldEdgeMat.emissiveIntensity = 2.8 + flash * 4.5;
+          this._guardShieldEdgeMat.opacity = Math.min(1.0, (0.78 + flash * 0.22) * a);
         }
       }
     }
@@ -547,45 +547,54 @@ class WeaponSystem {
           : 0x38bdf8;
       this._guardShieldFillMat.color.setHex(col);
       this._guardShieldEdgeMat.color.setHex(col);
-      this._guardShieldEdgeMat.emissive.setHex(col);
+      if (this._guardShieldEdgeMat.emissive) this._guardShieldEdgeMat.emissive.setHex(col);
     }
   }
 
   _buildGuardShieldMesh() {
     const g = new THREE.Group();
-    const hexGeo = new THREE.CircleGeometry(0.42, 6);
+    // Large, curved holographic hexagonal riot barrier right in front of the player's view
+    const hexGeo = new THREE.CircleGeometry(0.52, 6);
     this._guardShieldFillMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.24,
+      opacity: 0.28,
       side: THREE.DoubleSide,
       depthWrite: false,
       fog: false,
     });
     const fill = new THREE.Mesh(hexGeo, this._guardShieldFillMat);
-    fill.renderOrder = 15;
+    fill.renderOrder = 20;
     g.add(fill);
 
-    const edgeGeo = new THREE.TorusGeometry(0.42, 0.014, 8, 6);
-    this._guardShieldEdgeMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: new THREE.Color(0x38bdf8),
-      emissiveIntensity: 3.2,
-      roughness: 0.15,
-      metalness: 0.2,
+    const edgeGeo = new THREE.TorusGeometry(0.52, 0.022, 8, 6);
+    this._guardShieldEdgeMat = new THREE.MeshBasicMaterial({
+      color: 0x7dd3fc,
+      transparent: true,
+      opacity: 0.92,
       fog: false,
     });
     const edge = new THREE.Mesh(edgeGeo, this._guardShieldEdgeMat);
-    edge.renderOrder = 16;
+    edge.renderOrder = 21;
     g.add(edge);
 
-    const innerGeo = new THREE.RingGeometry(0.18, 0.20, 6);
+    const innerGeo = new THREE.RingGeometry(0.24, 0.265, 6);
     const inner = new THREE.Mesh(innerGeo, this._guardShieldEdgeMat);
-    inner.position.z = 0.005;
-    inner.renderOrder = 16;
+    inner.position.z = 0.006;
+    inner.renderOrder = 21;
     g.add(inner);
 
-    g.position.set(-0.08, -0.06, -0.58);
+    // Subtle glowing hex-grid struts across the barrier
+    const strutGeo = new THREE.BoxGeometry(0.98, 0.012, 0.008);
+    for (let i = 0; i < 3; i++) {
+      const strut = new THREE.Mesh(strutGeo, this._guardShieldEdgeMat);
+      strut.rotation.z = (i * Math.PI) / 3;
+      strut.position.z = 0.004;
+      strut.renderOrder = 21;
+      g.add(strut);
+    }
+
+    g.position.set(-0.04, -0.08, -0.55);
     g.visible = false;
     this._guardRaiseAlpha = 0;
     this._guardElapsed = 0;

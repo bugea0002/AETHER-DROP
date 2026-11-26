@@ -530,11 +530,11 @@ class InputManager {
       case 'jump':
         return this._codesDown.has('Space');
       case 'dash':
-        return (
-          this._codesDown.has('KeyQ') ||
-          this._codesDown.has('KeyE') ||
-          this._codesDown.has('AltLeft')
-        );
+        return this._codesDown.has('KeyQ') || this._codesDown.has('AltLeft');
+      case 'guard':
+        return this._codesDown.has('KeyE');
+      case 'ultimate':
+        return this._codesDown.has('KeyX');
       case 'reload':
         return this._codesDown.has('KeyR');
       case 'melee':
