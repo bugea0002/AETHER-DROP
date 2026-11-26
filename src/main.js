@@ -150,8 +150,19 @@ function bootstrap() {
     bestEndlessWave: 0,
     totalKillsAllTime: 0,
   };
+  function _readCookieBackup(name) {
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch { return null; }
+  }
+  function _writeCookieBackup(name, val) {
+    try {
+      document.cookie = name + '=' + encodeURIComponent(val) + '; max-age=31536000; path=/; SameSite=Lax';
+    } catch {}
+  }
   try {
-    const raw = window.localStorage.getItem(META_STORAGE_KEY);
+    const raw = window.localStorage.getItem(META_STORAGE_KEY) || _readCookieBackup(META_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Number.isFinite(parsed.gold)) metaState.gold = Math.max(0, Math.floor(parsed.gold));
@@ -357,9 +368,16 @@ function bootstrap() {
 
   function saveMetaState() {
     try {
-      window.localStorage.setItem(META_STORAGE_KEY, JSON.stringify(metaState));
+      const serialized = JSON.stringify(metaState);
+      window.localStorage.setItem(META_STORAGE_KEY, serialized);
+      _writeCookieBackup(META_STORAGE_KEY, serialized);
     } catch {}
   }
+  window.addEventListener('beforeunload', saveMetaState);
+  window.addEventListener('pagehide', saveMetaState);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveMetaState();
+  });
 
   let runCards = [];
   let draftChoices = [];
@@ -368,12 +386,189 @@ function bootstrap() {
   let _ultFlashEl = null;
   let _guardFillEl = null;
   let _guardTextEl = null;
-  let _ultFillEl = null;
+  let _ultRingEl = null;
+  let _ultDialEl = null;
   let _ultTextEl = null;
+  let _frameBadgeEl = null;
+  let _frameStatusEl = null;
 
   // Dedicated 3D Ultimate VFX Objects (Orbital Laser Pillars, Expanding Nova Spheres, Shockwave Rings, Bastion Fortress Dome)
   const _ult3dEffects = [];
   let _hitstopTimer = 0;
+
+  // === Dedicated 6-Step Interactive Tutorial Controller (Map 6: TutorialMapBuilder) ===
+  const tutorialState = {
+    active: false,
+    step: 0,
+    didDash: false,
+    didJumpPad: false,
+    didBarrel: false,
+    killsInStep: 0,
+    guardHoldSec: 0,
+    pickedItem: false,
+    autoUpgraded: false,
+    enteredBeacon: false,
+    usedUlt: false,
+  };
+
+  function updateTutorialBannerUI() {
+    const banner = document.getElementById('tutorial-banner');
+    if (!banner) return;
+    if (!tutorialState.active || gameState !== 'playing') {
+      banner.classList.add('hidden');
+      return;
+    }
+    banner.classList.remove('hidden');
+    const badge = document.getElementById('tut-step-badge');
+    const title = document.getElementById('tut-step-title');
+    const desc = document.getElementById('tut-step-desc');
+    const goal = document.getElementById('tut-step-goal');
+    const s = tutorialState.step;
+    if (badge) badge.textContent = `STEP ${s} / 6`;
+
+    if (s === 1) {
+      if (title) title.textContent = '1. 기동 & 맵 오브젝트 (점프 패드 · 폭발 드럼통)';
+      if (desc) desc.textContent = 'WASD로 이동하고 [Q]로 대시하세요. 서쪽 바닥의 점프 패드를 밟아 고지대로 도약하고, 중앙의 빨간 연료 드럼통을 사격해 폭파해 보세요.';
+      if (goal) goal.textContent = `목표: 대시(${tutorialState.didDash ? '완료' : '0/1'}) · 점프패드(${tutorialState.didJumpPad ? '완료' : '0/1'}) · 드럼통 폭파(${tutorialState.didBarrel ? '완료' : '0/1'})`;
+    } else if (s === 2) {
+      if (title) title.textContent = '2. 무기 장단점 & 정조준 사격';
+      if (desc) desc.textContent = '주무기별 특징이 다릅니다 — M41-A(균형), BR-12(근접강화·원거리 약화), HV-7(저격 2.6배·방패 중 사격불가), K-9(이속+12%·빠른 장전). [1]/[2]로 보조무기도 전환하며 북쪽 표적 2기를 처치하세요.';
+      if (goal) goal.textContent = `목표: 북쪽 훈련 표적 처치 (${tutorialState.killsInStep} / 2)`;
+    } else if (s === 3) {
+      if (title) title.textContent = '3. [E] 전방 방패 & 맵 스폰 아이템';
+      if (desc) desc.textContent = '적 처치 시 체력·방어력이 회복되지 않습니다! [E]를 길게 눌러 정면 탄환을 막고(방패 중 정조준 불가, 피격 시 균열 발생), 동쪽 패드에 스폰된 체력 키트·쉴드 셀·탄약 상자를 직접 먹어 회복하세요.';
+      if (goal) goal.textContent = `목표: [E] 방패 전개(${tutorialState.guardHoldSec >= 0.8 ? '완료' : Math.round(tutorialState.guardHoldSec * 100) + '%'}) · 바닥 아이템 획득(${tutorialState.pickedItem ? '완료' : '0/1'})`;
+    } else if (s === 4) {
+      if (title) title.textContent = '4. 드랍 총기 교체 & 자동 업그레이드';
+      if (desc) desc.textContent = '적이 떨어뜨린 다른 총기는 [F]로 교체하고, 지금 들고 있는 것과 "같은 총기"에 다가가면 자동으로 업그레이드(MK.II~)되며 외형과 탄환 이펙트가 진화합니다!';
+      if (goal) goal.textContent = `목표: 앞에 떨어진 M41-A에 다가가 자동 업그레이드 체험 (${tutorialState.autoUpgraded ? '완료' : '0/1'})`;
+    } else if (s === 5) {
+      if (title) title.textContent = '5. 테라-비콘 거점 & [X] 궁극기';
+      if (desc) desc.textContent = '2스테이지부터 등장하는 중앙 테라-비콘 원형 구역 안에서 버티면 거점이 점령됩니다. 지금 궁극기 게이지를 100% 채워드렸으니 중앙 거점에 들어가 [X] 궁극기로 북쪽 분대를 섬멸하세요!';
+      if (goal) goal.textContent = `목표: 중앙 거점 진입(${tutorialState.enteredBeacon ? '완료' : '0/1'}) · [X] 궁극기 발동(${tutorialState.usedUlt ? '완료' : '0/1'})`;
+    } else if (s === 6) {
+      if (title) title.textContent = '6. 스테이지 종료 전술 카드 강화';
+      if (desc) desc.textContent = '매 스테이지가 끝나면 3장의 전술 카드 중 1장을 골라 기체를 강화합니다. 같은 태그(화력·기동·방어) 카드를 2장 모으면 강력한 시너지가 발동합니다!';
+      if (goal) goal.textContent = '목표: 화면의 전술 카드 1장을 선택해 훈련 완료';
+    }
+  }
+
+  function advanceTutorialStep(nextStep) {
+    tutorialState.step = nextStep;
+    if (nextStep === 2 && waveDirector && arenaData) {
+      tutorialState.killsInStep = 0;
+      if (typeof waveDirector._spawnEnemy === 'function') {
+        waveDirector._spawnEnemy('rusher_drone', new THREE.Vector3(-4.5, 0.2, -13.5));
+        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(4.5, 0.05, -14.5));
+      }
+    } else if (nextStep === 3 && playerController) {
+      tutorialState.guardHoldSec = 0;
+      tutorialState.pickedItem = false;
+      // Slightly reduce shield so player can pick up the East Shield/Health pad!
+      playerController.shield = Math.max(20, playerController.shield - 35);
+      playerController.health = Math.max(40, playerController.health - 20);
+      if (interactables && typeof interactables.spawnGoldDrop === 'function') {
+        interactables.spawnGoldDrop(new THREE.Vector3(9.5, 0.2, 8.0), 30);
+      }
+    } else if (nextStep === 4 && interactables && playerController) {
+      tutorialState.autoUpgraded = false;
+      const base = playerController.position;
+      // Spawn matching M41-A (index 0) for auto-upgrade + alternate BR-12 (index 1) for [F] swap demo
+      if (typeof interactables.spawnWeaponDrop === 'function') {
+        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x)), 0.2, Math.max(-18, base.z - 4.5)), 0);
+        interactables.spawnWeaponDrop(new THREE.Vector3(Math.max(-18, Math.min(18, base.x + 3.2)), 0.2, Math.max(-18, base.z - 4.5)), 1);
+      }
+    } else if (nextStep === 5 && playerController && interactables && waveDirector) {
+      tutorialState.enteredBeacon = false;
+      tutorialState.usedUlt = false;
+      playerController.ultCharge = 100;
+      if (typeof interactables.setControlZoneActive === 'function') {
+        interactables.setControlZoneActive(true);
+      }
+      if (typeof waveDirector._spawnEnemy === 'function') {
+        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(-5.0, 0.05, -13.0));
+        waveDirector._spawnEnemy('tactical_trooper', new THREE.Vector3(0.0, 0.05, -14.5));
+        waveDirector._spawnEnemy('rusher_drone', new THREE.Vector3(5.0, 0.2, -13.0));
+      }
+    } else if (nextStep === 6) {
+      if (typeof openUpgradeDraft === 'function') {
+        openUpgradeDraft(1);
+      }
+    }
+    updateTutorialBannerUI();
+  }
+
+  function finishTutorial(completed = false) {
+    tutorialState.active = false;
+    tutorialState.step = 0;
+    const banner = document.getElementById('tutorial-banner');
+    if (banner) banner.classList.add('hidden');
+    if (completed) {
+      metaState.tutorialDone = true;
+      saveMetaState();
+    }
+    returnToTitle();
+  }
+
+  function startTutorialRun() {
+    if (sceneTitle) sceneTitle.classList.add('hidden');
+    if (scenePlaying) scenePlaying.classList.remove('hidden');
+    const ok = ensureRuntimeInitialized();
+    if (!ok) return;
+
+    if (interactables) {
+      interactables.dispose();
+      interactables = null;
+    }
+    arenaData = mapManager.loadMap(6);
+    interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
+    waveDirector.setArenaData(arenaData, interactables);
+    hudManager.setArenaData(arenaData, collisionWorld);
+
+    resetTelemetry();
+    input.resetAll();
+    touchOverlay.reset();
+    hudManager.reset();
+    vfxManager.reset();
+    waveDirector.reset();
+    runCards = [];
+    draftChoices = [];
+    if (upgradePanel) upgradePanel.classList.add('hidden');
+
+    const { mods: startMods } = computePlayerMods();
+    playerController.applyModifiers(startMods, true);
+    playerController.reset(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
+    weaponSystem.reset();
+    lastWeaponState = weaponSystem.getCurrentWeaponState();
+
+    engine.viewmodelScene.visible = true;
+    engine.resize();
+    engine.setFov(playerController.currentFov);
+    engine.bakeStaticShadows();
+    engine.prewarmShaders();
+
+    hudManager.setVisible(true);
+    gameState = 'playing';
+    document.body.classList.add('playing-active');
+    syncTouchOverlayVisibility();
+
+    tutorialState.active = true;
+    tutorialState.didDash = false;
+    tutorialState.didJumpPad = false;
+    tutorialState.didBarrel = false;
+    tutorialState.killsInStep = 0;
+    tutorialState.guardHoldSec = 0;
+    tutorialState.pickedItem = false;
+    tutorialState.autoUpgraded = false;
+    tutorialState.enteredBeacon = false;
+    tutorialState.usedUlt = false;
+    advanceTutorialStep(1);
+
+    eventBus.emit(EVENTS.GAME_STATE, { state: 'playing' });
+    if (!input.isTouchMode()) {
+      input.requestPointerLock();
+    }
+  }
   let _bastionDomeGroup = null;
 
   function triggerUltScreenFlash(colorCss, opacity = 0.52) {
@@ -538,8 +733,11 @@ function bootstrap() {
     }
     if (!_guardFillEl) _guardFillEl = document.getElementById('hud-guard-fill');
     if (!_guardTextEl) _guardTextEl = document.getElementById('hud-guard-val');
-    if (!_ultFillEl) _ultFillEl = document.getElementById('hud-ult-fill');
+    if (!_ultRingEl) _ultRingEl = document.getElementById('hud-ult-ring');
+    if (!_ultDialEl) _ultDialEl = document.getElementById('hud-ult-dial');
     if (!_ultTextEl) _ultTextEl = document.getElementById('hud-ult-val');
+    if (!_frameBadgeEl) _frameBadgeEl = document.getElementById('hud-frame-badge');
+    if (!_frameStatusEl) _frameStatusEl = document.getElementById('hud-frame-status');
   }
 
   function updateTacticalFrameHudOverlay(pSnap, mods) {
@@ -582,16 +780,28 @@ function bootstrap() {
       _guardTextEl.textContent = pSnap.guardBreakTimer > 0 ? '파괴됨' : pSnap.isGuarding ? `방어 ${gPct}%` : gPct + '%';
     }
 
-    if (_ultFillEl && _ultTextEl) {
+    if (_ultRingEl && _ultTextEl) {
       const uPct = Math.max(0, Math.min(100, Math.round(pSnap.ultCharge || 0)));
-      _ultFillEl.style.width = (pSnap.ultActiveTimer > 0 ? 100 : uPct) + '%';
-      _ultFillEl.style.background =
+      const visualPct = pSnap.ultActiveTimer > 0 ? 100 : uPct;
+      const circ = 220;
+      _ultRingEl.style.strokeDashoffset = String((circ * (1 - visualPct / 100)).toFixed(1));
+      _ultRingEl.style.stroke =
+        pSnap.ultActiveTimer > 0 ? '#4ade80' : uPct >= 100 ? '#f43f5e' : fCol;
+      _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? 'ON' : uPct >= 100 ? 'MAX' : uPct + '%';
+      if (_ultDialEl) {
+        _ultDialEl.classList.toggle('ult-ready', uPct >= 100 && pSnap.ultActiveTimer <= 0);
+      }
+    }
+    if (_frameBadgeEl && _frameStatusEl) {
+      _frameBadgeEl.textContent = (mods && mods.frameName) || 'VANGUARD-09';
+      _frameStatusEl.textContent =
         pSnap.ultActiveTimer > 0
-          ? 'linear-gradient(90deg,#16a34a,#4ade80)'
-          : uPct >= 100
-          ? 'linear-gradient(90deg,#e11d48,#f43f5e)'
-          : `linear-gradient(90deg,#d97706,${fCol})`;
-      _ultTextEl.textContent = pSnap.ultActiveTimer > 0 ? '발동 중!' : uPct >= 100 ? 'READY' : uPct + '%';
+          ? '궁극기 가동!'
+          : pSnap.isGuarding
+          ? '방패 전개 중'
+          : pSnap.guardBreakTimer > 0
+          ? '방패 복구 대기'
+          : '전술 대기';
     }
   }
 
@@ -1347,8 +1557,37 @@ function bootstrap() {
       }
     });
 
+    // Tutorial event listeners
+    eventBus.on(EVENTS.PLAYER_JUMPPAD, () => {
+      if (tutorialState.active && tutorialState.step === 1) {
+        tutorialState.didJumpPad = true;
+        updateTutorialBannerUI();
+      }
+    });
+    eventBus.on(EVENTS.BARREL_EXPLODED, () => {
+      if (tutorialState.active && tutorialState.step === 1) {
+        tutorialState.didBarrel = true;
+        updateTutorialBannerUI();
+      }
+    });
+    eventBus.on(EVENTS.PICKUP_COLLECTED, () => {
+      if (tutorialState.active && tutorialState.step === 3) {
+        tutorialState.pickedItem = true;
+        updateTutorialBannerUI();
+      }
+    });
+    eventBus.on(EVENTS.UPGRADE_SELECTED, () => {
+      if (tutorialState.active && tutorialState.step === 6) {
+        finishTutorial(true);
+      }
+    });
+
     // STRIDER-04 Special: Phase-Blink VFX on dash
     eventBus.on(EVENTS.PLAYER_DASH, () => {
+      if (tutorialState.active && tutorialState.step === 1) {
+        tutorialState.didDash = true;
+        updateTutorialBannerUI();
+      }
       if (playerController && playerController.mods && playerController.mods.phaseBlink && vfxManager) {
         vfxManager.spawnExplosion(playerController.position, 2.2, 0x00f0ff);
       }
@@ -1357,7 +1596,7 @@ function bootstrap() {
     // APEX-ZERO Special: Headshot Chain-Lightning Arc (7m radius, 50 dmg) + Ultimate Charge on hit
     eventBus.on(EVENTS.DAMAGE_DEALT, (p) => {
       if (!playerController || !p || !p.isEnemy) return;
-      playerController.addUltCharge(p.isHeadshot ? 1.8 : 0.7);
+      playerController.addUltCharge(p.isHeadshot ? 0.9 : 0.35);
       // Tactile Gunfeel: Micro-FOV punch & micro-hitstop on headshots / heavy hits
       if (p.isHeadshot || p.killed) {
         playerController.currentFov = Math.max(52, playerController.currentFov - (p.killed ? 2.4 : 1.3));
@@ -1401,6 +1640,13 @@ function bootstrap() {
 
     eventBus.on(EVENTS.ENEMY_KILLED, (p) => {
       if (!playerController) return;
+      if (tutorialState.active && tutorialState.step === 2) {
+        tutorialState.killsInStep++;
+        updateTutorialBannerUI();
+        if (tutorialState.killsInStep >= 2) {
+          advanceTutorialStep(3);
+        }
+      }
       const tier = STYLE_TIERS[telemetry.styleTierIdx] || STYLE_TIERS[0];
       playerController.onEnemyKill(Boolean(p && p.isHeadshot));
       // Item 8: No HP or Shield recovery on kill
@@ -1822,6 +2068,9 @@ function bootstrap() {
         const ok = ensureRuntimeInitialized();
         if (!ok) return;
 
+        tutorialState.active = false;
+        const _tb = document.getElementById('tutorial-banner');
+        if (_tb) _tb.classList.add('hidden');
         // Always start fresh campaign on Map 0 (SEC-09 Dead Metropolis)
         if (mapManager.getCurrentMapIndex() !== 0) {
           if (interactables) {
@@ -2428,6 +2677,7 @@ function bootstrap() {
                 const upCol = ocLv >= 3 ? 0xffd700 : ocLv === 2 ? 0xc084fc : 0x38bdf8;
                 vfxManager.spawnExplosion(playerController.position, 2.8, upCol);
               }
+              if (tutorialState.active && tutorialState.step === 4) { tutorialState.autoUpgraded = true; advanceTutorialStep(5); }
               if (hudManager && typeof hudManager.showAnnouncement === 'function' && dropW) {
                 hudManager.showAnnouncement(
                   `${dropW.shortName} 자동 업그레이드!`,
@@ -2447,6 +2697,7 @@ function bootstrap() {
       if (input.consumePressed('ultimate') && playerController && playerController.ultCharge >= 100) {
         const fid = (playerController.mods && playerController.mods.frameId) || 'vanguard';
         playerController.ultCharge = 0;
+        if (tutorialState.active && tutorialState.step === 5) { tutorialState.usedUlt = true; updateTutorialBannerUI(); }
         const pPos = playerController.position;
         const activeEnemies = waveDirector && waveDirector.getActiveEnemies ? waveDirector.getActiveEnemies() : [];
 
@@ -2612,6 +2863,27 @@ function bootstrap() {
 
       hudManager.update(dt, hudSnapshot);
       updateTacticalFrameHudOverlay(hudSnapshot.player, playerController && playerController.mods);
+      if (tutorialState.active) {
+        if (tutorialState.step === 1 && tutorialState.didDash && tutorialState.didJumpPad && tutorialState.didBarrel) {
+          advanceTutorialStep(2);
+        } else if (tutorialState.step === 3) {
+          if (playerController.isGuarding) {
+            tutorialState.guardHoldSec += dt;
+            updateTutorialBannerUI();
+          }
+          if (tutorialState.guardHoldSec >= 0.8 && tutorialState.pickedItem) {
+            advanceTutorialStep(4);
+          }
+        } else if (tutorialState.step === 5) {
+          if (Math.hypot(playerController.position.x, playerController.position.z) <= 5.5) {
+            tutorialState.enteredBeacon = true;
+            updateTutorialBannerUI();
+          }
+          if (tutorialState.enteredBeacon && tutorialState.usedUlt) {
+            advanceTutorialStep(6);
+          }
+        }
+      }
       touchOverlay.syncState(hudSnapshot);
 
       // Safety death transition check

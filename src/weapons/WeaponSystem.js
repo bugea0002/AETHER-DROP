@@ -309,6 +309,7 @@ class WeaponSystem {
     const rig = this._rigs[this.currentIndex];
     const ammoState = this._ammoStates[this.currentIndex];
     const pc = this.playerController;
+    if (pc && weapon) pc.weaponMoveMult = weapon.moveSpeedMult || 1.0;
     this._guardElapsed = (this._guardElapsed || 0) + clampedDt;
     if (this._guardShieldGroup && pc) {
       const guarding = Boolean(pc.isGuarding);
@@ -456,7 +457,8 @@ class WeaponSystem {
       !this._isReloading &&
       !this._isSwapping &&
       !this._isMeleeing &&
-      !(pc && pc.isDashing);
+      !(pc && pc.isDashing) &&
+      !(pc && pc.isGuarding);
 
     if (pc) {
       pc.isAds = wantsAds;
@@ -475,7 +477,8 @@ class WeaponSystem {
       activeWeapon.hipSpread + (activeWeapon.adsSpread - activeWeapon.hipSpread) * this._adsProgress;
     const moveBonus =
       activeWeapon.moveSpreadBonus * speedRatio * airFactor * (1 - this._adsProgress * 0.72);
-    const currentSpread = baseSpread + moveBonus + this._spreadBloom * (1 - this._adsProgress * 0.65);
+    const guardSpreadFactor = pc && pc.isGuarding ? (activeWeapon.guardSpreadMult || 1.35) : 1.0;
+    const currentSpread = (baseSpread + moveBonus + this._spreadBloom * (1 - this._adsProgress * 0.65)) * guardSpreadFactor;
 
     // 7. Firing Input & Semi-Auto Buffer
     const fireDown = this.input.isDown('fire');
@@ -486,7 +489,7 @@ class WeaponSystem {
       this._semiFireBuffer = 0.09;
     }
 
-    const canFireAction = !this._isReloading && !this._isSwapping && !this._isMeleeing;
+    const canFireAction = !this._isReloading && !this._isSwapping && !this._isMeleeing && !(pc && pc.isGuarding && activeWeapon.canFireWhileGuarding === false);
     const wantsToFire =
       activeWeapon.fireMode === 'auto'
         ? fireDown || firePressed
@@ -1522,7 +1525,14 @@ class WeaponSystem {
           totalDmgMult *= 1.3; // High-heat sweet spot bonus!
         }
         const hsMult = h.isHead ? weapon.headshotMultiplier + (mods ? mods.headshotBonus : 0) : 1.0;
-        const rawDamage = weapon.damage * totalDmgMult * hsMult;
+        let falloffMult = 1.0;
+        if (weapon.falloffStart && h.distance > weapon.falloffStart) {
+          const endD = weapon.falloffEnd || weapon.range;
+          const minM = weapon.falloffMinMult || 0.45;
+          const t = Math.min(1, (h.distance - weapon.falloffStart) / Math.max(1, endD - weapon.falloffStart));
+          falloffMult = 1.0 - t * (1.0 - minM);
+        }
+        const rawDamage = weapon.damage * totalDmgMult * hsMult * falloffMult;
         this._kbDir.set(this._rayDir.x, this._rayDir.y + 0.12, this._rayDir.z).normalize();
 
         this._dmgOptions.hitShield = h.isShield;

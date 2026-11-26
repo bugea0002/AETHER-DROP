@@ -67,6 +67,9 @@
               <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v12"/><path d="M7 9l5 5 5-5"/><path d="M5 17l2 4h10l2-4"/><path d="M4 21h16"/></svg>
               <span>작전 개시</span>
             </button>
+            <button id="btn-tutorial" class="mil-btn tutorial-btn" type="button" style="margin-top:8px;width:100%;border-color:rgba(56,189,248,0.65);color:#bae6fd;background:rgba(8,26,46,0.78);">
+              <span>전술 훈련장 (튜토리얼)</span>
+            </button>
 
             <div class="aaa-nav-list">
               <button id="btn-title-armory" class="aaa-nav-btn" type="button">
@@ -674,26 +677,6 @@
           </div>
         </div>
 
-        <div class="vital-row vital-row-compact">
-          <div class="vital-header">
-            <span class="vital-label">[E] 전방 방패</span>
-            <span id="hud-guard-val" class="vital-num">100%</span>
-          </div>
-          <div class="vital-track">
-            <div id="hud-guard-fill" style="width:100%;height:100%;background:linear-gradient(90deg,#0284c7,#38bdf8);box-shadow:0 0 8px rgba(56,189,248,0.55);transition:width 0.06s linear;"></div>
-          </div>
-        </div>
-
-        <div class="vital-row vital-row-compact">
-          <div class="vital-header">
-            <span class="vital-label">[X] 궁극기</span>
-            <span id="hud-ult-val" class="vital-num">0%</span>
-          </div>
-          <div class="vital-track">
-            <div id="hud-ult-fill" style="width:0%;height:100%;background:linear-gradient(90deg,#d97706,#fbbf24);box-shadow:0 0 8px rgba(251,191,36,0.55);transition:width 0.08s linear;"></div>
-          </div>
-        </div>
-
         <div class="mobility-row">
           <div class="dash-pips">
             <span class="dash-label">DASH</span>
@@ -708,6 +691,49 @@
             </div>
           </div>
           <span id="mobility-status">대시 준비</span>
+        </div>
+      </div>
+
+      <!-- Dedicated Tutorial Step Guidance Banner -->
+      <div id="tutorial-banner" class="tutorial-banner hidden">
+        <div class="tut-header">
+          <span id="tut-step-badge" class="tut-badge">STEP 1 / 6</span>
+          <span id="tut-step-title" class="tut-title">기동 및 맵 오브젝트</span>
+          <button id="btn-tut-exit" class="tut-exit-btn" type="button">훈련 종료 [ESC]</button>
+        </div>
+        <div id="tut-step-desc" class="tut-desc"></div>
+        <div id="tut-step-goal" class="tut-goal"></div>
+      </div>
+
+      <!-- Bottom-Center: Overwatch / Valorant Style Circular Ultimate Core & Flanking Guard Shield Meter -->
+      <div class="hud-bottom-center" id="hud-tactical-center">
+        <div class="tac-wing tac-wing-left" id="hud-guard-wing">
+          <div class="tac-wing-top">
+            <span class="tac-keycap">E</span>
+            <span class="tac-title">방패 내구도</span>
+            <span id="hud-guard-val" class="tac-val">100%</span>
+          </div>
+          <div class="tac-bar-track">
+            <div id="hud-guard-fill" class="tac-bar-fill"></div>
+          </div>
+        </div>
+
+        <div class="ult-core-dial" id="hud-ult-dial">
+          <svg class="ult-ring-svg" viewBox="0 0 84 84">
+            <circle class="ult-ring-bg" cx="42" cy="42" r="35"></circle>
+            <circle id="hud-ult-ring" class="ult-ring-fill" cx="42" cy="42" r="35" stroke-dasharray="220" stroke-dashoffset="220"></circle>
+          </svg>
+          <div class="ult-core-inner">
+            <span id="hud-ult-val" class="ult-pct">0%</span>
+            <span class="ult-key-badge">X</span>
+          </div>
+        </div>
+
+        <div class="tac-wing tac-wing-right" id="hud-frame-wing">
+          <div class="tac-wing-top">
+            <span id="hud-frame-badge" class="tac-title">VANGUARD-09</span>
+          </div>
+          <div id="hud-frame-status" class="tac-sub">전술 대기</div>
         </div>
       </div>
 
@@ -967,6 +993,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/runtime.js?v=20261126d"></script>
+  <script type="module" src="./src/runtime.js?v=20261126f"></script>
 </body>
 </html>

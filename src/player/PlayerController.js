@@ -506,7 +506,8 @@ class PlayerController {
       // Standard ground / air locomotion (with meta/card moveSpeedMult)
       let targetSpeed =
         (this.isSprinting ? PLAYER_CONFIG.sprintSpeed : PLAYER_CONFIG.walkSpeed) *
-        (this.mods ? this.mods.moveSpeedMult : 1.0);
+        (this.mods ? this.mods.moveSpeedMult : 1.0) *
+        (this.weaponMoveMult || 1.0);
       if (this.isGuarding) {
         targetSpeed *= 0.78;
       } else if (this.isAds) {
@@ -700,19 +701,19 @@ class PlayerController {
     if (wantsGuard && this.guardBreakTimer <= 0 && this.guardEnergy > 1.0) {
       this.isGuarding = true;
       this.isAds = false;
-      this._guardRegenDelay = 0.45;
+      this._guardRegenDelay = 0.90;
     } else {
       this.isGuarding = false;
       if (this._guardRegenDelay > 0) {
         this._guardRegenDelay = Math.max(0, this._guardRegenDelay - clampedDt);
       } else if (this.guardEnergy < this.maxGuardEnergy) {
-        const regenRate = this.mods && this.mods.frameId === 'bastion' ? 42 : 28;
+        const regenRate = this.mods && this.mods.frameId === 'bastion' ? 16.8 : 11.2;
         this.guardEnergy = Math.min(this.maxGuardEnergy, this.guardEnergy + regenRate * clampedDt);
       }
     }
 
     if (this.ultActiveTimer <= 0 && this.ultCharge < 100) {
-      this.ultCharge = Math.min(100, this.ultCharge + 1.6 * clampedDt);
+      this.ultCharge = Math.min(100, this.ultCharge + 0.8 * clampedDt);
     }
 
     this._timeSinceDamaged += clampedDt;
@@ -1104,7 +1105,7 @@ class PlayerController {
    */
   onEnemyKill(isHeadshot = false) {
     // Item 8: No HP or Shield recovery on kill — dodge, block with [E] Front Shield, or collect pickups!
-    this.addUltCharge(isHeadshot ? 14 : 10);
+    this.addUltCharge(isHeadshot ? 7 : 5);
   }
 
   addUltCharge(amount) {

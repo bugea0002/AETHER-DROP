@@ -47,6 +47,7 @@ const MODULE_FILES = [
   "./world/Map4AegisFlightDeckBuilder.js",
   "./world/Map5AegisReactorBayBuilder.js",
   "./world/Map6OrbitalDrydockBuilder.js",
+  "./world/TutorialMapBuilder.js",
   "./world/MapManager.js",
   "./world/Interactables.js",
   "./vfx/VfxManager.js",
@@ -63,7 +64,7 @@ const MODULE_FILES = [
 ];
 
 async function bootModularGame() {
-  await Promise.all(MODULE_FILES.map((relPath) => import(relPath + "?v=20261126d")));
+  await Promise.all(MODULE_FILES.map((relPath) => import(relPath + "?v=20261126f")));
   globalThis.__require("src/main.js");
 }
 
