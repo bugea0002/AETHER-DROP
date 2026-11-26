@@ -1,0 +1,24 @@
+# 의존성 패키지 (npm install로 복구 가능)
+node_modules/
+
+# 환경변수 파일 (.env.example 템플릿만 유지)
+.env
+.env.*
+!.env.example
+
+# 로그 및 임시 파일
+*.log
+npm-debug.log*
+
+# OS / 에디터 자동 생성 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+
+# Blender 백업 및 테스트 부산물
+*.blend1
+*.blend2
+chrome_profile*/
+test-results/
+playwright-report/
