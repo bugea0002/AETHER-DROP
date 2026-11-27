@@ -205,6 +205,7 @@ class WeaponSystem {
       piercing: false,
       knockback: 0,
       isMelee: false,
+      weakpoint: null,
     };
 
     this._resolvedHits = [];
@@ -213,6 +214,8 @@ class WeaponSystem {
         dist: 0,
         isHead: false,
         isShield: false,
+        weakpoint: null,
+        hitMult: 1.0,
         entity: null,
         cx: 0,
         cy: 0,
@@ -226,6 +229,8 @@ class WeaponSystem {
         entity: null,
         amount: 0,
         isHeadshot: false,
+        isWeakpoint: false,
+        weakpoint: null,
         killed: false,
         blockedByShield: true,
         hasHeadPoint: false,
@@ -254,6 +259,8 @@ class WeaponSystem {
       amount: 0,
       point: new THREE.Vector3(),
       isHeadshot: false,
+      isWeakpoint: false,
+      weakpoint: null,
       killed: false,
       blockedByShield: false,
       targetId: null,
@@ -1200,8 +1207,12 @@ class WeaponSystem {
       this._dmgOptions.piercing = true;
       this._dmgOptions.knockback = 12.0;
       this._dmgOptions.isMelee = true;
+      this._dmgOptions.weakpoint = hitSphere.weakpoint || null;
 
       let meleeDmg = PLAYER_CONFIG.meleeDamage;
+      if (hitSphere.weakpoint && Number.isFinite(hitSphere.hitMult) && hitSphere.hitMult > 1) {
+        meleeDmg *= hitSphere.hitMult;
+      }
       const meleeMods = pc && pc.mods;
       if (
         meleeMods &&
@@ -1229,12 +1240,14 @@ class WeaponSystem {
         this._hitPoint,
         this._hitNormal,
         0xff6a1a,
-        blocked ? 'shield' : 'body'
+        blocked ? 'shield' : hitSphere.weakpoint ? 'head' : 'body'
       );
 
       this._damagePayload.amount = dealt;
       this._damagePayload.point.copy(this._hitPoint);
       this._damagePayload.isHeadshot = false;
+      this._damagePayload.isWeakpoint = Boolean(hitSphere.weakpoint && !blocked);
+      this._damagePayload.weakpoint = hitSphere.weakpoint || null;
       this._damagePayload.killed = killed;
       this._damagePayload.blockedByShield = blocked;
       this._damagePayload.targetId = target.id;
@@ -1464,6 +1477,12 @@ class WeaponSystem {
           let headDist = Infinity;
           let headCx = 0, headCy = 0, headCz = 0;
 
+          let hasWeakpoint = false;
+          let weakDist = Infinity;
+          let weakCx = 0, weakCy = 0, weakCz = 0;
+          let weakName = null;
+          let weakMult = 1.0;
+
           let hasBody = false;
           let bodyDist = Infinity;
           let bodyCx = 0, bodyCy = 0, bodyCz = 0;
@@ -1506,6 +1525,16 @@ class WeaponSystem {
                 headCy = c.y;
                 headCz = c.z;
               }
+            } else if (sp.weakpoint) {
+              if (tHit < weakDist) {
+                hasWeakpoint = true;
+                weakDist = tHit;
+                weakCx = c.x;
+                weakCy = c.y;
+                weakCz = c.z;
+                weakName = sp.weakpoint;
+                weakMult = Number.isFinite(sp.hitMult) ? sp.hitMult : 1.45;
+              }
             } else {
               if (tHit < bodyDist) {
                 hasBody = true;
@@ -1517,9 +1546,9 @@ class WeaponSystem {
             }
           }
 
-          if (!hasShield && !hasHead && !hasBody) continue;
-          // Piercing rail shots pass cleanly through energy shields without phantom hits when no head/body lies behind
-          if (weapon.piercing && !hasHead && !hasBody) continue;
+          if (!hasShield && !hasHead && !hasWeakpoint && !hasBody) continue;
+          // Piercing rail shots pass cleanly through energy shields without phantom hits when no head/body/weakpoint lies behind
+          if (weapon.piercing && !hasHead && !hasWeakpoint && !hasBody) continue;
           if (resolvedCount >= MAX_RESOLVED_HITS) break;
 
           const slot = this._resolvedHits[resolvedCount++];
@@ -1527,32 +1556,48 @@ class WeaponSystem {
 
           // Priority rules:
           // - Non-piercing hitting shield strictly in front -> shield block!
-          // - Headshot priority within 0.15m tolerance when head & body overlap!
-          // - Piercing Railgun punches straight through shields to hit head/body!
+          // - Headshot / Destructible Weakpoint priority within 0.15m tolerance when overlapping body!
+          // - Piercing Railgun punches straight through shields to hit head/weakpoint/body!
           const shieldBlocks =
             !weapon.piercing &&
             hasShield &&
             (!hasHead || shieldDist <= headDist) &&
+            (!hasWeakpoint || shieldDist <= weakDist) &&
             (!hasBody || shieldDist <= bodyDist);
 
           if (shieldBlocks) {
             slot.dist = shieldDist;
             slot.isHead = false;
             slot.isShield = true;
+            slot.weakpoint = null;
+            slot.hitMult = 1.0;
             slot.cx = shieldCx;
             slot.cy = shieldCy;
             slot.cz = shieldCz;
-          } else if (hasHead && (!hasBody || headDist <= bodyDist + 0.15)) {
+          } else if (hasHead && (!hasWeakpoint || headDist <= weakDist) && (!hasBody || headDist <= bodyDist + 0.15)) {
             slot.dist = headDist;
             slot.isHead = true;
             slot.isShield = false;
+            slot.weakpoint = null;
+            slot.hitMult = 1.0;
             slot.cx = headCx;
             slot.cy = headCy;
             slot.cz = headCz;
+          } else if (hasWeakpoint && (!hasBody || weakDist <= bodyDist + 0.85)) {
+            slot.dist = weakDist;
+            slot.isHead = false;
+            slot.isShield = false;
+            slot.weakpoint = weakName;
+            slot.hitMult = weakMult;
+            slot.cx = weakCx;
+            slot.cy = weakCy;
+            slot.cz = weakCz;
           } else {
             slot.dist = bodyDist;
             slot.isHead = false;
             slot.isShield = false;
+            slot.weakpoint = null;
+            slot.hitMult = 1.0;
             slot.cx = bodyCx;
             slot.cy = bodyCy;
             slot.cz = bodyCz;
@@ -1614,7 +1659,9 @@ class WeaponSystem {
         if (weapon.mech === 'heat' && ammoState.heat >= 78) {
           totalDmgMult *= 1.3; // High-heat sweet spot bonus!
         }
-        const hsMult = h.isHead ? weapon.headshotMultiplier + (mods ? mods.headshotBonus : 0) : 1.0;
+        const hsMult = h.isHead
+          ? weapon.headshotMultiplier + (mods ? mods.headshotBonus : 0)
+          : (h.hitMult > 1 ? h.hitMult : 1.0);
         let falloffMult = 1.0;
         if (weapon.falloffStart && h.dist > weapon.falloffStart) {
           const endD = weapon.falloffEnd || weapon.range;
@@ -1641,6 +1688,7 @@ class WeaponSystem {
         this._dmgOptions.piercing = Boolean(weapon.piercing);
         this._dmgOptions.knockback = weapon.knockback;
         this._dmgOptions.isMelee = false;
+        this._dmgOptions.weakpoint = h.weakpoint || null;
 
         const dmgRes = entity.applyDamage(
           rawDamage,
@@ -1654,7 +1702,7 @@ class WeaponSystem {
         const dealt = dmgRes && typeof dmgRes.dealt === 'number' ? dmgRes.dealt : (blocked ? 0 : rawDamage);
         const killed = Boolean(dmgRes && dmgRes.killed);
 
-        const vfxType = blocked ? 'shield' : h.isHead ? 'head' : 'body';
+        const vfxType = blocked ? 'shield' : (h.isHead || h.weakpoint) ? 'head' : 'body';
         this.vfxManager.spawnImpact(this._hitPoint, this._hitNormal, skinImpactHex, vfxType);
 
         // Accumulate per-target damage cleanly for EVENTS.DAMAGE_DEALT
@@ -1670,6 +1718,8 @@ class WeaponSystem {
           acc.entity = entity;
           acc.amount = 0;
           acc.isHeadshot = false;
+          acc.isWeakpoint = false;
+          acc.weakpoint = null;
           acc.killed = false;
           acc.blockedByShield = true;
           acc.hasHeadPoint = false;
@@ -1681,6 +1731,12 @@ class WeaponSystem {
             acc.isHeadshot = true;
             acc.hasHeadPoint = true;
             acc.point.copy(this._hitPoint);
+          } else if (h.weakpoint && !blocked) {
+            acc.isWeakpoint = true;
+            acc.weakpoint = h.weakpoint;
+            if (!acc.hasHeadPoint) {
+              acc.point.copy(this._hitPoint);
+            }
           } else if (!acc.hasHeadPoint) {
             acc.point.copy(this._hitPoint);
           }
@@ -1738,6 +1794,8 @@ class WeaponSystem {
       this._damagePayload.amount = acc.amount;
       this._damagePayload.point.copy(acc.point);
       this._damagePayload.isHeadshot = acc.isHeadshot;
+      this._damagePayload.isWeakpoint = acc.isWeakpoint;
+      this._damagePayload.weakpoint = acc.weakpoint;
       this._damagePayload.killed = acc.killed;
       this._damagePayload.blockedByShield = acc.blockedByShield;
       this._damagePayload.targetId = acc.entity.id;

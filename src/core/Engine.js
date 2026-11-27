@@ -104,6 +104,7 @@ class Engine {
     this._outputPass = null;
     this._composerReady = false;
     this._composerDpr = null;
+    this._composerSamples = 0;
     this._initPostProcessing(width, height);
 
     // Sync active quality settings & arm initial static shadow bake
@@ -406,10 +407,14 @@ class Engine {
   /**
    * Initialize EffectComposer pipeline guarded by explicit Half-Float RT capability
    * verification so Android GPUs lacking float color buffers never black-screen,
-   * while constraining UnrealBloomPass strictly to half-resolution for 4x lower fillrate.
+   * enabling WebGL2 MSAA on the scene render target (with clean fallback to non-sampled
+   * HalfFloat RT) while constraining UnrealBloomPass strictly to half-resolution.
+   * @param {number} width
+   * @param {number} height
+   * @param {boolean} [allowMsaa=true]
    * @private
    */
-  _initPostProcessing(width, height) {
+  _initPostProcessing(width, height, allowMsaa = true) {
     const gl = this.renderer.getContext();
     const supportsHalfFloatRT = Boolean(
       gl &&
@@ -421,45 +426,80 @@ class Engine {
       this._composerReady = false;
       this.composer = null;
       this.bloomPass = null;
+      this._composerSamples = 0;
       return;
     }
 
+    const rtWidth = Math.max(1, Math.floor(width * this._currentDpr));
+    const rtHeight = Math.max(1, Math.floor(height * this._currentDpr));
+    const bloomWidth = Math.max(1, Math.floor(rtWidth * 0.5));
+    const bloomHeight = Math.max(1, Math.floor(rtHeight * 0.5));
+
+    const caps = this.renderer.capabilities;
+    const isWebGL2 = Boolean(caps && caps.isWebGL2);
+    const targetSamples =
+      allowMsaa && isWebGL2 && caps.maxSamples !== 0
+        ? Math.min(4, caps.maxSamples || 4)
+        : 0;
+
+    const buildPipeline = (samples) => {
+      let renderTarget = null;
+      try {
+        const rtOptions =
+          samples > 0
+            ? { type: THREE.HalfFloatType, samples }
+            : { type: THREE.HalfFloatType };
+        renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight, rtOptions);
+
+        this.composer = new EffectComposer(this.renderer, renderTarget);
+        this.composer.setPixelRatio(this._currentDpr);
+        this._composerDpr = this._currentDpr;
+
+        this._renderPass = new RenderPass(this.scene, this.camera);
+        this._renderPass.clear = true;
+        this._renderPass.clearDepth = true;
+        this.composer.addPass(this._renderPass);
+
+        this._viewmodelPass = new ViewmodelRenderPass(this.viewmodelScene, this.viewmodelCamera);
+        this.composer.addPass(this._viewmodelPass);
+
+        const q = this._qualityConfig;
+        this.bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(bloomWidth, bloomHeight),
+          q.bloomStrength ?? 0.45,
+          q.bloomRadius ?? 0.35,
+          q.bloomThreshold ?? 0.72
+        );
+        this.composer.addPass(this.bloomPass);
+
+        this._outputPass = new OutputPass();
+        this.composer.addPass(this._outputPass);
+
+        this.composer.setSize(width, height);
+        this.bloomPass.setSize(bloomWidth, bloomHeight);
+        this._composerSamples = samples;
+        this._composerReady = true;
+      } catch (err) {
+        if (this.composer) {
+          this._disposePostProcessing();
+        } else if (renderTarget) {
+          renderTarget.dispose();
+        }
+        throw err;
+      }
+    };
+
+    if (targetSamples > 0) {
+      try {
+        buildPipeline(targetSamples);
+        return;
+      } catch {
+        this._disposePostProcessing();
+      }
+    }
+
     try {
-      const rtWidth = Math.max(1, Math.floor(width * this._currentDpr));
-      const rtHeight = Math.max(1, Math.floor(height * this._currentDpr));
-      const bloomWidth = Math.max(1, Math.floor(rtWidth * 0.5));
-      const bloomHeight = Math.max(1, Math.floor(rtHeight * 0.5));
-      const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight, {
-        type: THREE.HalfFloatType,
-      });
-
-      this.composer = new EffectComposer(this.renderer, renderTarget);
-      this.composer.setPixelRatio(this._currentDpr);
-      this._composerDpr = this._currentDpr;
-
-      this._renderPass = new RenderPass(this.scene, this.camera);
-      this._renderPass.clear = true;
-      this._renderPass.clearDepth = true;
-      this.composer.addPass(this._renderPass);
-
-      this._viewmodelPass = new ViewmodelRenderPass(this.viewmodelScene, this.viewmodelCamera);
-      this.composer.addPass(this._viewmodelPass);
-
-      const q = this._qualityConfig;
-      this.bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(bloomWidth, bloomHeight),
-        q.bloomStrength ?? 0.45,
-        q.bloomRadius ?? 0.35,
-        q.bloomThreshold ?? 0.72
-      );
-      this.composer.addPass(this.bloomPass);
-
-      this._outputPass = new OutputPass();
-      this.composer.addPass(this._outputPass);
-
-      this.composer.setSize(width, height);
-      this.bloomPass.setSize(bloomWidth, bloomHeight);
-      this._composerReady = true;
+      buildPipeline(0);
     } catch {
       this._disposePostProcessing();
       this._composerReady = false;
@@ -483,6 +523,7 @@ class Engine {
     this._renderPass = null;
     this._viewmodelPass = null;
     this._composerDpr = null;
+    this._composerSamples = 0;
   }
 
   /**
@@ -712,7 +753,23 @@ class Engine {
         this.composer.render();
         return;
       } catch {
-        this._composerReady = false;
+        if (this._composerSamples > 0) {
+          const width = Math.max(1, window.innerWidth || this.canvas.clientWidth || 1280);
+          const height = Math.max(1, window.innerHeight || this.canvas.clientHeight || 720);
+          this._disposePostProcessing();
+          this._initPostProcessing(width, height, false);
+          this._applyQualitySettings();
+          if (this._composerReady && this.composer) {
+            try {
+              this.composer.render();
+              return;
+            } catch {
+              this._composerReady = false;
+            }
+          }
+        } else {
+          this._composerReady = false;
+        }
       }
     }
 

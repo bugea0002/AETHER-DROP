@@ -429,6 +429,7 @@ class SoundEngine {
     on(EVENTS.ENEMY_TELEPORT, (p) => this._playTeleportRift(p));
     on(EVENTS.ENEMY_OVERLOAD, (p) => this._playEnemyOverload(p));
     on(EVENTS.BOSS_TURRET_SHATTERED, (p) => this._playTurretShatter(p));
+    on(EVENTS.BOSS_WING_CORE_SHATTERED, (p) => this._playTurretShatter(p));
     on(EVENTS.DROP_POD_PHASE, (p) => this._playDropPodPhase(p));
     on(EVENTS.TRANSFER_GATE_OPEN, () => this._playTransferGateOpen());
     on(EVENTS.TRANSFER_GATE_ENTERED, () => this._playTransferGateEnter());

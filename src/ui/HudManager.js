@@ -86,6 +86,7 @@ class HudManager {
     this._bossHpText = byId('boss-hp-text');
     this._bossBarFill = byId('boss-bar-fill');
     this._bossTurretsRow = byId('boss-turrets-row');
+    this._bossTurretsLabel = this._bossTurretsRow ? this._bossTurretsRow.querySelector('.boss-turrets-label') : null;
     this._bossTurretsPips = byId('boss-turrets-pips');
     this._bossShieldLink = byId('boss-shield-link');
 
@@ -306,6 +307,7 @@ class HudManager {
       bossHpText: '',
       bossHpPct: -1,
       bossShield: null,
+      bossTurretLabel: '',
       bossTurretKey: '',
       bossShieldLinkKey: '',
       lowG: false,
@@ -409,6 +411,20 @@ class HudManager {
       } else if (p) {
         this._pushKillfeed(`부유 포탑 파괴 (잔여 ${p.remaining || 0})`, 'headshot');
       }
+    });
+    on(EVENTS.BOSS_WING_CORE_SHATTERED, (p) => {
+      if (!p) return;
+      const sideLabel = p.sideLabel || (p.side === 'L' ? '좌' : '우');
+      this._pushKillfeed(`${sideLabel}측 날개 코어 파괴 — 위상 방어막 붕괴!`, 'boss');
+      this.showAnnouncement(
+        '약점 파괴 · 위상 방어막 붕괴!',
+        `${sideLabel}측 날개 코어 파괴 — 위상 방어막 붕괴!`,
+        p.remaining > 0
+          ? `잔여 날개 코어 ${p.remaining}기 · 모체 경직 및 코어 노출`
+          : '양측 날개 코어 완전 파괴 · 모체 취약 노출!',
+        'clear-alert',
+        3.0
+      );
     });
   }
 
@@ -566,13 +582,15 @@ class HudManager {
     if (!payload) return;
     const amount = Math.round(Number(payload.amount) || 0);
     const isHead = Boolean(payload.isHeadshot);
+    const isWeakpoint = Boolean(payload.isWeakpoint);
+    const isCrit = isHead || isWeakpoint;
     const killed = Boolean(payload.killed);
     const blocked = Boolean(payload.blockedByShield);
 
     // Hitmarker triggers
     if (blocked) {
       this._shieldHitTimer = 0.18;
-    } else if (isHead) {
+    } else if (isCrit) {
       this._headshotTimer = 0.22;
       if (killed) {
         this._hitTimer = 0.22;
@@ -592,19 +610,19 @@ class HudManager {
 
       slot.active = true;
       slot.age = 0;
-      slot.duration = isHead || killed ? 0.86 : 0.68;
+      slot.duration = isCrit || killed ? 0.86 : 0.68;
       slot.worldPos.set(
         payload.point.x || 0,
         (payload.point.y || 0) + 0.18,
         payload.point.z || 0
       );
       slot.driftX = (Math.random() - 0.5) * 46;
-      slot.riseSpeed = isHead ? 1.9 : 1.35;
+      slot.riseSpeed = isCrit ? 1.9 : 1.35;
 
-      slot.el.textContent = isHead ? `${amount}!` : String(amount);
+      slot.el.textContent = isCrit ? `${amount}!` : String(amount);
       slot.el.className = blocked
         ? 'floating-dmg shield'
-        : isHead
+        : isCrit
         ? 'floating-dmg headshot'
         : killed
         ? 'floating-dmg kill'
@@ -1252,33 +1270,72 @@ class HudManager {
       }
       const totalT = boss.turretsTotal || 0;
       const aliveT = boss.turretsAlive || 0;
-      const showTurrets = totalT > 0 || Boolean(boss.coreExposed);
+      const isWingBoss = Boolean(boss.isWingCoreBoss && boss.wingCoreTotal > 0);
+      const showTurrets = isWingBoss || totalT > 0 || Boolean(boss.coreExposed);
       if (this._bossTurretsRow) {
         this._bossTurretsRow.classList.toggle('hidden', !showTurrets);
       }
       if (showTurrets) {
-        const tKey = `${aliveT}:${totalT}`;
-        if (c.bossTurretKey !== tKey) {
-          c.bossTurretKey = tKey;
-          if (this._bossTurretsPips) {
-            let html = '';
-            for (let ti = 0; ti < totalT; ti++) {
-              html += `<span class="boss-turret-pip${ti >= aliveT ? ' destroyed' : ''}"></span>`;
-            }
-            this._bossTurretsPips.innerHTML = html;
-          }
+        const tLabel = isWingBoss ? '날개 코어' : '부유 포탑';
+        if (c.bossTurretLabel !== tLabel) {
+          c.bossTurretLabel = tLabel;
+          if (this._bossTurretsLabel) this._bossTurretsLabel.textContent = tLabel;
         }
-        const linkKey = boss.turretShieldActive ? 'link' : boss.coreExposed ? 'exposed' : 'broken';
-        if (c.bossShieldLinkKey !== linkKey) {
-          c.bossShieldLinkKey = linkKey;
-          if (this._bossShieldLink) {
-            this._bossShieldLink.classList.toggle('broken', linkKey !== 'link');
-            this._bossShieldLink.textContent =
-              linkKey === 'link'
-                ? '방어막 연결 (피해 -65%)'
-                : linkKey === 'exposed'
-                ? '코어 노출 (피해 +35%)'
-                : '연결 차단됨';
+        if (isWingBoss) {
+          const wKey = `w:${boss.wingCoreLAlive ? 1 : 0}${boss.wingCoreRAlive ? 1 : 0}`;
+          if (c.bossTurretKey !== wKey) {
+            c.bossTurretKey = wKey;
+            if (this._bossTurretsPips) {
+              this._bossTurretsPips.innerHTML =
+                `<span class="boss-turret-pip${boss.wingCoreLAlive ? '' : ' destroyed'}"></span>` +
+                `<span class="boss-turret-pip${boss.wingCoreRAlive ? '' : ' destroyed'}"></span>`;
+            }
+          }
+          const linkKey = boss.shieldActive
+            ? 'wing_shield'
+            : boss.coreExposed
+            ? 'wing_exposed'
+            : boss.wingCoreAlive === 0
+            ? 'wing_all_broken'
+            : 'wing_ready';
+          if (c.bossShieldLinkKey !== linkKey) {
+            c.bossShieldLinkKey = linkKey;
+            if (this._bossShieldLink) {
+              this._bossShieldLink.classList.toggle('broken', linkKey !== 'wing_shield');
+              this._bossShieldLink.textContent =
+                linkKey === 'wing_shield'
+                  ? '위상 방어막 활성 (날개 코어 사격)'
+                  : linkKey === 'wing_exposed'
+                  ? '코어 파괴 · 취약 (+25%)'
+                  : linkKey === 'wing_all_broken'
+                  ? '양측 코어 파괴 완료'
+                  : '약점 타격 가능 (145%)';
+            }
+          }
+        } else {
+          const tKey = `${aliveT}:${totalT}`;
+          if (c.bossTurretKey !== tKey) {
+            c.bossTurretKey = tKey;
+            if (this._bossTurretsPips) {
+              let html = '';
+              for (let ti = 0; ti < totalT; ti++) {
+                html += `<span class="boss-turret-pip${ti >= aliveT ? ' destroyed' : ''}"></span>`;
+              }
+              this._bossTurretsPips.innerHTML = html;
+            }
+          }
+          const linkKey = boss.turretShieldActive ? 'link' : boss.coreExposed ? 'exposed' : 'broken';
+          if (c.bossShieldLinkKey !== linkKey) {
+            c.bossShieldLinkKey = linkKey;
+            if (this._bossShieldLink) {
+              this._bossShieldLink.classList.toggle('broken', linkKey !== 'link');
+              this._bossShieldLink.textContent =
+                linkKey === 'link'
+                  ? '방어막 연결 (피해 -65%)'
+                  : linkKey === 'exposed'
+                  ? '코어 노출 (피해 +35%)'
+                  : '연결 차단됨';
+            }
           }
         }
       }
@@ -1670,7 +1727,7 @@ class HudManager {
           e.archetype.id === 'mortar_artillery'
         ) {
           this._onboardingFlags.firstMortar = true;
-          this.showOnboardingTip('공성 박격포병의 주황 조준 레이저가 고정되기 전에 대시로 회피하세요', 4.5);
+          this.showOnboardingTip('공성 박격포병의 주황 바닥 착탄 경고 원 밖으로 대시로 회피하세요', 4.5);
         }
         if (
           !this._onboardingFlags.firstOverlord &&
@@ -1678,7 +1735,7 @@ class HudManager {
           e.archetype.id === 'aegis_overlord_boss'
         ) {
           this._onboardingFlags.firstOverlord = true;
-          this.showOnboardingTip('AEGIS-IX 위상 방어막 가동 시 EMP 파일런·중계기를 파괴해 즉시 해제하세요', 5.0);
+          this.showOnboardingTip('AEGIS-IX의 좌우 날개 코어나 EMP 파일런을 파괴해 위상 방어막을 붕괴시키세요', 5.0);
         }
         if (
           !this._onboardingFlags.firstOverload &&
@@ -2225,6 +2282,7 @@ class HudManager {
     c.bossHpText = '';
     c.bossHpPct = -1;
     c.bossShield = null;
+    c.bossTurretLabel = '';
     c.bossTurretKey = '';
     c.bossShieldLinkKey = '';
     c.lowG = false;

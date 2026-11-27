@@ -6,6 +6,8 @@ const { EnemyModelFactory } = __require("src/ai/EnemyModelFactory.js");
 const { Enemy } = __require("src/ai/EnemyAI.js");
 
 const MAX_PROJECTILES = 64;
+const MAX_MORTAR_RINGS = 16;
+const MAX_ORBITAL_SWEEPS = 2;
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const ZERO_SPAWN_POS = new THREE.Vector3(0, 0, 0);
 
@@ -34,11 +36,11 @@ const PROJECTILE_COLORS = Object.freeze({
   heavy_enforcer: 0xff2200,
   sniper_stalker: 0xe63946,
   cyber_mech_boss: 0xff2200,
-  interceptor_drone: 0xf59e0b,
-  shock_breacher: 0xff5a1f,
-  rail_warden: 0xff6b1a,
-  mortar_artillery: 0xfbbf24,
-  vanguard_assassin: 0xff3b14,
+  interceptor_drone: 0x38bdf8,
+  shock_breacher: 0x22d3ee,
+  rail_warden: 0x00f0ff,
+  mortar_artillery: 0xff7b00,
+  vanguard_assassin: 0xf43f5e,
   aegis_overlord_boss: 0x0ea5e9,
   volatile_rusher: 0xff2a6d,
   void_warper: 0xc084fc,
@@ -195,11 +197,14 @@ class WaveDirector {
     this.headshots = 0;
     this._combatIntensity = 0;
 
-    // Pre-allocated pooled enemy projectiles (zero per-shot heap allocations!)
+    // Pre-allocated pooled enemy projectiles, mortar warning rings & orbital sweep hazards (zero-GC!)
     this._projGroup = new THREE.Group();
     this._projGroup.name = 'enemy_projectiles';
     this.scene.add(this._projGroup);
     this._projectiles = this._createProjectilePool();
+    this._mortarRings = this._createMortarRingPool();
+    this._orbitalSweeps = this._createOrbitalSweepStatePool();
+    this._droneSalvoEscortCooldown = 0;
 
     // Bound callbacks (avoid per-frame closures)
     this._lastPlayerController = null;
@@ -209,12 +214,24 @@ class WaveDirector {
     this._boundOnEnemyOverload = this._handleEnemyOverload.bind(this);
     this._boundOnVoidGateSummon = this._handleVoidGateSummon.bind(this);
     this._boundOnEnemyTeleport = this._handleEnemyTeleport.bind(this);
+    this._boundOnWingCoreShattered = this._handleWingCoreShattered.bind(this);
+    this._boundOnOrbitalSweep = this._handleOrbitalSweepEvent.bind(this);
+    this._boundOnDroneSalvo = this._handleDroneSalvoEscort.bind(this);
 
     this._unsubBossPhase = this.eventBus
       ? this.eventBus.on(EVENTS.BOSS_PHASE, this._boundOnBossPhase)
       : () => {};
     this._unsubTeleport = this.eventBus
       ? this.eventBus.on(EVENTS.ENEMY_TELEPORT, this._boundOnEnemyTeleport)
+      : () => {};
+    this._unsubWingCore = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_WING_CORE_SHATTERED, this._boundOnWingCoreShattered)
+      : () => {};
+    this._unsubOrbitalSweep = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_ORBITAL_SWEEP, this._boundOnOrbitalSweep)
+      : () => {};
+    this._unsubDroneSalvo = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_DRONE_SALVO, this._boundOnDroneSalvo)
       : () => {};
 
     // Pre-allocated scratch structures & zero-GC snapshots
@@ -223,6 +240,9 @@ class WaveDirector {
     this._spawnCandidate = new THREE.Vector3();
     this._spawnEye = new THREE.Vector3();
     this._prevProjPos = new THREE.Vector3();
+    this._projSegDir = new THREE.Vector3();
+    this._sweepBeamPos = new THREE.Vector3();
+    this._escortSpawnPos = new THREE.Vector3();
     this._rayHit = {
       hit: false,
       distance: 0,
@@ -244,6 +264,11 @@ class WaveDirector {
       turretsTotal: 0,
       turretShieldActive: false,
       coreExposed: false,
+      isWingCoreBoss: false,
+      wingCoreTotal: 0,
+      wingCoreAlive: 0,
+      wingCoreLAlive: false,
+      wingCoreRAlive: false,
       position: new THREE.Vector3(),
     };
 
@@ -386,6 +411,13 @@ class WaveDirector {
         position: new THREE.Vector3(),
         origin: new THREE.Vector3(),
         dir: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        targetPos: new THREE.Vector3(),
+        isMortar: false,
+        gravity: 22.0,
+        flightTime: 1.4,
+        splashRadius: 3.35,
+        warningRing: null,
         speed: 30,
         damage: 10,
         radius: 0.1,
@@ -395,6 +427,102 @@ class WaveDirector {
       });
     }
     return pool;
+  }
+
+  /**
+   * Pre-allocate pooled glowing orange ground impact warning circles for Mortar Artillery shells.
+   * @private
+   */
+  _createMortarRingPool() {
+    this._mortarOuterGeo = new THREE.RingGeometry(0.84, 1.0, 28);
+    this._mortarOuterGeo.rotateX(-Math.PI * 0.5);
+    this._mortarFillGeo = new THREE.CircleGeometry(0.95, 24);
+    this._mortarFillGeo.rotateX(-Math.PI * 0.5);
+
+    const rings = [];
+    for (let i = 0; i < MAX_MORTAR_RINGS; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0xff7b00,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const fillMat = new THREE.MeshBasicMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.34,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+
+      const outer = new THREE.Mesh(this._mortarOuterGeo, outerMat);
+      const fill = new THREE.Mesh(this._mortarFillGeo, fillMat);
+      fill.position.y = 0.01;
+      group.add(outer, fill);
+      group.renderOrder = 6;
+      this._projGroup.add(group);
+
+      rings.push({
+        active: false,
+        group,
+        fill,
+        outerMat,
+        fillMat,
+      });
+    }
+    return rings;
+  }
+
+  /**
+   * Pre-allocate pooled Orbital Laser Sweep collision/damage trackers synced with VfxManager.
+   * @private
+   */
+  _createOrbitalSweepStatePool() {
+    const list = [];
+    for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+      list.push({
+        active: false,
+        age: 0,
+        telegraphDuration: 1.15,
+        sweepDuration: 1.35,
+        beamRadius: 2.15,
+        damage: 28,
+        hitCooldown: 0,
+        startPos: new THREE.Vector3(),
+        endPos: new THREE.Vector3(),
+      });
+    }
+    return list;
+  }
+
+  /** @private */
+  _clearActiveHazardsAndProjectiles() {
+    for (let i = 0; i < this._projectiles.length; i++) {
+      const proj = this._projectiles[i];
+      proj.active = false;
+      proj.isMortar = false;
+      proj.warningRing = null;
+      if (proj.mesh) proj.mesh.visible = false;
+    }
+    if (this._mortarRings) {
+      for (let i = 0; i < this._mortarRings.length; i++) {
+        this._mortarRings[i].active = false;
+        this._mortarRings[i].group.visible = false;
+      }
+    }
+    if (this._orbitalSweeps) {
+      for (let i = 0; i < this._orbitalSweeps.length; i++) {
+        this._orbitalSweeps[i].active = false;
+      }
+    }
   }
 
   /**
@@ -459,10 +587,8 @@ class WaveDirector {
     this._livingTargets.length = 0;
     this._bossEntity = null;
 
-    for (let i = 0; i < this._projectiles.length; i++) {
-      this._projectiles[i].active = false;
-      this._projectiles[i].mesh.visible = false;
-    }
+    this._clearActiveHazardsAndProjectiles();
+    this._droneSalvoEscortCooldown = 0;
 
     this._active = false;
     this._tutorialMode = false;
@@ -563,10 +689,8 @@ class WaveDirector {
     this._livingTargets.length = 0;
     this._bossEntity = null;
 
-    for (let i = 0; i < this._projectiles.length; i++) {
-      this._projectiles[i].active = false;
-      this._projectiles[i].mesh.visible = false;
-    }
+    this._clearActiveHazardsAndProjectiles();
+    this._droneSalvoEscortCooldown = 0;
 
     const nextWaveIndex = this._currentWaveIndex + 1;
     const fallbackMapIdx =
@@ -737,6 +861,88 @@ class WaveDirector {
   }
 
   /** @private */
+  _handleWingCoreShattered(payload) {
+    if (!payload) return;
+    if (payload.position && this.vfxManager && typeof this.vfxManager.spawnExplosion === 'function') {
+      this.vfxManager.spawnExplosion(payload.position, 3.2, 0x38bdf8);
+    }
+  }
+
+  /** @private */
+  _handleOrbitalSweepEvent(payload) {
+    if (!payload || !payload.startPos || !payload.endPos) return;
+    let slot = null;
+    for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+      if (!this._orbitalSweeps[i].active) {
+        slot = this._orbitalSweeps[i];
+        break;
+      }
+    }
+    if (!slot) slot = this._orbitalSweeps[0];
+
+    slot.active = true;
+    slot.age = 0;
+    slot.telegraphDuration = Number.isFinite(payload.telegraphDuration) ? payload.telegraphDuration : 1.15;
+    slot.sweepDuration = Number.isFinite(payload.sweepDuration) ? payload.sweepDuration : 1.35;
+    slot.beamRadius = Number.isFinite(payload.beamRadius) ? payload.beamRadius : 2.15;
+    slot.damage = Math.max(1, Math.round((payload.damage || 28) * this.getEffectiveEnemyDmgMult()));
+    slot.hitCooldown = 0;
+    slot.startPos.copy(payload.startPos);
+    slot.endPos.copy(payload.endPos);
+
+    if (this.vfxManager && typeof this.vfxManager.spawnOrbitalLaserSweep === 'function') {
+      this.vfxManager.spawnOrbitalLaserSweep(
+        slot.startPos,
+        slot.endPos,
+        slot.telegraphDuration,
+        slot.sweepDuration,
+        slot.beamRadius
+      );
+    }
+    if (this.eventBus) {
+      this.eventBus.emit('SFX_BOSS_TELEGRAPH', { type: 'missile' });
+    }
+  }
+
+  /** @private */
+  _handleDroneSalvoEscort(payload) {
+    if (!this._active || !this._bossEntity || !this._bossEntity.isAlive || this._droneSalvoEscortCooldown > 0) {
+      return;
+    }
+    const wave =
+      this._currentWaveIndex >= 0 && this._currentWaveIndex < WAVES.length
+        ? WAVES[this._currentWaveIndex]
+        : null;
+    if (this._livingTargets.length >= (wave ? wave.maxConcurrent : 8)) return;
+
+    let droneCount = 0;
+    for (let i = 0; i < this._livingTargets.length; i++) {
+      const e = this._livingTargets[i];
+      if (e && e.isAlive && e.archetype && e.archetype.id === 'interceptor_drone') {
+        droneCount++;
+      }
+    }
+    if (droneCount >= 2) return;
+
+    this._droneSalvoEscortCooldown = 14.0;
+    const bossPos = this._bossEntity.position;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    const sx = Math.max(-24, Math.min(24, bossPos.x + side * 4.2));
+    const sz = Math.max(-24, Math.min(24, bossPos.z + (Math.random() - 0.5) * 3.0));
+    const sy = this.collisionWorld.getGroundHeightAt(sx, sz, bossPos.y + 3.0);
+    this._escortSpawnPos.set(sx, Number.isFinite(sy) ? sy : 0, sz);
+
+    const spawned = this._spawnEnemyAtPos('interceptor_drone', this._escortSpawnPos, wave);
+    if (spawned) {
+      const scaleMult = this.getEffectiveEnemyHpMult();
+      if (scaleMult > 1.01 && typeof spawned.setMaxHp === 'function') {
+        spawned.setMaxHp(Math.round(spawned.maxHp * scaleMult));
+      }
+      this._livingTargets.push(spawned);
+    }
+  }
+
+  /** @private */
   _handleEnemyOverload(enemy) {
     if (!enemy || !this._interactables || typeof this._interactables.triggerOverloadBlast !== 'function') return;
     const arch = enemy.archetype || {};
@@ -767,8 +973,12 @@ class WaveDirector {
     if (spawned) {
       const scaleMult = this.getEffectiveEnemyHpMult();
       if (scaleMult > 1.01) {
-        spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
-        spawned.hp = spawned.maxHp;
+        if (typeof spawned.setMaxHp === 'function') {
+          spawned.setMaxHp(Math.round(spawned.maxHp * scaleMult));
+        } else {
+          spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
+          spawned.hp = spawned.maxHp;
+        }
       }
       this._livingTargets.push(spawned);
     }
@@ -847,14 +1057,8 @@ class WaveDirector {
           });
         }
       }
-      // Clear lingering enemy projectiles for a clean boss finish
-      for (let p = 0; p < this._projectiles.length; p++) {
-        const proj = this._projectiles[p];
-        if (proj && proj.active) {
-          proj.active = false;
-          if (proj.mesh) proj.mesh.visible = false;
-        }
-      }
+      // Clear lingering enemy projectiles & mortar/laser hazards for a clean boss finish
+      this._clearActiveHazardsAndProjectiles();
     }
 
     // Step 2: Gold Drop + Low-Chance Weapon Drop (with pity for locked BR-12 / HV-7)
@@ -972,8 +1176,12 @@ class WaveDirector {
     }
     const activeInteractables = interactables || this._interactables;
 
-    // Always update active projectiles cleanly even during intermissions
+    // Always update active projectiles & orbital laser sweeps cleanly even during intermissions
     this._updateProjectiles(clampedDt, playerController);
+    this._updateOrbitalSweeps(clampedDt, playerController);
+    if (this._droneSalvoEscortCooldown > 0) {
+      this._droneSalvoEscortCooldown = Math.max(0, this._droneSalvoEscortCooldown - clampedDt);
+    }
 
     // Combo decay timer
     if (this._comboTimer > 0) {
@@ -1075,8 +1283,12 @@ class WaveDirector {
         if (spawned) {
           const scaleMult = this.getEffectiveEnemyHpMult();
           if (scaleMult > 1.01) {
-            spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
-            spawned.hp = spawned.maxHp;
+            if (typeof spawned.setMaxHp === 'function') {
+              spawned.setMaxHp(Math.round(spawned.maxHp * scaleMult));
+            } else {
+              spawned.maxHp = Math.round(spawned.maxHp * scaleMult);
+              spawned.hp = spawned.maxHp;
+            }
           }
           // Wave 2+: chance to promote non-boss enemy into an Elite Variant (scales with Threat tiers)
           const eliteChance = Number.isFinite(this.globalEliteChance) ? this.globalEliteChance : 0.22;
@@ -1194,7 +1406,7 @@ class WaveDirector {
               waveNum >= 11
                 ? ['volatile_rusher', 'void_warper', 'volatile_rusher', 'void_swarmer']
                 : waveNum >= 6
-                ? ['interceptor_drone', 'shock_breacher', 'tactical_trooper', 'vanguard_assassin']
+                ? ['interceptor_drone', 'shock_breacher', 'rail_warden', 'vanguard_assassin']
                 : ['rusher_drone', 'tactical_trooper', 'rusher_drone', 'tactical_trooper'];
             this._spawnQueue.push(...squad);
             this._spawnTimer = 0.25;
@@ -1261,8 +1473,31 @@ class WaveDirector {
             const tz = Math.max(-28, Math.min(28, playerPos.z + offsets[m][1]));
             activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
           }
+        } else if (isOverlord) {
+          // AEGIS-IX signature arena hazard: targeted vertical Orbital Laser Sweep lane
+          const bDx = playerPos.x - this._bossEntity.position.x;
+          const bDz = playerPos.z - this._bossEntity.position.z;
+          const bLen = Math.hypot(bDx, bDz) || 1;
+          const perpX = -bDz / bLen;
+          const perpZ = bDx / bLen;
+          const dirSign = (this._bossSpecialCycle & 1) === 0 ? 1 : -1;
+          const halfSpan = phase >= 3 ? 9.0 : 7.5;
+          const sx = Math.max(-25, Math.min(25, playerPos.x - perpX * halfSpan * dirSign));
+          const sz = Math.max(-25, Math.min(25, playerPos.z - perpZ * halfSpan * dirSign));
+          const ex = Math.max(-25, Math.min(25, playerPos.x + perpX * halfSpan * dirSign));
+          const ez = Math.max(-25, Math.min(25, playerPos.z + perpZ * halfSpan * dirSign));
+          const sy = this.collisionWorld.getGroundHeightAt(sx, sz, playerPos.y + 1.5);
+          const ey = this.collisionWorld.getGroundHeightAt(ex, ez, playerPos.y + 1.5);
+          this._handleOrbitalSweepEvent({
+            startPos: this._spawnCandidate.set(sx, Number.isFinite(sy) ? sy : 0, sz),
+            endPos: this._spawnEye.set(ex, Number.isFinite(ey) ? ey : 0, ez),
+            telegraphDuration: phase >= 3 ? 1.0 : 1.2,
+            sweepDuration: 1.3,
+            beamRadius: phase >= 3 ? 2.3 : 2.05,
+            damage: 28,
+          });
         } else {
-          // Pattern C: Seismic Ground Shockwave Ring (jump to evade!) + flanking missile strikes
+          // Pattern C (COLOSSUS / OMEGA): Seismic Ground Shockwave Ring (jump to evade!) + flanking missile strikes
           if (typeof activeInteractables.spawnBossShockwave === 'function') {
             activeInteractables.spawnBossShockwave(this._bossEntity.position);
           }
@@ -1642,10 +1877,10 @@ class WaveDirector {
   }
 
   /**
-   * Activate a pooled glowing enemy projectile (zero allocations).
+   * Activate a pooled glowing enemy projectile or parabolic mortar shell (zero allocations).
    * @private
    */
-  _spawnProjectile(origin, dir, speed, damage, color, radius, archetypeId, isSniperBeam) {
+  _spawnProjectile(origin, dir, speed, damage, color, radius, archetypeId, isSniperBeam, extraOpts = null) {
     let slot = null;
     for (let i = 0; i < this._projectiles.length; i++) {
       if (!this._projectiles[i].active) {
@@ -1656,8 +1891,14 @@ class WaveDirector {
     if (!slot) {
       // Recycle oldest projectile gracefully if pool is saturated
       slot = this._projectiles[0];
+      if (slot.warningRing) {
+        slot.warningRing.active = false;
+        slot.warningRing.group.visible = false;
+        slot.warningRing = null;
+      }
     }
 
+    const isMortar = Boolean(extraOpts && extraOpts.isMortar && extraOpts.targetPos);
     slot.active = true;
     slot.origin.copy(origin);
     slot.position.copy(origin);
@@ -1666,29 +1907,94 @@ class WaveDirector {
     slot.damage = Math.max(1, Math.round(damage * this.getEffectiveEnemyDmgMult()));
     slot.radius = radius;
     slot.life = 0;
-    slot.maxLife = isSniperBeam ? 1.4 : 3.2;
     slot.archetypeId = archetypeId;
+    slot.isMortar = isMortar;
+    slot.warningRing = null;
 
-    // Distinct glowing silhouette per archetype
-    const length = isSniperBeam
-      ? 2.4
-      : archetypeId === 'aegis_overlord_boss' || archetypeId === 'transcendent_omega_boss'
-      ? 1.48
-      : archetypeId === 'cyber_mech_boss' || archetypeId === 'rail_warden' || archetypeId === 'abyss_sentinel'
-      ? 1.35
-      : archetypeId === 'mortar_artillery' || archetypeId === 'vanguard_assassin' || archetypeId === 'void_warper'
-      ? 0.98
-      : archetypeId === 'heavy_enforcer' || archetypeId === 'shock_breacher'
-      ? 0.70
-      : 0.90;
-    const visualRadius = isSniperBeam ? 0.065 : radius * 0.85;
+    if (isMortar) {
+      const tPos = extraOpts.targetPos;
+      const g = Number.isFinite(extraOpts.gravity) ? extraOpts.gravity : 22.0;
+      const T = Math.max(0.55, Number.isFinite(extraOpts.flightTime) ? extraOpts.flightTime : 1.35);
+      const splashR = Number.isFinite(extraOpts.splashRadius) ? extraOpts.splashRadius : 3.35;
 
-    const boltColor = PROJECTILE_COLORS[archetypeId] || 0xff4422;
-    slot.material.color.setHex(boltColor);
-    slot.mesh.position.copy(origin);
-    slot.mesh.quaternion.setFromUnitVectors(Z_AXIS, slot.dir);
-    slot.mesh.scale.set(visualRadius, visualRadius, length);
-    slot.mesh.visible = true;
+      slot.gravity = g;
+      slot.flightTime = T;
+      slot.maxLife = T + 0.45;
+      slot.splashRadius = splashR;
+      slot.targetPos.copy(tPos);
+
+      slot.vel.set(
+        (tPos.x - origin.x) / T,
+        (tPos.y - origin.y + 0.5 * g * T * T) / T,
+        (tPos.z - origin.z) / T
+      );
+
+      if (this._mortarRings) {
+        let ringSlot = null;
+        for (let r = 0; r < this._mortarRings.length; r++) {
+          if (!this._mortarRings[r].active) {
+            ringSlot = this._mortarRings[r];
+            break;
+          }
+        }
+        if (ringSlot) {
+          ringSlot.active = true;
+          ringSlot.group.position.set(tPos.x, tPos.y + 0.03, tPos.z);
+          ringSlot.group.scale.setScalar(splashR);
+          ringSlot.fill.scale.setScalar(0.08);
+          ringSlot.outerMat.opacity = 0.85;
+          ringSlot.fillMat.opacity = 0.34;
+          ringSlot.group.visible = true;
+          slot.warningRing = ringSlot;
+        }
+      }
+
+      const mortarColor = (extraOpts && extraOpts.boltColor) || PROJECTILE_COLORS[archetypeId] || 0xff7b00;
+      slot.material.color.setHex(mortarColor);
+      slot.mesh.position.copy(origin);
+      this._projSegDir.copy(slot.vel);
+      if (this._projSegDir.lengthSq() > 1e-4) this._projSegDir.normalize();
+      else this._projSegDir.copy(slot.dir);
+      slot.mesh.quaternion.setFromUnitVectors(Z_AXIS, this._projSegDir);
+      slot.mesh.scale.set(radius * 1.45, radius * 1.45, 0.72);
+      slot.mesh.visible = true;
+    } else {
+      slot.maxLife = isSniperBeam ? 1.4 : 3.2;
+
+      // Distinct glowing silhouette per archetype
+      const length = isSniperBeam
+        ? 2.65
+        : archetypeId === 'aegis_overlord_boss' || archetypeId === 'transcendent_omega_boss'
+        ? 1.48
+        : archetypeId === 'cyber_mech_boss' || archetypeId === 'rail_warden' || archetypeId === 'abyss_sentinel'
+        ? 1.35
+        : archetypeId === 'vanguard_assassin'
+        ? 1.12
+        : archetypeId === 'mortar_artillery' || archetypeId === 'void_warper'
+        ? 0.98
+        : archetypeId === 'heavy_enforcer' || archetypeId === 'shock_breacher'
+        ? 0.70
+        : 0.90;
+      const visualRadius = isSniperBeam ? 0.065 : radius * 0.85;
+      const isBossColor =
+        archetypeId === 'aegis_overlord_boss' ||
+        archetypeId === 'cyber_mech_boss' ||
+        archetypeId === 'transcendent_omega_boss';
+      const boltColor =
+        (extraOpts && extraOpts.boltColor) ||
+        (isBossColor && color ? color : PROJECTILE_COLORS[archetypeId]) ||
+        0xff4422;
+
+      slot.material.color.setHex(boltColor);
+      slot.mesh.position.copy(origin);
+      slot.mesh.quaternion.setFromUnitVectors(Z_AXIS, slot.dir);
+      if (archetypeId === 'vanguard_assassin') {
+        slot.mesh.scale.set(visualRadius * 2.35, visualRadius * 0.45, length);
+      } else {
+        slot.mesh.scale.set(visualRadius, visualRadius, length);
+      }
+      slot.mesh.visible = true;
+    }
 
     // 3D spatialized enemy gunfire audio
     if (this._soundEngine && typeof this._soundEngine.playEnemyShot === 'function') {
@@ -1697,7 +2003,52 @@ class WaveDirector {
   }
 
   /**
-   * Advance pooled enemy projectiles, test swept collisions against world AABBs & player capsule.
+   * Detonate a parabolic Mortar Artillery shell, clear its floor warning ring, and apply AoE splash.
+   * Zero heap allocations.
+   * @private
+   */
+  _detonateMortarProjectile(proj, ix, iy, iz, playerController) {
+    this._prevProjPos.set(ix, iy, iz);
+
+    if (proj.warningRing) {
+      proj.warningRing.active = false;
+      proj.warningRing.group.visible = false;
+      proj.warningRing = null;
+    }
+    proj.active = false;
+    proj.isMortar = false;
+    proj.mesh.visible = false;
+
+    if (this.vfxManager) {
+      if (typeof this.vfxManager.spawnExplosion === 'function') {
+        this.vfxManager.spawnExplosion(this._prevProjPos, proj.splashRadius * 0.88, 0xff7b00);
+      }
+    }
+    if (this._soundEngine && typeof this._soundEngine._playBarrelExplosion === 'function') {
+      this._soundEngine._playBarrelExplosion({ position: this._prevProjPos });
+    }
+
+    if (playerController && playerController.isAlive) {
+      const pPos = playerController.position;
+      const dx = pPos.x - ix;
+      const dz = pPos.z - iz;
+      const horizDist = Math.hypot(dx, dz);
+      const dy = Math.abs(pPos.y - iy);
+      const splashR = proj.splashRadius || 3.35;
+      if (horizDist <= splashR && dy < 2.9) {
+        const innerR = splashR * 0.45;
+        const falloff =
+          horizDist <= innerR
+            ? 1.0
+            : Math.max(0.55, 1.0 - ((horizDist - innerR) / Math.max(0.1, splashR - innerR)) * 0.45);
+        playerController.applyDamage(Math.max(1, Math.round(proj.damage * falloff)), this._prevProjPos);
+      }
+    }
+  }
+
+  /**
+   * Advance pooled enemy projectiles, parabolic mortar shells, and test swept collisions.
+   * Strictly zero heap allocations.
    * @private
    */
   _updateProjectiles(dt, playerController) {
@@ -1711,6 +2062,82 @@ class WaveDirector {
       if (!proj.active) continue;
 
       proj.life += dt;
+
+      if (proj.isMortar) {
+        this._prevProjPos.copy(proj.position);
+        proj.vel.y -= proj.gravity * dt;
+
+        const nextX = this._prevProjPos.x + proj.vel.x * dt;
+        const nextY = this._prevProjPos.y + proj.vel.y * dt;
+        const nextZ = this._prevProjPos.z + proj.vel.z * dt;
+
+        this._projSegDir.set(nextX - this._prevProjPos.x, nextY - this._prevProjPos.y, nextZ - this._prevProjPos.z);
+        const segLen = this._projSegDir.length();
+        if (segLen > 1e-5) {
+          this._projSegDir.multiplyScalar(1 / segLen);
+          proj.mesh.quaternion.setFromUnitVectors(Z_AXIS, this._projSegDir);
+        }
+
+        if (proj.warningRing) {
+          const p = Math.min(1, proj.life / Math.max(0.1, proj.flightTime));
+          proj.warningRing.fill.scale.setScalar(Math.max(0.08, p));
+          proj.warningRing.outerMat.opacity = 0.65 + 0.35 * Math.abs(Math.sin(proj.life * 18));
+        }
+
+        const wallHit =
+          segLen > 1e-5 && proj.life > 0.08
+            ? this.collisionWorld.raycastWorld(this._prevProjPos, this._projSegDir, segLen, this._rayHit)
+            : null;
+
+        if (wallHit) {
+          this._detonateMortarProjectile(
+            proj,
+            wallHit.point.x,
+            wallHit.point.y,
+            wallHit.point.z,
+            playerController
+          );
+          continue;
+        }
+
+        if (playerAlive && pPos) {
+          const hitR = pRadius + proj.radius * 0.9;
+          const yBot = pPos.y + Math.min(pRadius, pHeight * 0.45);
+          const yTop = pPos.y + Math.max(pRadius, pHeight - pRadius * 0.4);
+          const distSq = segmentToVerticalCapsuleDistSq(
+            this._prevProjPos.x,
+            this._prevProjPos.y,
+            this._prevProjPos.z,
+            nextX,
+            nextY,
+            nextZ,
+            pPos.x,
+            yBot,
+            yTop,
+            pPos.z
+          );
+          if (distSq <= hitR * hitR) {
+            this._detonateMortarProjectile(proj, nextX, nextY, nextZ, playerController);
+            continue;
+          }
+        }
+
+        if (proj.life >= proj.flightTime || nextY <= proj.targetPos.y) {
+          this._detonateMortarProjectile(
+            proj,
+            proj.targetPos.x,
+            proj.targetPos.y,
+            proj.targetPos.z,
+            playerController
+          );
+          continue;
+        }
+
+        proj.position.set(nextX, nextY, nextZ);
+        proj.mesh.position.copy(proj.position);
+        continue;
+      }
+
       if (proj.life >= proj.maxLife) {
         proj.active = false;
         proj.mesh.visible = false;
@@ -1775,6 +2202,44 @@ class WaveDirector {
   }
 
   /**
+   * Advance AEGIS-IX Orbital Laser Sweeps and deal active beam sweep damage to player.
+   * Zero heap allocations.
+   * @private
+   */
+  _updateOrbitalSweeps(dt, playerController) {
+    if (!this._orbitalSweeps) return;
+    const playerAlive = Boolean(playerController && playerController.isAlive);
+    const pPos = playerAlive ? playerController.position : null;
+
+    for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+      const sw = this._orbitalSweeps[i];
+      if (!sw.active) continue;
+
+      sw.age += dt;
+      if (sw.hitCooldown > 0) {
+        sw.hitCooldown = Math.max(0, sw.hitCooldown - dt);
+      }
+      const totalDur = sw.telegraphDuration + sw.sweepDuration;
+      if (sw.age >= totalDur) {
+        sw.active = false;
+        continue;
+      }
+
+      if (playerAlive && pPos && sw.age >= sw.telegraphDuration && sw.hitCooldown <= 0) {
+        const sp = Math.min(1, (sw.age - sw.telegraphDuration) / sw.sweepDuration);
+        this._sweepBeamPos.lerpVectors(sw.startPos, sw.endPos, sp);
+        const dx = pPos.x - this._sweepBeamPos.x;
+        const dz = pPos.z - this._sweepBeamPos.z;
+        const dy = Math.abs(pPos.y - this._sweepBeamPos.y);
+        if (dx * dx + dz * dz <= sw.beamRadius * sw.beamRadius && dy < 7.0) {
+          sw.hitCooldown = 0.45;
+          playerController.applyDamage(sw.damage, this._sweepBeamPos);
+        }
+      }
+    }
+  }
+
+  /**
    * Return pre-allocated list of currently living Enemy targets (zero allocation).
    * @returns {Array<Enemy>}
    */
@@ -1815,6 +2280,12 @@ class WaveDirector {
         : null;
     s.turretsAlive = tStats ? tStats.alive : 0;
     s.turretsTotal = tStats ? tStats.total : 0;
+    const isWingBoss = boss.archetype && boss.archetype.id === 'aegis_overlord_boss';
+    s.isWingCoreBoss = isWingBoss;
+    s.wingCoreTotal = isWingBoss ? 2 : 0;
+    s.wingCoreLAlive = isWingBoss && (boss._wingCoreHpL || 0) > 0;
+    s.wingCoreRAlive = isWingBoss && (boss._wingCoreHpR || 0) > 0;
+    s.wingCoreAlive = (s.wingCoreLAlive ? 1 : 0) + (s.wingCoreRAlive ? 1 : 0);
     s.position.copy(boss.position);
     return s;
   }
@@ -1876,6 +2347,18 @@ class WaveDirector {
       this._unsubTeleport();
       this._unsubTeleport = null;
     }
+    if (this._unsubWingCore) {
+      this._unsubWingCore();
+      this._unsubWingCore = null;
+    }
+    if (this._unsubOrbitalSweep) {
+      this._unsubOrbitalSweep();
+      this._unsubOrbitalSweep = null;
+    }
+    if (this._unsubDroneSalvo) {
+      this._unsubDroneSalvo();
+      this._unsubDroneSalvo = null;
+    }
 
     this.reset();
 
@@ -1898,6 +2381,14 @@ class WaveDirector {
     for (let i = 0; i < this._projectiles.length; i++) {
       this._projectiles[i].material.dispose();
     }
+    if (this._mortarRings) {
+      for (let i = 0; i < this._mortarRings.length; i++) {
+        this._mortarRings[i].outerMat.dispose();
+        this._mortarRings[i].fillMat.dispose();
+      }
+    }
+    if (this._mortarOuterGeo) this._mortarOuterGeo.dispose();
+    if (this._mortarFillGeo) this._mortarFillGeo.dispose();
     if (this._projOuterGeo) this._projOuterGeo.dispose();
     if (this._projCoreGeo) this._projCoreGeo.dispose();
     if (this._projCoreMat) this._projCoreMat.dispose();

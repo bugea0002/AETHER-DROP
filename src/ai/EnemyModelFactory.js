@@ -13,15 +13,242 @@ __define("src/ai/EnemyModelFactory.js", (__exports, __require) => {
  * while per-enemy materials allow crisp hit-flashes, shield ripples, phase shifts,
  * death-dissolve animations, and zero-stutter rig pooling without affecting siblings.
  */
-const ACT1_GLB_MODELS = Object.freeze({
-  rusher_drone: './assets/models/rusher_drone.glb?v=20261127d',
-  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127d',
-  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127d',
-  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127d',
-  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127d',
+const GLB_MODEL_REGISTRY = Object.freeze({
+  // Act 1: Ash-Furnace Legion (Waves 1-5)
+  rusher_drone: './assets/models/rusher_drone.glb?v=20261127e',
+  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127e',
+  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127e',
+  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127e',
+  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127e',
+  // Act 2: Aegis Orbital Vanguard (Waves 6-10)
+  interceptor_drone: './assets/models/interceptor_drone.glb?v=20261127e',
+  shock_breacher: './assets/models/shock_breacher.glb?v=20261127e',
+  rail_warden: './assets/models/rail_warden.glb?v=20261127e',
+  mortar_artillery: './assets/models/mortar_artillery.glb?v=20261127e',
+  vanguard_assassin: './assets/models/vanguard_assassin.glb?v=20261127e',
+  aegis_overlord_boss: './assets/models/aegis_overlord.glb?v=20261127f',
+  // Act 3 GLBs queued for Phase 3 — fallback to intact procedural Act 3 rigs with zero 404s
 });
+const ALL_GLB_MODELS = GLB_MODEL_REGISTRY;
 
 class EnemyModelFactory {
+  /**
+   * Generate and statically cache a seamless 512x512 tangent-space micro-normal map
+   * (panel seams, anisotropic brushed steel streaks, chamfered micro-rivets, louvers)
+   * and matching roughnessMap across all enemy rigs.
+   * @returns {{ normalMap: THREE.CanvasTexture | null, roughnessMap: THREE.CanvasTexture | null }}
+   */
+  static _getSharedMechanicalDetailMaps() {
+    if (EnemyModelFactory._sharedMechDetailMaps) {
+      return EnemyModelFactory._sharedMechDetailMaps;
+    }
+    if (typeof document === 'undefined' || typeof THREE === 'undefined') {
+      return { normalMap: null, roughnessMap: null };
+    }
+
+    const size = 512;
+    const mask = size - 1;
+    const height = new Float32Array(size * size);
+    const rough = new Float32Array(size * size);
+    height.fill(0.5);
+    rough.fill(0.80);
+
+    // 1. Seamless anisotropic brushed-steel micro-streaks & fine cast grain
+    for (let y = 0; y < size; y++) {
+      const rowHash = (((y * 2654435761) >>> 0) % 1000) / 1000 - 0.5;
+      const rowOffset = rowHash * 6.283185;
+      const rowOffsetY = y * size;
+      for (let x = 0; x < size; x++) {
+        const uPhase = (x / size) * Math.PI * 2;
+        const streakWave = Math.sin(uPhase * 5.0 + rowOffset) * 0.5 + Math.sin(uPhase * 13.0 - rowOffset * 1.7) * 0.25;
+        const microGrain = ((((x * 73856093) ^ (y * 19349663)) >>> 0) % 1000) / 1000 - 0.5;
+        const idx = rowOffsetY + x;
+        height[idx] += rowHash * 0.015 + streakWave * 0.008 + microGrain * 0.006;
+        rough[idx] = Math.max(
+          0.44,
+          Math.min(0.96, rough[idx] - rowHash * 0.065 - streakWave * 0.04 + microGrain * 0.03)
+        );
+      }
+    }
+
+    // 2. Seamless chamfered armor panel seams (periodic modulo 512)
+    const carveSeamPixel = (px, py, dist) => {
+      const idx = (py & mask) * size + (px & mask);
+      if (dist <= 1) {
+        height[idx] -= 0.19 * (1 - dist * 0.32);
+        rough[idx] = Math.max(rough[idx], 0.94);
+      } else if (dist === 2) {
+        height[idx] -= 0.045;
+        rough[idx] = Math.max(rough[idx], 0.88);
+      } else if (dist === 3) {
+        height[idx] += 0.035;
+        rough[idx] = Math.min(rough[idx], 0.62);
+      }
+    };
+
+    const carveHSeam = (yCenter, xStart, xLen) => {
+      for (let i = 0; i < xLen; i++) {
+        const px = xStart + i;
+        for (let d = -3; d <= 3; d++) {
+          carveSeamPixel(px, yCenter + d, Math.abs(d));
+        }
+      }
+    };
+
+    const carveVSeam = (xCenter, yStart, yLen) => {
+      for (let i = 0; i < yLen; i++) {
+        const py = yStart + i;
+        for (let d = -3; d <= 3; d++) {
+          carveSeamPixel(xCenter + d, py, Math.abs(d));
+        }
+      }
+    };
+
+    // Primary tiling seams on boundaries + interior panel subdivisions
+    carveHSeam(0, 0, size);
+    carveHSeam(176, 0, size);
+    carveHSeam(352, 0, size);
+    carveVSeam(0, 0, size);
+    carveVSeam(256, 0, size);
+    carveVSeam(128, 176, 176);
+    carveVSeam(384, 0, 176);
+
+    // Milled cooling louver slots inside secondary panel
+    for (let s = 0; s < 6; s++) {
+      const lx = 294 + s * 32;
+      for (let py = 222; py < 306; py++) {
+        for (let dx = -5; dx <= 5; dx++) {
+          const adx = Math.abs(dx);
+          const idx = py * size + ((lx + dx) & mask);
+          if (adx <= 3) {
+            height[idx] -= 0.13;
+            rough[idx] = Math.max(rough[idx], 0.95);
+          } else {
+            height[idx] += 0.025;
+            rough[idx] = Math.min(rough[idx], 0.65);
+          }
+        }
+      }
+    }
+
+    // 3. Raised micro-rivets with chamfered socket collars along panel borders
+    const stampRivet = (cx, cy, radius = 3.8) => {
+      const bound = Math.ceil(radius + 2);
+      for (let dy = -bound; dy <= bound; dy++) {
+        for (let dx = -bound; dx <= bound; dx++) {
+          const dist = Math.hypot(dx, dy);
+          const px = (cx + dx) & mask;
+          const py = (cy + dy) & mask;
+          const idx = py * size + px;
+          if (dist <= radius) {
+            const t = dist / radius;
+            const dome = Math.sqrt(Math.max(0, 1 - t * t));
+            height[idx] += 0.16 * dome;
+            rough[idx] = Math.min(rough[idx], 0.58 - 0.10 * dome);
+          } else if (dist <= radius + 1.5) {
+            height[idx] -= 0.07;
+            rough[idx] = Math.max(rough[idx], 0.92);
+          }
+        }
+      }
+    };
+
+    const panelRects = [
+      [0, 0, 256, 176],
+      [256, 0, 128, 176],
+      [384, 0, 128, 176],
+      [0, 176, 128, 176],
+      [128, 176, 128, 176],
+      [256, 176, 256, 176],
+      [0, 352, 256, 160],
+      [256, 352, 256, 160],
+    ];
+    for (let i = 0; i < panelRects.length; i++) {
+      const [px, py, pw, ph] = panelRects[i];
+      const inset = 14;
+      stampRivet(px + inset, py + inset);
+      stampRivet(px + pw - inset, py + inset);
+      stampRivet(px + inset, py + ph - inset);
+      stampRivet(px + pw - inset, py + ph - inset);
+      if (pw >= 200) {
+        stampRivet(px + (pw >> 1), py + inset);
+        stampRivet(px + (pw >> 1), py + ph - inset);
+      }
+    }
+
+    // 4. Derive periodic tangent-space NormalMap (Sobel 3x3) & RoughnessMap
+    const normalCanvas = document.createElement('canvas');
+    normalCanvas.width = size;
+    normalCanvas.height = size;
+    const nCtx = normalCanvas.getContext('2d');
+    const nImg = nCtx.createImageData(size, size);
+    const nData = nImg.data;
+
+    const roughCanvas = document.createElement('canvas');
+    roughCanvas.width = size;
+    roughCanvas.height = size;
+    const rCtx = roughCanvas.getContext('2d');
+    const rImg = rCtx.createImageData(size, size);
+    const rData = rImg.data;
+
+    const strength = 1.65;
+    for (let y = 0; y < size; y++) {
+      const ym = ((y - 1) & mask) * size;
+      const y0 = y * size;
+      const yp = ((y + 1) & mask) * size;
+      for (let x = 0; x < size; x++) {
+        const xm = (x - 1) & mask;
+        const xp = (x + 1) & mask;
+
+        const dhdx =
+          height[yp + xp] + 2 * height[y0 + xp] + height[ym + xp] -
+          (height[yp + xm] + 2 * height[y0 + xm] + height[ym + xm]);
+        const dhdy =
+          height[yp + xm] + 2 * height[yp + x] + height[yp + xp] -
+          (height[ym + xm] + 2 * height[ym + x] + height[ym + xp]);
+
+        // OpenGL tangent-space (+X right, +Y up in UV, +Z out); canvas Y grows downward
+        let nx = -dhdx * strength;
+        let ny = dhdy * strength;
+        let nz = 1.0;
+        const invLen = 1.0 / Math.hypot(nx, ny, nz);
+        nx *= invLen;
+        ny *= invLen;
+        nz *= invLen;
+
+        const pIdx = (y0 + x) * 4;
+        nData[pIdx] = Math.max(0, Math.min(255, Math.round((nx * 0.5 + 0.5) * 255)));
+        nData[pIdx + 1] = Math.max(0, Math.min(255, Math.round((ny * 0.5 + 0.5) * 255)));
+        nData[pIdx + 2] = Math.max(0, Math.min(255, Math.round((nz * 0.5 + 0.5) * 255)));
+        nData[pIdx + 3] = 255;
+
+        const rVal = Math.max(0, Math.min(255, Math.round(rough[y0 + x] * 255)));
+        rData[pIdx] = rVal;
+        rData[pIdx + 1] = rVal;
+        rData[pIdx + 2] = rVal;
+        rData[pIdx + 3] = 255;
+      }
+    }
+    nCtx.putImageData(nImg, 0, 0);
+    rCtx.putImageData(rImg, 0, 0);
+
+    const normalMap = new THREE.CanvasTexture(normalCanvas);
+    const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+    for (const tex of [normalMap, roughnessMap]) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 1);
+      tex.anisotropy = 8;
+      if (THREE.NoColorSpace !== undefined) {
+        tex.colorSpace = THREE.NoColorSpace;
+      }
+      tex.needsUpdate = true;
+    }
+
+    EnemyModelFactory._sharedMechDetailMaps = { normalMap, roughnessMap };
+    return EnemyModelFactory._sharedMechDetailMaps;
+  }
+
   constructor() {
     this._geoCache = new Map();
     this._textures = this._createProceduralTextures();
@@ -34,20 +261,24 @@ class EnemyModelFactory {
       depthWrite: false,
     });
 
-    // Warm-preload all 5 Blender sculpted Wave 1-5 Legion GLB models non-blockingly
+    // Warm-preload all registered GLB models non-blockingly; missing Act 2/3 GLBs fall back gracefully
     if (typeof document !== 'undefined' && globalThis.GLTFLoader) {
       this.preloadModels().catch(() => {});
     }
   }
 
   /**
-   * Preload sculpted Wave 1-5 Ash-Furnace Legion GLB models from assets/models/.
-   * Cached once across factory instances; safe to call concurrently.
+   * Preload sculpted GLB models from GLB_MODEL_REGISTRY (Act 1 + Act 2 + Act 3).
+   * Cached once across factory instances; missing GLBs are marked so legacy builders run cleanly.
    * @returns {Promise<void>}
    */
   preloadModels() {
-    const ids = Object.keys(ACT1_GLB_MODELS);
-    if (ids.every((id) => EnemyModelFactory._glbCache.has(id))) {
+    const ids = Object.keys(GLB_MODEL_REGISTRY);
+    if (
+      ids.every(
+        (id) => EnemyModelFactory._glbCache.has(id) || EnemyModelFactory._glbMissing.has(id)
+      )
+    ) {
       return Promise.resolve();
     }
     if (EnemyModelFactory._glbLoadPromise) {
@@ -58,21 +289,31 @@ class EnemyModelFactory {
     }
     const loader = new globalThis.GLTFLoader();
     EnemyModelFactory._glbLoadPromise = Promise.all(
-      ids.map((id) =>
-        loader
-          .loadAsync(ACT1_GLB_MODELS[id])
+      ids.map((id) => {
+        if (EnemyModelFactory._glbCache.has(id) || EnemyModelFactory._glbMissing.has(id)) {
+          return Promise.resolve();
+        }
+        return loader
+          .loadAsync(GLB_MODEL_REGISTRY[id])
           .then((gltf) => {
             if (gltf && gltf.scene) {
               EnemyModelFactory._glbCache.set(id, gltf.scene);
               if (id === 'cyber_mech_boss') {
                 EnemyModelFactory._colossusGltf = gltf.scene;
               }
+            } else {
+              EnemyModelFactory._glbMissing.add(id);
             }
           })
           .catch((err) => {
-            console.warn(`[EnemyModelFactory] Failed to preload ${id} GLB, using fallback rig:`, err);
-          })
-      )
+            EnemyModelFactory._glbMissing.add(id);
+            const msg = err && err.message ? String(err.message) : String(err || '');
+            const isNotFound = /\b404\b|not found|failed to fetch/i.test(msg);
+            if (!isNotFound) {
+              console.warn(`[EnemyModelFactory] Failed to preload ${id} GLB, using fallback rig:`, err);
+            }
+          });
+      })
     );
     return EnemyModelFactory._glbLoadPromise;
   }
@@ -467,12 +708,68 @@ class EnemyModelFactory {
     shCtx.fillRect(0, 0, 128, 128);
     const contactShadow = new THREE.CanvasTexture(shCanvas);
 
+    // 4b. Clean Neutral Hex-Grid Orbital Energy Shield Texture (512x512, zero orange tint)
+    const hexCanvas = document.createElement('canvas');
+    hexCanvas.width = size;
+    hexCanvas.height = size;
+    const hCtx = hexCanvas.getContext('2d');
+
+    const hGrad = hCtx.createRadialGradient(
+      size * 0.5,
+      size * 0.5,
+      size * 0.08,
+      size * 0.5,
+      size * 0.5,
+      size * 0.58
+    );
+    hGrad.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+    hGrad.addColorStop(0.55, 'rgba(224, 246, 255, 0.48)');
+    hGrad.addColorStop(0.88, 'rgba(180, 228, 255, 0.64)');
+    hGrad.addColorStop(1, 'rgba(220, 244, 255, 0.92)');
+    hCtx.fillStyle = hGrad;
+    hCtx.fillRect(0, 0, size, size);
+
+    const hexR = 26;
+    const hexW = hexR * Math.sqrt(3);
+    const hexH = hexR * 1.5;
+    hCtx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+    hCtx.lineWidth = 2.2;
+    for (let row = -1; row < size / hexH + 2; row++) {
+      for (let col = -1; col < size / hexW + 2; col++) {
+        const cx = col * hexW + (row % 2 === 0 ? 0 : hexW * 0.5);
+        const cy = row * hexH;
+        hCtx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const ang = (Math.PI / 3) * k - Math.PI / 6;
+          const vx = cx + Math.cos(ang) * (hexR - 2);
+          const vy = cy + Math.sin(ang) * (hexR - 2);
+          if (k === 0) hCtx.moveTo(vx, vy);
+          else hCtx.lineTo(vx, vy);
+        }
+        hCtx.closePath();
+        hCtx.stroke();
+      }
+    }
+
+    // Precision orbital emitter border & scan bands (white/silver luminance)
+    hCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    hCtx.lineWidth = 8;
+    hCtx.strokeRect(10, 10, size - 20, size - 20);
+    hCtx.strokeStyle = 'rgba(210, 240, 255, 0.55)';
+    hCtx.lineWidth = 2;
+    hCtx.strokeRect(24, 24, size - 48, size - 48);
+
+    const hexShield = new THREE.CanvasTexture(hexCanvas);
+    hexShield.colorSpace = THREE.SRGBColorSpace;
+    hexShield.wrapS = THREE.ClampToEdgeWrapping;
+    hexShield.wrapT = THREE.ClampToEdgeWrapping;
+
     return {
       armorWear,
       armorBump,
       armorRoughness,
       blastShield,
-      hexShield: blastShield,
+      hexShield,
       visorGrid,
       contactShadow,
     };
@@ -835,11 +1132,18 @@ class EnemyModelFactory {
     const rightArm = new THREE.Group();
     const leftLeg = new THREE.Group();
     const rightLeg = new THREE.Group();
+    const leftThigh = leftLeg;
+    const rightThigh = rightLeg;
     const weaponMuzzle = new THREE.Object3D();
     let leftWeaponMuzzle = null;
 
     const rotors = [];
     const coreRings = [];
+    const barrelSlides = [];
+    const heatVents = [];
+    const missilePods = [];
+    const wingShieldFins = [];
+    const stabilizers = [];
     let shieldMesh = null;
     let laserLine = null;
     let overloadRing = null;
@@ -848,26 +1152,79 @@ class EnemyModelFactory {
     const ownedMaterials = [...palette.flashMaterials];
     const ownedGeometries = [];
 
+    const rig = {
+      root,
+      bodyGroup,
+      pelvis: null,
+      headGroup,
+      headAnchor,
+      leftThigh,
+      leftShin: null,
+      leftFoot: null,
+      rightThigh,
+      rightShin: null,
+      rightFoot: null,
+      leftLeg,
+      rightLeg,
+      leftArm,
+      rightArm,
+      weaponSlide: null,
+      leftWeaponSlide: null,
+      barrelSlides,
+      shieldFrame: null,
+      weaponMuzzle,
+      leftWeaponMuzzle: null,
+      heatVents,
+      missilePods,
+      wingCoreL: null,
+      wingCoreR: null,
+      wingShieldFins,
+      coreShutter: null,
+      stabilizers,
+      shieldMesh: null,
+      rotors,
+      coreRings,
+      laserLine: null,
+      overloadRing: null,
+      healthBarFill: null,
+      healthBarBg: null,
+      flashMaterials: palette.flashMaterials,
+      dispose: null,
+    };
+
+    const buildCtx = (extras = null) => ({
+      p: palette,
+      ownedMaterials,
+      bodyGroup,
+      headGroup,
+      headAnchor,
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg,
+      leftThigh,
+      rightThigh,
+      weaponMuzzle,
+      leftWeaponMuzzle,
+      rotors,
+      coreRings,
+      barrelSlides,
+      heatVents,
+      missilePods,
+      wingShieldFins,
+      stabilizers,
+      shieldMesh,
+      rigRef: rig,
+      ...(extras || {}),
+    });
+
     root.add(bodyGroup);
 
     switch (archetype.id) {
       case 'rusher_drone':
-        this._buildWithAct1Glb(
+        this._buildWithGlb(
           'rusher_drone',
-          {
-            p: palette,
-            ownedMaterials,
-            bodyGroup,
-            headGroup,
-            headAnchor,
-            leftArm,
-            rightArm,
-            leftLeg,
-            rightLeg,
-            weaponMuzzle,
-            rotors,
-            coreRings,
-          },
+          buildCtx(),
           () =>
             this._buildRusherDrone(
               palette,
@@ -882,22 +1239,9 @@ class EnemyModelFactory {
         );
         break;
       case 'tactical_trooper':
-        this._buildWithAct1Glb(
+        this._buildWithGlb(
           'tactical_trooper',
-          {
-            p: palette,
-            ownedMaterials,
-            bodyGroup,
-            headGroup,
-            headAnchor,
-            leftArm,
-            rightArm,
-            leftLeg,
-            rightLeg,
-            weaponMuzzle,
-            rotors,
-            coreRings,
-          },
+          buildCtx(),
           () =>
             this._buildTacticalTrooper(
               palette,
@@ -914,23 +1258,9 @@ class EnemyModelFactory {
         break;
       case 'heavy_enforcer':
         shieldMesh = this._createHeavyBlastShieldMesh(ownedMaterials);
-        this._buildWithAct1Glb(
+        this._buildWithGlb(
           'heavy_enforcer',
-          {
-            p: palette,
-            ownedMaterials,
-            bodyGroup,
-            headGroup,
-            headAnchor,
-            leftArm,
-            rightArm,
-            leftLeg,
-            rightLeg,
-            weaponMuzzle,
-            rotors,
-            coreRings,
-            shieldMesh,
-          },
+          buildCtx({ shieldMesh }),
           () =>
             this._buildHeavyEnforcer(
               palette,
@@ -949,22 +1279,9 @@ class EnemyModelFactory {
         break;
       case 'sniper_stalker':
         laserLine = this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xe62020, 0xffb3a0);
-        this._buildWithAct1Glb(
+        this._buildWithGlb(
           'sniper_stalker',
-          {
-            p: palette,
-            ownedMaterials,
-            bodyGroup,
-            headGroup,
-            headAnchor,
-            leftArm,
-            rightArm,
-            leftLeg,
-            rightLeg,
-            weaponMuzzle,
-            rotors,
-            coreRings,
-          },
+          buildCtx(),
           () =>
             this._buildSniperStalker(
               palette,
@@ -985,24 +1302,9 @@ class EnemyModelFactory {
       case 'cyber_mech_boss': {
         shieldMesh = this._createBossPhaseShieldMesh(ownedMaterials, bodyGroup);
         leftWeaponMuzzle = new THREE.Object3D();
-        this._buildWithAct1Glb(
+        this._buildWithGlb(
           'cyber_mech_boss',
-          {
-            p: palette,
-            ownedMaterials,
-            bodyGroup,
-            headGroup,
-            headAnchor,
-            leftArm,
-            rightArm,
-            leftLeg,
-            rightLeg,
-            weaponMuzzle,
-            leftWeaponMuzzle,
-            rotors,
-            coreRings,
-            shieldMesh,
-          },
+          buildCtx({ leftWeaponMuzzle, shieldMesh }),
           () =>
             this._buildLegacyCyberMechBoss(
               palette,
@@ -1024,164 +1326,236 @@ class EnemyModelFactory {
         break;
       }
       case 'interceptor_drone':
-        leftWeaponMuzzle = this._buildInterceptorDrone(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          weaponMuzzle,
-          rotors
+        leftWeaponMuzzle = new THREE.Object3D();
+        this._buildWithGlb(
+          'interceptor_drone',
+          buildCtx({ leftWeaponMuzzle }),
+          () =>
+            this._buildInterceptorDrone(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              weaponMuzzle,
+              rotors,
+              leftWeaponMuzzle
+            )
         );
         break;
       case 'shock_breacher':
-        this._buildShockBreacher(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        this._buildWithGlb(
+          'shock_breacher',
+          buildCtx(),
+          () =>
+            this._buildShockBreacher(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle
+            )
         );
         break;
       case 'rail_warden':
-        shieldMesh = this._buildRailWarden(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        shieldMesh = this._createRailWardenShieldMesh(ownedMaterials);
+        laserLine = this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0x00f0ff, 0xe0ffff);
+        this._buildWithGlb(
+          'rail_warden',
+          buildCtx({ shieldMesh }),
+          () =>
+            this._buildRailWarden(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              shieldMesh
+            )
         );
         break;
       case 'mortar_artillery':
-        laserLine = this._buildMortarArtillery(
-          palette,
-          ownedMaterials,
-          ownedGeometries,
-          root,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        this._buildWithGlb(
+          'mortar_artillery',
+          buildCtx(),
+          () =>
+            this._buildMortarArtillery(
+              palette,
+              ownedMaterials,
+              ownedGeometries,
+              root,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              true
+            )
         );
         break;
       case 'vanguard_assassin':
-        leftWeaponMuzzle = this._buildVanguardAssassin(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        leftWeaponMuzzle = new THREE.Object3D();
+        this._buildWithGlb(
+          'vanguard_assassin',
+          buildCtx({ leftWeaponMuzzle }),
+          () =>
+            this._buildVanguardAssassin(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              leftWeaponMuzzle
+            )
         );
         break;
       case 'aegis_overlord_boss': {
-        const overlordExtras = this._buildAegisOverlordBoss(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle,
-          rotors,
-          coreRings
+        shieldMesh = this._createOverlordPhaseShieldMesh(ownedMaterials, bodyGroup);
+        leftWeaponMuzzle = new THREE.Object3D();
+        this._buildWithGlb(
+          'aegis_overlord_boss',
+          buildCtx({ leftWeaponMuzzle, shieldMesh }),
+          () =>
+            this._buildAegisOverlordBoss(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              rotors,
+              coreRings,
+              shieldMesh,
+              leftWeaponMuzzle,
+              rig
+            )
         );
-        shieldMesh = overlordExtras.shieldMesh;
-        leftWeaponMuzzle = overlordExtras.leftWeaponMuzzle;
         break;
       }
       case 'volatile_rusher':
-        overloadRing = this._buildVolatileRusher(
-          palette,
-          ownedMaterials,
-          root,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle,
-          coreRings
+        overloadRing = this._createVolatileOverloadRing(ownedMaterials, root);
+        this._buildWithGlb(
+          'volatile_rusher',
+          buildCtx(),
+          () =>
+            this._buildVolatileRusher(
+              palette,
+              ownedMaterials,
+              root,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              coreRings,
+              overloadRing
+            )
         );
         break;
       case 'void_warper':
-        this._buildVoidWarper(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        this._buildWithGlb(
+          'void_warper',
+          buildCtx(),
+          () =>
+            this._buildVoidWarper(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle
+            )
         );
         break;
       case 'void_swarmer':
-        this._buildVoidSwarmer(
-          palette,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          weaponMuzzle,
-          rotors
+        this._buildWithGlb(
+          'void_swarmer',
+          buildCtx(),
+          () =>
+            this._buildVoidSwarmer(
+              palette,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              weaponMuzzle,
+              rotors
+            )
         );
         break;
       case 'abyss_sentinel':
-        shieldMesh = this._buildAbyssSentinel(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle
+        shieldMesh = this._createAbyssSentinelShieldMesh(ownedMaterials);
+        this._buildWithGlb(
+          'abyss_sentinel',
+          buildCtx({ shieldMesh }),
+          () =>
+            this._buildAbyssSentinel(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              shieldMesh
+            )
         );
         break;
       case 'transcendent_omega_boss': {
-        const omegaExtras = this._buildTranscendentOmegaBoss(
-          palette,
-          ownedMaterials,
-          bodyGroup,
-          headGroup,
-          headAnchor,
-          leftArm,
-          rightArm,
-          leftLeg,
-          rightLeg,
-          weaponMuzzle,
-          rotors,
-          coreRings
+        shieldMesh = this._createOmegaTurretShieldMesh(ownedMaterials, bodyGroup);
+        leftWeaponMuzzle = new THREE.Object3D();
+        this._buildWithGlb(
+          'transcendent_omega_boss',
+          buildCtx({ leftWeaponMuzzle, shieldMesh }),
+          () =>
+            this._buildTranscendentOmegaBoss(
+              palette,
+              ownedMaterials,
+              bodyGroup,
+              headGroup,
+              headAnchor,
+              leftArm,
+              rightArm,
+              leftLeg,
+              rightLeg,
+              weaponMuzzle,
+              rotors,
+              coreRings,
+              shieldMesh,
+              leftWeaponMuzzle
+            )
         );
-        shieldMesh = omegaExtras.shieldMesh;
-        leftWeaponMuzzle = omegaExtras.leftWeaponMuzzle;
         break;
       }
       default:
@@ -1257,6 +1631,7 @@ class EnemyModelFactory {
     }
 
     const dispose = () => {
+      bodyGroup.userData.disposed = true;
       for (let i = 0; i < ownedMaterials.length; i++) {
         ownedMaterials[i].dispose();
       }
@@ -1265,27 +1640,17 @@ class EnemyModelFactory {
       }
     };
 
-    return {
-      root,
-      bodyGroup,
-      headGroup,
-      headAnchor,
-      leftArm,
-      rightArm,
-      leftLeg,
-      rightLeg,
-      weaponMuzzle,
-      leftWeaponMuzzle,
-      shieldMesh,
-      rotors,
-      coreRings,
-      laserLine,
-      overloadRing,
-      healthBarFill,
-      healthBarBg,
-      flashMaterials: palette.flashMaterials,
-      dispose,
-    };
+    if (leftWeaponMuzzle && !rig.leftWeaponMuzzle) {
+      rig.leftWeaponMuzzle = leftWeaponMuzzle;
+    }
+    rig.shieldMesh = shieldMesh;
+    rig.laserLine = laserLine;
+    rig.overloadRing = overloadRing;
+    rig.healthBarFill = healthBarFill;
+    rig.healthBarBg = healthBarBg;
+    rig.dispose = dispose;
+
+    return rig;
   }
 
   // ===========================================================================
@@ -3248,43 +3613,179 @@ class EnemyModelFactory {
     return laserLine;
   }
 
-  _createHeavyBlastShieldMesh(ownedMaterials) {
-    const isGlb = EnemyModelFactory._glbCache.has('heavy_enforcer');
-    const curvedShieldGeo = this._getGeo(isGlb ? 'bulwark_blast_shield_compact' : 'bulwark_blast_shield', () => {
-      if (isGlb) {
-        const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
-        geo.translate(0, -0.02, -0.80);
-        return geo;
-      }
-      const geo = new THREE.CylinderGeometry(1.15, 1.15, 1.24, 18, 1, true, -0.44, 0.88);
-      geo.translate(0, 0, -1.06);
-      return geo;
-    });
-
+  _createEnergyShieldMesh(
+    ownedMaterials,
+    { geoKey, geoFn, color, emissive, emissiveIntensity = 1.65, opacity = 0.85, baseOpacity, renderOrder = 6, parent = null, position = null, mapKey = 'blastShield' }
+  ) {
+    const shieldGeo = this._getGeo(geoKey, geoFn);
+    const shieldTex = this._textures[mapKey] || this._textures.blastShield;
     const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0xff5a1f,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0xd9300e),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 1.55,
+      color,
+      map: shieldTex,
+      emissive: new THREE.Color(emissive),
+      emissiveMap: shieldTex,
+      emissiveIntensity,
       transparent: true,
-      opacity: 0.88,
-      roughness: 0.38,
-      metalness: 0.55,
+      opacity,
+      roughness: 0.36,
+      metalness: 0.52,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
     shieldMat.userData.baseColor = shieldMat.color.clone();
     shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
     shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
-    shieldMat.userData.baseOpacity = 0.88;
+    shieldMat.userData.baseOpacity = baseOpacity !== undefined ? baseOpacity : opacity;
     ownedMaterials.push(shieldMat);
 
-    const shieldMesh = new THREE.Mesh(curvedShieldGeo, shieldMat);
+    const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
     shieldMesh.castShadow = false;
     shieldMesh.receiveShadow = false;
-    shieldMesh.renderOrder = 6;
+    shieldMesh.renderOrder = renderOrder;
+    if (position) shieldMesh.position.set(position[0], position[1], position[2]);
+    if (opacity === 0.0) shieldMesh.visible = false;
+    if (parent) parent.add(shieldMesh);
     return shieldMesh;
+  }
+
+  _createHeavyBlastShieldMesh(ownedMaterials) {
+    const isGlb = EnemyModelFactory._glbCache.has('heavy_enforcer');
+    return this._createEnergyShieldMesh(ownedMaterials, {
+      geoKey: isGlb ? 'bulwark_blast_shield_compact' : 'bulwark_blast_shield',
+      geoFn: () => {
+        if (isGlb) {
+          const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
+          geo.translate(0, -0.02, -0.80);
+          return geo;
+        }
+        const geo = new THREE.CylinderGeometry(1.15, 1.15, 1.24, 18, 1, true, -0.44, 0.88);
+        geo.translate(0, 0, -1.06);
+        return geo;
+      },
+      color: 0xff5a1f,
+      emissive: 0xd9300e,
+      emissiveIntensity: 1.55,
+      opacity: 0.88,
+      baseOpacity: 0.88,
+      renderOrder: 6,
+    });
+  }
+
+  _createRailWardenShieldMesh(ownedMaterials) {
+    return this._createEnergyShieldMesh(ownedMaterials, {
+      geoKey: 'warden_blast_shield',
+      geoFn: () => {
+        const geo = new THREE.CylinderGeometry(1.18, 1.18, 1.42, 18, 1, true, -0.44, 0.88);
+        geo.translate(0, 0, -1.08);
+        return geo;
+      },
+      color: 0x22d3ee,
+      emissive: 0x00e5ff,
+      emissiveIntensity: 1.95,
+      opacity: 0.78,
+      baseOpacity: 0.78,
+      renderOrder: 6,
+      mapKey: 'hexShield',
+    });
+  }
+
+  _createAbyssSentinelShieldMesh(ownedMaterials) {
+    return this._createEnergyShieldMesh(ownedMaterials, {
+      geoKey: 'sentinel_shield',
+      geoFn: () => new THREE.BoxGeometry(0.92, 1.48, 0.09),
+      color: 0x38bdf8,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 1.65,
+      opacity: 0.76,
+      baseOpacity: 0.76,
+      renderOrder: 6,
+      mapKey: 'hexShield',
+    });
+  }
+
+  _createOverlordPhaseShieldMesh(ownedMaterials, bodyGroup) {
+    return this._createEnergyShieldMesh(ownedMaterials, {
+      geoKey: 'overlord_phase_shield_v2',
+      geoFn: () => new THREE.CylinderGeometry(1.62, 1.72, 2.25, 24, 1, true),
+      color: 0x22d3ee,
+      emissive: 0x00d8ff,
+      emissiveIntensity: 2.15,
+      opacity: 0.0,
+      baseOpacity: 0.70,
+      renderOrder: 7,
+      parent: bodyGroup,
+      position: [0, 2.04, 0.04],
+      mapKey: 'hexShield',
+    });
+  }
+
+  _createOmegaTurretShieldMesh(ownedMaterials, bodyGroup) {
+    return this._createEnergyShieldMesh(ownedMaterials, {
+      geoKey: 'omega_turret_shield',
+      geoFn: () => new THREE.CylinderGeometry(2.12, 2.2, 3.1, 24, 1, true),
+      color: 0xa855f7,
+      emissive: 0x7c3aed,
+      emissiveIntensity: 2.1,
+      opacity: 0.0,
+      baseOpacity: 0.62,
+      renderOrder: 7,
+      parent: bodyGroup,
+      position: [0, 2.55, 0.04],
+      mapKey: 'hexShield',
+    });
+  }
+
+  _createVolatileOverloadRing(ownedMaterials, root) {
+    const ringGeo = this._getGeo('vol_overload_ring', () => {
+      const g = new THREE.RingGeometry(0.84, 1.0, 36);
+      g.rotateX(-Math.PI * 0.5);
+      return g;
+    });
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff2a6d,
+      transparent: true,
+      opacity: 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    ownedMaterials.push(ringMat);
+    const overloadRing = new THREE.Mesh(ringGeo, ringMat);
+    overloadRing.position.set(0, 0.08, 0);
+    overloadRing.visible = false;
+    overloadRing.renderOrder = 8;
+    root.add(overloadRing);
+    return overloadRing;
+  }
+
+  _findGlbPivot(rootObj, names) {
+    if (!rootObj) return null;
+    for (let i = 0; i < names.length; i++) {
+      const hit = rootObj.getObjectByName(names[i]);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  _collectGlbPivots(rootObj, exactNames, pattern, outArr) {
+    if (!rootObj || !outArr) return outArr;
+    const seen = new Set(outArr);
+    for (let i = 0; i < exactNames.length; i++) {
+      const hit = rootObj.getObjectByName(exactNames[i]);
+      if (hit && !seen.has(hit)) {
+        seen.add(hit);
+        outArr.push(hit);
+      }
+    }
+    if (pattern) {
+      rootObj.traverse((node) => {
+        if (node.name && pattern.test(node.name) && !seen.has(node)) {
+          seen.add(node);
+          outArr.push(node);
+        }
+      });
+    }
+    return outArr;
   }
 
   _mountGlbRig(archetypeId, templateScene, ctx) {
@@ -3298,43 +3799,112 @@ class EnemyModelFactory {
       rightArm,
       leftLeg,
       rightLeg,
+      leftThigh = leftLeg,
+      rightThigh = rightLeg,
       weaponMuzzle,
       leftWeaponMuzzle,
       rotors,
       coreRings,
+      barrelSlides,
+      heatVents,
+      missilePods,
+      wingShieldFins,
+      stabilizers,
       shieldMesh,
+      rigRef,
     } = ctx;
 
     const gltfRoot = templateScene.clone(true);
     const clonedMatMap = new Map();
+    const detailMaps = EnemyModelFactory._getSharedMechanicalDetailMaps();
+    // Replace unused procedural fallback palette entries in flashMaterials with the mounted GLB materials
+    p.flashMaterials.length = 0;
+
+    const cloneAndEnhanceMaterial = (srcMat, hasUv) => {
+      if (!srcMat) return srcMat;
+      const cacheKey = `${srcMat.uuid}:${hasUv ? 1 : 0}`;
+      let cloned = clonedMatMap.get(cacheKey);
+      if (!cloned) {
+        cloned = srcMat.clone();
+
+        const matName = (cloned.name || '').toLowerCase();
+        const emissiveSum = cloned.emissive
+          ? (cloned.emissive.r + cloned.emissive.g + cloned.emissive.b) *
+            (cloned.emissiveIntensity ?? 1)
+          : 0;
+        const isEmissiveMat =
+          Boolean(cloned.emissiveMap) ||
+          emissiveSum > 0.08 ||
+          /(optic|glow|core|visor|emissive|flame|plasma|laser|holo|energy|shield)/i.test(matName);
+
+        if (!cloned.emissive) cloned.emissive = new THREE.Color(0x000000);
+        if (cloned.emissiveIntensity === undefined || cloned.emissiveIntensity === null) {
+          cloned.emissiveIntensity = 0;
+        }
+        cloned.userData.baseColor = cloned.color ? cloned.color.clone() : new THREE.Color(0xffffff);
+        cloned.userData.baseEmissive = cloned.emissive.clone();
+        cloned.userData.baseEmissiveIntensity = cloned.emissiveIntensity;
+
+        const colorLuma = cloned.color
+          ? cloned.color.r * 0.299 + cloned.color.g * 0.587 + cloned.color.b * 0.114
+          : 1.0;
+        const isArmorOrMetal =
+          Boolean(cloned.isMeshStandardMaterial) &&
+          !isEmissiveMat &&
+          !cloned.transparent &&
+          ((cloned.metalness !== undefined && cloned.metalness >= 0.15) ||
+            colorLuma < 0.58 ||
+            /(armor|metal|steel|frame|chassis|plate|titan|iron|brass|dark|obsidian|gun|barrel|hull|shell|carapace)/i.test(
+              matName
+            ));
+
+        if (hasUv && isArmorOrMetal && detailMaps) {
+          let modified = false;
+          if (!cloned.normalMap && detailMaps.normalMap) {
+            cloned.normalMap = detailMaps.normalMap;
+            if (cloned.normalScale) {
+              cloned.normalScale.set(0.55, 0.55);
+            } else {
+              cloned.normalScale = new THREE.Vector2(0.55, 0.55);
+            }
+            modified = true;
+          }
+          if (!cloned.roughnessMap && detailMaps.roughnessMap) {
+            cloned.roughnessMap = detailMaps.roughnessMap;
+            modified = true;
+          }
+          if (modified) {
+            cloned.needsUpdate = true;
+          }
+        }
+
+        clonedMatMap.set(cacheKey, cloned);
+        ownedMaterials.push(cloned);
+        if (!/wingcore/i.test(matName)) {
+          p.flashMaterials.push(cloned);
+        }
+      }
+      return cloned;
+    };
 
     gltfRoot.traverse((obj) => {
       if (!obj.isMesh) return;
-      const srcMat = obj.material;
-      if (srcMat && !Array.isArray(srcMat)) {
-        let cloned = clonedMatMap.get(srcMat);
-        if (!cloned) {
-          cloned = srcMat.clone();
-          if (!cloned.emissive) cloned.emissive = new THREE.Color(0x000000);
-          if (cloned.emissiveIntensity === undefined || cloned.emissiveIntensity === null) {
-            cloned.emissiveIntensity = 0;
-          }
-          cloned.userData.baseEmissive = cloned.emissive.clone();
-          cloned.userData.baseEmissiveIntensity = cloned.emissiveIntensity;
-          clonedMatMap.set(srcMat, cloned);
-          ownedMaterials.push(cloned);
-          p.flashMaterials.push(cloned);
-        }
-        obj.material = cloned;
+      const hasUv = Boolean(obj.geometry && obj.geometry.attributes && obj.geometry.attributes.uv);
+      if (Array.isArray(obj.material)) {
+        obj.material = obj.material.map((m) => cloneAndEnhanceMaterial(m, hasUv));
+      } else if (obj.material) {
+        obj.material = cloneAndEnhanceMaterial(obj.material, hasUv);
       }
-      obj.castShadow = true;
-      obj.receiveShadow = true;
+      const firstMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      const isTransparent = Boolean(firstMat && firstMat.transparent);
+      obj.castShadow = !isTransparent;
+      obj.receiveShadow = !isTransparent;
     });
 
-    const glbBody = gltfRoot.getObjectByName('BodyGroup') || gltfRoot;
-    const transferNamedPivot = (glbName, targetGroup) => {
+    const glbBody = this._findGlbPivot(gltfRoot, ['BodyGroup', 'bodyGroup']) || gltfRoot;
+    const transferNamedPivot = (candidateNames, targetGroup) => {
       if (!targetGroup) return null;
-      const node = glbBody.getObjectByName(glbName);
+      const node = this._findGlbPivot(glbBody, candidateNames);
       if (!node) return null;
       targetGroup.position.copy(node.position);
       targetGroup.rotation.copy(node.rotation);
@@ -3342,53 +3912,323 @@ class EnemyModelFactory {
       while (node.children.length > 0) {
         targetGroup.add(node.children[0]);
       }
-      if (node.parent) node.parent.remove(node);
-      if (targetGroup.parent !== bodyGroup) bodyGroup.add(targetGroup);
+      const origParent = node.parent;
+      if (origParent) origParent.remove(node);
+      if (origParent && origParent !== glbBody && origParent !== gltfRoot) {
+        origParent.add(targetGroup);
+      } else if (targetGroup.parent !== bodyGroup) {
+        bodyGroup.add(targetGroup);
+      }
       return targetGroup;
     };
 
-    transferNamedPivot('HeadGroup', headGroup);
-    const glbHeadAnchor = headGroup.getObjectByName('HeadAnchor');
+    transferNamedPivot(['HeadGroup', 'headGroup'], headGroup);
+    const glbHeadAnchor =
+      this._findGlbPivot(headGroup, ['HeadAnchor', 'headAnchor']) ||
+      this._findGlbPivot(glbBody, ['HeadAnchor', 'headAnchor']);
     if (glbHeadAnchor) {
       headAnchor.position.copy(glbHeadAnchor.position);
-      if (glbHeadAnchor.parent) glbHeadAnchor.parent.remove(glbHeadAnchor);
+      const anchorParent = glbHeadAnchor.parent;
+      if (anchorParent) anchorParent.remove(glbHeadAnchor);
+      if (anchorParent && anchorParent !== glbBody && anchorParent !== gltfRoot) {
+        anchorParent.add(headAnchor);
+      } else if (headAnchor.parent !== headGroup) {
+        headGroup.add(headAnchor);
+      }
     } else {
       headAnchor.position.set(0, 0.04, 0.06);
+      if (headAnchor.parent !== headGroup) headGroup.add(headAnchor);
     }
-    if (headAnchor.parent !== headGroup) headGroup.add(headAnchor);
 
-    transferNamedPivot('LeftLeg', leftLeg);
-    transferNamedPivot('RightLeg', rightLeg);
-    transferNamedPivot('LeftArm', leftArm);
-    transferNamedPivot('RightArm', rightArm);
+    transferNamedPivot(['LeftThigh', 'LeftLeg', 'leftThigh', 'leftLeg'], leftThigh);
+    transferNamedPivot(['RightThigh', 'RightLeg', 'rightThigh', 'rightLeg'], rightThigh);
+    transferNamedPivot(['LeftArm', 'leftArm'], leftArm);
+    transferNamedPivot(['RightArm', 'rightArm'], rightArm);
 
     if (archetypeId === 'rusher_drone') {
       bodyGroup.position.set(0, 0.55, 0);
+    } else if (archetypeId === 'interceptor_drone') {
+      bodyGroup.position.set(0, 0.62, 0);
+    } else if (archetypeId === 'void_swarmer') {
+      bodyGroup.position.set(0, 0.56, 0);
     }
 
-    const glbMuzzleR = rightArm.getObjectByName('WeaponMuzzleR') || rightArm.getObjectByName('WeaponMuzzle');
+    bodyGroup.add(glbBody);
+
+    const glbMuzzleR =
+      this._findGlbPivot(rightArm, ['WeaponMuzzleR', 'WeaponMuzzle_R', 'WeaponMuzzle']) ||
+      this._findGlbPivot(bodyGroup, ['WeaponMuzzleR', 'WeaponMuzzle_R', 'WeaponMuzzle']);
     if (glbMuzzleR) {
       weaponMuzzle.position.copy(glbMuzzleR.position);
+      weaponMuzzle.rotation.copy(glbMuzzleR.rotation);
+      const muzzleParent = glbMuzzleR.parent || rightArm;
       if (glbMuzzleR.parent) glbMuzzleR.parent.remove(glbMuzzleR);
+      muzzleParent.add(weaponMuzzle);
+    } else if (weaponMuzzle.parent !== rightArm) {
+      rightArm.add(weaponMuzzle);
     }
-    if (weaponMuzzle.parent !== rightArm) rightArm.add(weaponMuzzle);
 
-    if (leftWeaponMuzzle) {
-      const glbMuzzleL = leftArm.getObjectByName('WeaponMuzzleL');
+    const glbMuzzleL =
+      this._findGlbPivot(leftArm, ['WeaponMuzzleL', 'WeaponMuzzle_L', 'LeftWeaponMuzzle']) ||
+      this._findGlbPivot(bodyGroup, ['WeaponMuzzleL', 'WeaponMuzzle_L', 'LeftWeaponMuzzle']);
+    const resolvedLeftMuzzle = leftWeaponMuzzle || (glbMuzzleL ? new THREE.Object3D() : null);
+    if (resolvedLeftMuzzle) {
       if (glbMuzzleL) {
-        leftWeaponMuzzle.position.copy(glbMuzzleL.position);
+        resolvedLeftMuzzle.position.copy(glbMuzzleL.position);
+        resolvedLeftMuzzle.rotation.copy(glbMuzzleL.rotation);
+        const muzzleLParent = glbMuzzleL.parent || leftArm;
         if (glbMuzzleL.parent) glbMuzzleL.parent.remove(glbMuzzleL);
+        muzzleLParent.add(resolvedLeftMuzzle);
+      } else if (resolvedLeftMuzzle.parent !== leftArm) {
+        leftArm.add(resolvedLeftMuzzle);
       }
-      if (leftWeaponMuzzle.parent !== leftArm) leftArm.add(leftWeaponMuzzle);
     }
 
-    if (archetypeId === 'heavy_enforcer' && shieldMesh) {
-      shieldMesh.geometry = this._getGeo('bulwark_blast_shield_compact', () => {
-        const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
-        geo.translate(0, -0.02, -0.80);
-        return geo;
+    if (archetypeId === 'mortar_artillery' && rightArm && rightArm.children.length > 0) {
+      // Mortar GLB WeaponSlide is modeled at ~-0.665 rad (-38.1 deg) rest elevation inside RightArm,
+      // while EnemyAI drives rightArm.rotation.x to -0.26 (idle) / -0.64 (telegraph).
+      // Compensate +0.26 rad so idle aligns to the sculpted GLB pose and telegraph elevates cleanly.
+      const pitchAlign = new THREE.Group();
+      pitchAlign.name = 'MortarPitchAlign';
+      pitchAlign.rotation.x = 0.26;
+      while (rightArm.children.length > 0) {
+        pitchAlign.add(rightArm.children[0]);
+      }
+      rightArm.add(pitchAlign);
+    }
+
+    // Recursively bind standardized articulation & gimmick pivots across the mounted rig
+    const pelvis = this._findGlbPivot(bodyGroup, ['Pelvis', 'pelvis', 'PelvisGroup']);
+    const leftShin =
+      this._findGlbPivot(leftThigh, ['LeftShin', 'LeftKnee', 'Shin_L']) ||
+      this._findGlbPivot(bodyGroup, ['LeftShin', 'Shin_L']);
+    const leftFoot =
+      this._findGlbPivot(leftThigh, ['LeftFoot', 'Foot_L']) ||
+      this._findGlbPivot(bodyGroup, ['LeftFoot', 'Foot_L']);
+    const rightShin =
+      this._findGlbPivot(rightThigh, ['RightShin', 'RightKnee', 'Shin_R']) ||
+      this._findGlbPivot(bodyGroup, ['RightShin', 'Shin_R']);
+    const rightFoot =
+      this._findGlbPivot(rightThigh, ['RightFoot', 'Foot_R']) ||
+      this._findGlbPivot(bodyGroup, ['RightFoot', 'Foot_R']);
+
+    const weaponSlide =
+      this._findGlbPivot(rightArm, [
+        'WeaponSlide',
+        'WeaponSlide_R',
+        'WeaponSlideR',
+        'RightWeaponSlide',
+        'CannonSlide_R',
+        'CannonSlideR',
+      ]) ||
+      this._findGlbPivot(bodyGroup, [
+        'WeaponSlide',
+        'WeaponSlide_R',
+        'WeaponSlideR',
+        'RightWeaponSlide',
+        'CannonSlide_R',
+        'CannonSlideR',
+      ]);
+    const leftWeaponSlide =
+      this._findGlbPivot(leftArm, [
+        'LeftWeaponSlide',
+        'WeaponSlide_L',
+        'WeaponSlideL',
+        'CannonSlide_L',
+        'CannonSlideL',
+      ]) ||
+      this._findGlbPivot(bodyGroup, [
+        'LeftWeaponSlide',
+        'WeaponSlide_L',
+        'WeaponSlideL',
+        'CannonSlide_L',
+        'CannonSlideL',
+      ]);
+    const shieldFrame =
+      this._findGlbPivot(leftArm, ['ShieldFrame', 'Shield_Frame']) ||
+      this._findGlbPivot(bodyGroup, ['ShieldFrame', 'Shield_Frame']);
+
+    const wingCoreL = this._findGlbPivot(bodyGroup, ['WingCoreL', 'WingCore_L', 'WingCore_1']);
+    const wingCoreR = this._findGlbPivot(bodyGroup, ['WingCoreR', 'WingCore_R', 'WingCore_-1']);
+    const tagGlbWingCore = (wc, side) => {
+      if (!wc) return;
+      wc.scale.setScalar(1);
+      let coreMesh = null;
+      let haloMesh = null;
+      wc.traverse((node) => {
+        if (!node.isMesh || !node.material || Array.isArray(node.material)) return;
+        const nodeName = (node.name || '').toLowerCase();
+        const matName = (node.material.name || '').toLowerCase();
+        if (!haloMesh && /halo/i.test(nodeName)) {
+          haloMesh = node;
+        }
+        if (/_core\b|wingcore.*core/i.test(nodeName) || /wingcore/i.test(matName)) {
+          coreMesh = node;
+        } else if (
+          !coreMesh &&
+          node.material.userData &&
+          (node.material.userData.baseEmissiveIntensity || 0) > 0.05
+        ) {
+          coreMesh = node;
+        }
       });
-      const shieldFrame = leftArm.getObjectByName('ShieldFrame') || bodyGroup.getObjectByName('ShieldFrame');
+      if (!coreMesh) {
+        wc.traverse((node) => {
+          if (!coreMesh && node.isMesh && node.material && !Array.isArray(node.material)) {
+            coreMesh = node;
+          }
+        });
+      }
+      if (coreMesh) {
+        let coreMat = coreMesh.material;
+        let sharedOutside = false;
+        bodyGroup.traverse((node) => {
+          if (sharedOutside || !node.isMesh || node.material !== coreMat) return;
+          let cur = node;
+          let insideCore = false;
+          while (cur) {
+            if (cur === wc) {
+              insideCore = true;
+              break;
+            }
+            cur = cur.parent;
+          }
+          if (!insideCore) sharedOutside = true;
+        });
+        if (sharedOutside) {
+          coreMat = coreMat.clone();
+          coreMat.userData.baseColor = coreMat.color ? coreMat.color.clone() : new THREE.Color(0xffffff);
+          coreMat.userData.baseEmissive = coreMat.emissive ? coreMat.emissive.clone() : new THREE.Color(0x000000);
+          coreMat.userData.baseEmissiveIntensity = coreMat.emissiveIntensity ?? 0;
+          coreMesh.material = coreMat;
+          ownedMaterials.push(coreMat);
+        } else {
+          if (!coreMat.userData.baseColor && coreMat.color) {
+            coreMat.userData.baseColor = coreMat.color.clone();
+          }
+          const flashIdx = p.flashMaterials.indexOf(coreMat);
+          if (flashIdx !== -1) p.flashMaterials.splice(flashIdx, 1);
+        }
+        wc.userData.coreMaterial = coreMat;
+        wc.userData.coreMesh = coreMesh;
+      }
+      if (haloMesh) {
+        wc.userData.haloMesh = haloMesh;
+        if (haloMesh.material && !Array.isArray(haloMesh.material)) {
+          wc.userData.haloMaterial = haloMesh.material;
+          const flashIdx = p.flashMaterials.indexOf(haloMesh.material);
+          if (flashIdx !== -1) p.flashMaterials.splice(flashIdx, 1);
+        }
+      } else if (archetypeId === 'aegis_overlord_boss') {
+        const glbHaloGeo = this._getGeo(
+          'overlord_wing_core_glb_halo',
+          () => new THREE.TorusGeometry(0.57, 0.028, 8, 24)
+        );
+        const haloMat = new THREE.MeshStandardMaterial({
+          color: 0xfbbf24,
+          emissive: new THREE.Color(0xf59e0b),
+          emissiveIntensity: 2.8,
+          roughness: 0.2,
+          metalness: 0.3,
+          fog: false,
+        });
+        haloMat.userData.baseColor = haloMat.color.clone();
+        haloMat.userData.baseEmissive = haloMat.emissive.clone();
+        haloMat.userData.baseEmissiveIntensity = haloMat.emissiveIntensity;
+        ownedMaterials.push(haloMat);
+
+        const createdHalo = new THREE.Mesh(glbHaloGeo, haloMat);
+        createdHalo.rotation.y = side * 0.12;
+        wc.add(createdHalo);
+        wc.userData.haloMesh = createdHalo;
+        wc.userData.haloMaterial = haloMat;
+      }
+    };
+    tagGlbWingCore(wingCoreL, 1);
+    tagGlbWingCore(wingCoreR, -1);
+    const coreShutter = this._findGlbPivot(bodyGroup, ['CoreShutter', 'Core_Shutter']);
+
+    if (barrelSlides) {
+      this._collectGlbPivots(
+        bodyGroup,
+        ['BarrelSlide_L', 'BarrelSlide_R', 'BarrelSlideL', 'BarrelSlideR'],
+        /^BarrelSlide(_[-\w]+)?$/i,
+        barrelSlides
+      );
+    }
+    if (heatVents) {
+      this._collectGlbPivots(
+        bodyGroup,
+        ['HeatVent_L', 'HeatVent_R', 'HeatVent_1', 'HeatVent_-1'],
+        /^HeatVent(_[-\w]+)?$/i,
+        heatVents
+      );
+    }
+    if (missilePods) {
+      this._collectGlbPivots(
+        bodyGroup,
+        [
+          'Shoulder_MissileCitadel_L',
+          'Shoulder_MissileCitadel_R',
+          'Shoulder_MissileCitadel_1',
+          'Shoulder_MissileCitadel_-1',
+          'MissilePod_L',
+          'MissilePod_R',
+        ],
+        /^(Shoulder_MissileCitadel|MissilePod)(_[-\w]+)?$/i,
+        missilePods
+      );
+    }
+    if (wingShieldFins) {
+      this._collectGlbPivots(
+        bodyGroup,
+        ['WingShieldFin_L', 'WingShieldFin_R', 'WingShieldFin_1', 'WingShieldFin_-1'],
+        /^WingShieldFin(_[-\w]+)?$/i,
+        wingShieldFins
+      );
+    }
+    if (stabilizers) {
+      this._collectGlbPivots(
+        bodyGroup,
+        ['Stabilizer_L', 'Stabilizer_R', 'Stabilizer_1', 'Stabilizer_-1'],
+        /^Stabilizer(_[-\w]+)?$/i,
+        stabilizers
+      );
+    }
+
+    this._collectGlbPivots(
+      bodyGroup,
+      ['LeftRotor', 'RightRotor', 'Rotor_L', 'Rotor_R', 'Rotor_0', 'Rotor_1', 'Rotor_2', 'Rotor_3'],
+      /^(Rotor_\d+|WingRotor(_[-\w]+)?)$/i,
+      rotors
+    );
+
+    const foundRings = [];
+    this._collectGlbPivots(
+      bodyGroup,
+      ['OrbitRing_0', 'OrbitRing_1', 'OrbitRing_2', 'OrbitRing_3', 'CoreRing_0', 'CoreRing_1', 'CoreRing_2', 'CoreRing_3'],
+      /^(OrbitRing|CoreRing)_\d+$/i,
+      foundRings
+    );
+    for (let r = 0; r < foundRings.length; r++) {
+      const ring = foundRings[r];
+      ring.userData.baseRotation = ring.rotation.clone();
+      coreRings.push(ring);
+    }
+
+    if (
+      shieldMesh &&
+      (archetypeId === 'heavy_enforcer' ||
+        archetypeId === 'rail_warden' ||
+        archetypeId === 'abyss_sentinel')
+    ) {
+      if (archetypeId === 'heavy_enforcer') {
+        shieldMesh.geometry = this._getGeo('bulwark_blast_shield_compact', () => {
+          const geo = new THREE.CylinderGeometry(0.86, 0.86, 0.70, 16, 1, true, -0.34, 0.68);
+          geo.translate(0, -0.02, -0.80);
+          return geo;
+        });
+      }
       if (shieldFrame) {
         shieldMesh.position.set(0, 0, 0.02);
         shieldMesh.rotation.set(0, 0, 0);
@@ -3400,28 +4240,29 @@ class EnemyModelFactory {
       }
     }
 
-    const rotorNames = ['LeftRotor', 'RightRotor', 'Rotor_0', 'Rotor_1', 'Rotor_2', 'Rotor_3'];
-    for (let i = 0; i < rotorNames.length; i++) {
-      const rotNode =
-        glbBody.getObjectByName(rotorNames[i]) ||
-        leftArm.getObjectByName(rotorNames[i]) ||
-        rightArm.getObjectByName(rotorNames[i]);
-      if (rotNode) rotors.push(rotNode);
+    if (rigRef) {
+      rigRef.pelvis = pelvis;
+      rigRef.leftThigh = leftThigh;
+      rigRef.leftLeg = leftThigh;
+      rigRef.leftShin = leftShin;
+      rigRef.leftFoot = leftFoot;
+      rigRef.rightThigh = rightThigh;
+      rigRef.rightLeg = rightThigh;
+      rigRef.rightShin = rightShin;
+      rigRef.rightFoot = rightFoot;
+      rigRef.weaponSlide = weaponSlide;
+      rigRef.leftWeaponSlide = leftWeaponSlide;
+      rigRef.shieldFrame = shieldFrame;
+      rigRef.wingCoreL = wingCoreL;
+      rigRef.wingCoreR = wingCoreR;
+      rigRef.coreShutter = coreShutter;
+      if (resolvedLeftMuzzle) rigRef.leftWeaponMuzzle = resolvedLeftMuzzle;
     }
 
-    for (let r = 0; r < 3; r++) {
-      const ring = glbBody.getObjectByName(`OrbitRing_${r}`);
-      if (ring) {
-        ring.userData.baseRotation = ring.rotation.clone();
-        coreRings.push(ring);
-      }
-    }
-
-    bodyGroup.add(glbBody);
     bodyGroup.userData.glbMounted = true;
   }
 
-  _buildWithAct1Glb(archetypeId, ctx, buildLegacyFn) {
+  _buildWithGlb(archetypeId, ctx, buildLegacyFn) {
     const cachedScene = EnemyModelFactory._glbCache.get(archetypeId);
     if (cachedScene) {
       this._mountGlbRig(archetypeId, cachedScene, ctx);
@@ -3430,8 +4271,32 @@ class EnemyModelFactory {
 
     buildLegacyFn();
 
-    if (typeof document !== 'undefined' && globalThis.GLTFLoader) {
-      const { bodyGroup, headGroup, headAnchor, leftArm, rightArm, leftLeg, rightLeg, weaponMuzzle, leftWeaponMuzzle, shieldMesh, rotors, coreRings } = ctx;
+    if (
+      typeof document !== 'undefined' &&
+      globalThis.GLTFLoader &&
+      GLB_MODEL_REGISTRY[archetypeId] &&
+      !EnemyModelFactory._glbMissing.has(archetypeId)
+    ) {
+      const {
+        bodyGroup,
+        headGroup,
+        headAnchor,
+        leftArm,
+        rightArm,
+        leftLeg,
+        rightLeg,
+        weaponMuzzle,
+        leftWeaponMuzzle,
+        shieldMesh,
+        rotors,
+        coreRings,
+        barrelSlides,
+        heatVents,
+        missilePods,
+        wingShieldFins,
+        stabilizers,
+        rigRef,
+      } = ctx;
       const groupsToPurge = [headGroup, leftArm, rightArm, leftLeg, rightLeg].filter(Boolean);
       const keepSet = new Set(
         [shieldMesh, headGroup, headAnchor, leftArm, rightArm, leftLeg, rightLeg, weaponMuzzle, leftWeaponMuzzle].filter(Boolean)
@@ -3440,9 +4305,15 @@ class EnemyModelFactory {
 
       this.preloadModels().then(() => {
         const sceneTpl = EnemyModelFactory._glbCache.get(archetypeId);
-        if (!sceneTpl || bodyGroup.userData.glbMounted) return;
+        if (!sceneTpl || bodyGroup.userData.glbMounted || bodyGroup.userData.disposed) return;
         if (shieldMesh && shieldMesh.parent && shieldMesh.parent !== bodyGroup) {
           shieldMesh.parent.remove(shieldMesh);
+        }
+        if (weaponMuzzle && weaponMuzzle.parent && weaponMuzzle.parent !== rightArm) {
+          weaponMuzzle.parent.remove(weaponMuzzle);
+        }
+        if (leftWeaponMuzzle && leftWeaponMuzzle.parent && leftWeaponMuzzle.parent !== leftArm) {
+          leftWeaponMuzzle.parent.remove(leftWeaponMuzzle);
         }
         for (let i = 0; i < fallbackBodyNodes.length; i++) {
           bodyGroup.remove(fallbackBodyNodes[i]);
@@ -3451,13 +4322,37 @@ class EnemyModelFactory {
           const grp = groupsToPurge[i];
           const toRemove = grp.children.filter((c) => !keepSet.has(c));
           for (let j = 0; j < toRemove.length; j++) grp.remove(toRemove[j]);
+          grp.position.set(0, 0, 0);
           grp.rotation.set(0, 0, 0);
+          grp.scale.set(1, 1, 1);
         }
         rotors.length = 0;
         coreRings.length = 0;
+        if (barrelSlides) barrelSlides.length = 0;
+        if (heatVents) heatVents.length = 0;
+        if (missilePods) missilePods.length = 0;
+        if (wingShieldFins) wingShieldFins.length = 0;
+        if (stabilizers) stabilizers.length = 0;
+        if (rigRef) {
+          rigRef.pelvis = null;
+          rigRef.leftShin = null;
+          rigRef.leftFoot = null;
+          rigRef.rightShin = null;
+          rigRef.rightFoot = null;
+          rigRef.weaponSlide = null;
+          rigRef.leftWeaponSlide = null;
+          rigRef.shieldFrame = null;
+          rigRef.wingCoreL = null;
+          rigRef.wingCoreR = null;
+          rigRef.coreShutter = null;
+        }
         this._mountGlbRig(archetypeId, sceneTpl, ctx);
       });
     }
+  }
+
+  _buildWithAct1Glb(archetypeId, ctx, buildLegacyFn) {
+    this._buildWithGlb(archetypeId, ctx, buildLegacyFn);
   }
 
   // ===========================================================================
@@ -4250,7 +5145,8 @@ class EnemyModelFactory {
     leftArm,
     rightArm,
     weaponMuzzle,
-    rotors
+    rotors,
+    sharedLeftMuzzle = null
   ) {
     bodyGroup.position.set(0, 0.62, 0);
 
@@ -4425,7 +5321,7 @@ class EnemyModelFactory {
     // Twin Wingtip Repeater Pods (rightArm -> weaponMuzzle, leftArm -> leftWeaponMuzzle)
     const podHousingGeo = this._getGeo('interceptor_pod_box', () => new THREE.BoxGeometry(0.11, 0.10, 0.36));
     const podBarrelGeo = this._getGeo('interceptor_pod_barrel', () => new THREE.CylinderGeometry(0.024, 0.028, 0.32, 8));
-    const leftWeaponMuzzle = new THREE.Object3D();
+    const leftWeaponMuzzle = sharedLeftMuzzle || new THREE.Object3D();
 
     const mountPod = (armGroup, sideX, muzzleObj) => {
       armGroup.position.set(sideX, -0.09, 0.14);
@@ -4734,7 +5630,8 @@ class EnemyModelFactory {
     rightArm,
     leftLeg,
     rightLeg,
-    weaponMuzzle
+    weaponMuzzle,
+    sharedShieldMesh = null
   ) {
     // Heavy Orbital Armored Legs (hip pivot at y = 1.12)
     const thighGeo = this._makeExtrudedPoly(
@@ -4948,31 +5845,7 @@ class EnemyModelFactory {
       shieldPivot.add(post);
     }
 
-    const curvedShieldGeo = this._getGeo('warden_blast_shield', () => {
-      const geo = new THREE.CylinderGeometry(1.18, 1.18, 1.42, 18, 1, true, -0.44, 0.88);
-      geo.translate(0, 0, -1.08);
-      return geo;
-    });
-    const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0xff8c2b,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0xd9480f),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 1.45,
-      transparent: true,
-      opacity: 0.88,
-      roughness: 0.4,
-      metalness: 0.58,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    shieldMat.userData.baseColor = shieldMat.color.clone();
-    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
-    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
-    shieldMat.userData.baseOpacity = 0.88;
-    ownedMaterials.push(shieldMat);
-
-    const shieldMesh = new THREE.Mesh(curvedShieldGeo, shieldMat);
+    const shieldMesh = sharedShieldMesh || this._createRailWardenShieldMesh(ownedMaterials);
     shieldMesh.renderOrder = 6;
     shieldPivot.add(shieldMesh);
 
@@ -5018,7 +5891,8 @@ class EnemyModelFactory {
     rightArm,
     leftLeg,
     rightLeg,
-    weaponMuzzle
+    weaponMuzzle,
+    skipLaser = false
   ) {
     // Squat Heavy Stabilizer Legs (hip pivot at y = 0.88)
     const legStrutGeo = this._makeExtrudedPoly(
@@ -5213,7 +6087,9 @@ class EnemyModelFactory {
     bodyGroup.add(radarDish);
 
     // Neon-violet orbital target lock telegraph laser
-    return this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xa855f7, 0xf0abfc);
+    return skipLaser
+      ? null
+      : this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xa855f7, 0xf0abfc);
   }
 
   // ===========================================================================
@@ -5228,7 +6104,8 @@ class EnemyModelFactory {
     rightArm,
     leftLeg,
     rightLeg,
-    weaponMuzzle
+    weaponMuzzle,
+    sharedLeftMuzzle = null
   ) {
     // Sleek Reverse-Jointed Sprint Legs (hip pivot at y = 0.98)
     const thighGeo = this._makeExtrudedPoly(
@@ -5419,7 +6296,7 @@ class EnemyModelFactory {
     blade.position.set(0.05, -0.28, 0.16);
     leftArm.add(blade);
 
-    const leftWeaponMuzzle = new THREE.Object3D();
+    const leftWeaponMuzzle = sharedLeftMuzzle || new THREE.Object3D();
     leftWeaponMuzzle.position.set(0.02, -0.28, 0.44);
     leftArm.add(leftWeaponMuzzle);
     bodyGroup.add(leftArm);
@@ -5466,7 +6343,10 @@ class EnemyModelFactory {
     rightLeg,
     weaponMuzzle,
     rotors,
-    coreRings
+    coreRings,
+    sharedShieldMesh = null,
+    sharedLeftMuzzle = null,
+    rigRef = null
   ) {
     // Colossal Dreadnought Walker Legs (hip pivot at y = 2.08)
     const thighGeo = this._makeExtrudedPoly(
@@ -5610,6 +6490,13 @@ class EnemyModelFactory {
       0.022,
       1
     );
+    const wingCoreOrbGeo = this._getGeo('overlord_wing_core_orb', () => new THREE.SphereGeometry(0.34, 14, 10));
+    const wingCoreHaloGeo = this._getGeo('overlord_wing_core_halo', () => new THREE.TorusGeometry(0.45, 0.048, 8, 22));
+    const wingCoreCradleGeo = this._getGeo('overlord_wing_core_cradle', () => new THREE.CylinderGeometry(0.38, 0.44, 0.24, 10));
+    const wingCoreStrutGeo = this._getGeo('overlord_wing_core_strut', () => new THREE.BoxGeometry(0.56, 0.14, 0.22));
+    let wingCoreL = null;
+    let wingCoreR = null;
+
     for (let side = -1; side <= 1; side += 2) {
       const wing = new THREE.Mesh(wingPylonGeo, p.coloredPlate);
       wing.scale.x = side;
@@ -5624,6 +6511,67 @@ class EnemyModelFactory {
       thruster.position.set(side * 0.52, 3.72, -0.66);
       thruster.rotation.x = -0.22;
       bodyGroup.add(thruster);
+
+      // Destructible Wing Core Weakpoint Pod (elevated above phase shield silhouette)
+      const coreGroup = new THREE.Group();
+      coreGroup.name = side > 0 ? 'WingCoreL' : 'WingCoreR';
+      coreGroup.position.set(side * 1.62, 3.92, -0.14);
+
+      const coreMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: new THREE.Color(0x00e5ff),
+        emissiveIntensity: 3.6,
+        roughness: 0.16,
+        metalness: 0.25,
+        fog: false,
+      });
+      coreMat.userData.baseColor = coreMat.color.clone();
+      coreMat.userData.baseEmissive = coreMat.emissive.clone();
+      coreMat.userData.baseEmissiveIntensity = coreMat.emissiveIntensity;
+      ownedMaterials.push(coreMat);
+
+      const haloMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        emissive: new THREE.Color(0xf59e0b),
+        emissiveIntensity: 2.8,
+        roughness: 0.2,
+        metalness: 0.3,
+        fog: false,
+      });
+      haloMat.userData.baseColor = haloMat.color.clone();
+      haloMat.userData.baseEmissive = haloMat.emissive.clone();
+      haloMat.userData.baseEmissiveIntensity = haloMat.emissiveIntensity;
+      ownedMaterials.push(haloMat);
+
+      const cradle = new THREE.Mesh(wingCoreCradleGeo, p.darkFrame);
+      cradle.position.set(0, -0.16, 0);
+      coreGroup.add(cradle);
+
+      const strut = new THREE.Mesh(wingCoreStrutGeo, p.primaryArmor);
+      strut.position.set(-side * 0.34, -0.18, -0.08);
+      strut.rotation.z = side * 0.36;
+      coreGroup.add(strut);
+
+      const coreOrb = new THREE.Mesh(wingCoreOrbGeo, coreMat);
+      coreGroup.add(coreOrb);
+
+      const haloMesh = new THREE.Mesh(wingCoreHaloGeo, haloMat);
+      haloMesh.rotation.x = 0.35;
+      haloMesh.rotation.y = side * 0.45;
+      coreGroup.add(haloMesh);
+
+      coreGroup.userData.coreMaterial = coreMat;
+      coreGroup.userData.haloMaterial = haloMat;
+      coreGroup.userData.haloMesh = haloMesh;
+      bodyGroup.add(coreGroup);
+
+      if (side > 0) wingCoreL = coreGroup;
+      else wingCoreR = coreGroup;
+    }
+
+    if (rigRef) {
+      rigRef.wingCoreL = wingCoreL;
+      rigRef.wingCoreR = wingCoreR;
     }
 
     // Winged Crown Helm housing Furnace Sensor Core Weakpoint (headHeight = 3.85)
@@ -5688,7 +6636,7 @@ class EnemyModelFactory {
     const railBarrelGeo = this._getGeo('overlord_rail_barrel', () => new THREE.BoxGeometry(0.11, 0.11, 1.12));
     const clampDiskGeo = this._getGeo('overlord_rotor_clamp', () => new THREE.CylinderGeometry(0.22, 0.22, 0.08, 10));
 
-    const leftWeaponMuzzle = new THREE.Object3D();
+    const leftWeaponMuzzle = sharedLeftMuzzle || new THREE.Object3D();
 
     const buildOverlordArm = (armGroup, side, muzzleObj) => {
       armGroup.position.set(side * 1.36, 3.42, 0.08);
@@ -5788,33 +6736,7 @@ class EnemyModelFactory {
     }
 
     // Phase-Surge Heated Orbital Blast Shield Barrier
-    const bossShieldGeo = this._getGeo('overlord_phase_shield', () => {
-      return new THREE.CylinderGeometry(1.94, 2.02, 2.5, 24, 1, true);
-    });
-    const bossShieldMat = new THREE.MeshStandardMaterial({
-      color: 0xff8c2b,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0xe63916),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 2.0,
-      transparent: true,
-      opacity: 0.0,
-      roughness: 0.38,
-      metalness: 0.45,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    bossShieldMat.userData.baseColor = bossShieldMat.color.clone();
-    bossShieldMat.userData.baseEmissive = bossShieldMat.emissive.clone();
-    bossShieldMat.userData.baseEmissiveIntensity = bossShieldMat.emissiveIntensity;
-    bossShieldMat.userData.baseOpacity = 0.72;
-    ownedMaterials.push(bossShieldMat);
-
-    const shieldMesh = new THREE.Mesh(bossShieldGeo, bossShieldMat);
-    shieldMesh.position.set(0, 2.28, 0.04);
-    shieldMesh.visible = false;
-    shieldMesh.renderOrder = 7;
-    bodyGroup.add(shieldMesh);
+    const shieldMesh = sharedShieldMesh || this._createOverlordPhaseShieldMesh(ownedMaterials, bodyGroup);
 
     return { shieldMesh, leftWeaponMuzzle };
   }
@@ -5834,7 +6756,8 @@ class EnemyModelFactory {
     leftLeg,
     rightLeg,
     weaponMuzzle,
-    coreRings
+    coreRings,
+    sharedOverloadRing = null
   ) {
     const legGeo = this._getGeo('vol_rusher_leg', () => new THREE.BoxGeometry(0.14, 0.68, 0.18));
     const footGeo = this._getGeo('vol_rusher_foot', () => new THREE.BoxGeometry(0.18, 0.1, 0.28));
@@ -5927,26 +6850,7 @@ class EnemyModelFactory {
     bodyGroup.add(rightArm);
 
     // Expanding ground telegraph ring for Overload Frenzy blast
-    const ringGeo = this._getGeo('vol_overload_ring', () => {
-      const g = new THREE.RingGeometry(0.84, 1.0, 36);
-      g.rotateX(-Math.PI * 0.5);
-      return g;
-    });
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xff2a6d,
-      transparent: true,
-      opacity: 0.78,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      fog: false,
-    });
-    ownedMaterials.push(ringMat);
-    const overloadRing = new THREE.Mesh(ringGeo, ringMat);
-    overloadRing.position.set(0, 0.08, 0);
-    overloadRing.visible = false;
-    overloadRing.renderOrder = 8;
-    root.add(overloadRing);
-    return overloadRing;
+    return sharedOverloadRing || this._createVolatileOverloadRing(ownedMaterials, root);
   }
 
   // ===========================================================================
@@ -6148,7 +7052,8 @@ class EnemyModelFactory {
     rightArm,
     leftLeg,
     rightLeg,
-    weaponMuzzle
+    weaponMuzzle,
+    sharedShieldMesh = null
   ) {
     const legGeo = this._getGeo('sentinel_leg', () => new THREE.BoxGeometry(0.26, 0.98, 0.3));
     for (const [legGrp, sx] of [
@@ -6212,26 +7117,7 @@ class EnemyModelFactory {
       p.coloredPlate
     );
     leftArm.add(pauldronL);
-    const shieldGeo = this._getGeo('sentinel_shield', () => new THREE.BoxGeometry(0.92, 1.48, 0.09));
-    const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0x38bdf8),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 1.65,
-      transparent: true,
-      opacity: 0.76,
-      roughness: 0.32,
-      metalness: 0.5,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    shieldMat.userData.baseColor = shieldMat.color.clone();
-    shieldMat.userData.baseEmissive = shieldMat.emissive.clone();
-    shieldMat.userData.baseEmissiveIntensity = shieldMat.emissiveIntensity;
-    shieldMat.userData.baseOpacity = shieldMat.opacity;
-    ownedMaterials.push(shieldMat);
-    const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+    const shieldMesh = sharedShieldMesh || this._createAbyssSentinelShieldMesh(ownedMaterials);
     shieldMesh.position.set(-0.14, -0.34, 0.48);
     shieldMesh.rotation.y = 0.22;
     shieldMesh.renderOrder = 6;
@@ -6269,7 +7155,9 @@ class EnemyModelFactory {
     rightLeg,
     weaponMuzzle,
     rotors,
-    coreRings
+    coreRings,
+    sharedShieldMesh = null,
+    sharedLeftMuzzle = null
   ) {
     const thighGeo = this._getGeo('omega_thigh', () => new THREE.BoxGeometry(0.56, 1.15, 0.62));
     const shinGeo = this._getGeo('omega_shin', () => new THREE.BoxGeometry(0.46, 1.25, 0.56));
@@ -6382,7 +7270,7 @@ class EnemyModelFactory {
     // Twin siege-void arm cannons (weaponMuzzle & leftWeaponMuzzle)
     const housingGeo = this._getGeo('omega_cannon', () => new THREE.BoxGeometry(0.56, 0.52, 1.18));
     const discGeo = this._getGeo('omega_rotor_disc', () => new THREE.CylinderGeometry(0.24, 0.24, 0.08, 12));
-    const leftWeaponMuzzle = new THREE.Object3D();
+    const leftWeaponMuzzle = sharedLeftMuzzle || new THREE.Object3D();
 
     const buildOmegaArm = (armGroup, side, muzzleObj) => {
       armGroup.position.set(side * 1.48, 3.68, 0.08);
@@ -6450,33 +7338,7 @@ class EnemyModelFactory {
     }
 
     // Turret-Link Abyssal Barrier Cylinder (visible while turrets live or phase shield surges)
-    const omegaShieldGeo = this._getGeo('omega_turret_shield', () => {
-      return new THREE.CylinderGeometry(2.12, 2.2, 3.1, 24, 1, true);
-    });
-    const omegaShieldMat = new THREE.MeshStandardMaterial({
-      color: 0xa855f7,
-      map: this._textures.blastShield,
-      emissive: new THREE.Color(0x7c3aed),
-      emissiveMap: this._textures.blastShield,
-      emissiveIntensity: 2.1,
-      transparent: true,
-      opacity: 0.0,
-      roughness: 0.32,
-      metalness: 0.45,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    omegaShieldMat.userData.baseColor = omegaShieldMat.color.clone();
-    omegaShieldMat.userData.baseEmissive = omegaShieldMat.emissive.clone();
-    omegaShieldMat.userData.baseEmissiveIntensity = omegaShieldMat.emissiveIntensity;
-    omegaShieldMat.userData.baseOpacity = 0.62;
-    ownedMaterials.push(omegaShieldMat);
-
-    const shieldMesh = new THREE.Mesh(omegaShieldGeo, omegaShieldMat);
-    shieldMesh.position.set(0, 2.55, 0.04);
-    shieldMesh.visible = false;
-    shieldMesh.renderOrder = 7;
-    bodyGroup.add(shieldMesh);
+    const shieldMesh = sharedShieldMesh || this._createOmegaTurretShieldMesh(ownedMaterials, bodyGroup);
 
     return { shieldMesh, leftWeaponMuzzle };
   }
@@ -6498,12 +7360,19 @@ class EnemyModelFactory {
     if (this._textures.armorBump) this._textures.armorBump.dispose();
     if (this._textures.armorRoughness) this._textures.armorRoughness.dispose();
     if (this._textures.blastShield) this._textures.blastShield.dispose();
+    if (this._textures.hexShield && this._textures.hexShield !== this._textures.blastShield) {
+      this._textures.hexShield.dispose();
+    }
     if (this._textures.visorGrid) this._textures.visorGrid.dispose();
     if (this._textures.contactShadow) this._textures.contactShadow.dispose();
   }
 }
 EnemyModelFactory._glbCache = new Map();
+EnemyModelFactory._glbMissing = new Set();
 EnemyModelFactory._glbLoadPromise = null;
 EnemyModelFactory._colossusGltf = null;
+EnemyModelFactory._sharedMechDetailMaps = null;
   __exports.EnemyModelFactory = EnemyModelFactory;
+  __exports.GLB_MODEL_REGISTRY = GLB_MODEL_REGISTRY;
+  __exports.ALL_GLB_MODELS = ALL_GLB_MODELS;
 });

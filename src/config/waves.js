@@ -155,7 +155,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.28,
     description:
-      '비행갑판 상공을 선회하며 양측 날개 포드로 연속 사격을 가하는 궤도 요격기입니다.',
+      '고고도 선회 기동과 함께 3발 각도 확산 플라즈마 편대 사격을 가하는 궤도 요격기입니다.',
   },
 
   shock_breacher: {
@@ -180,7 +180,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.36,
     description:
-      '4발 산탄 캐논을 장착하고 근거리로 빠르게 돌진해 오는 강습 기체입니다.',
+      '추진기 급가속 돌진 후 4발 EMP 산탄 캐논을 발사하는 근접 강습 기체입니다.',
   },
 
   rail_warden: {
@@ -196,16 +196,16 @@ const ENEMY_ARCHETYPES = {
     fireRate: 1.0,
     attackRange: 36,
     preferredRange: 15,
-    projectileSpeed: 44,
+    projectileSpeed: 54,
     color: 0x0891b2,
     accentColor: 0x00f0ff,
     score: 420,
     isBoss: false,
     isFlying: false,
     hasShield: true,
-    telegraphTime: 0.52,
+    telegraphTime: 0.56,
     description:
-      '반응형 전신 방패와 쌍열 레일건을 갖춘 중장갑 정예병입니다. EMP 파일런이나 관통 무기로 제압하세요.',
+      '시안 에너지 방패와 충전 섬광 예고 후 2연속 관통 플라즈마 레일건을 발사하는 중장갑 정예병입니다.',
   },
 
   mortar_artillery: {
@@ -228,9 +228,9 @@ const ENEMY_ARCHETYPES = {
     isBoss: false,
     isFlying: false,
     hasShield: false,
-    telegraphTime: 0.88,
+    telegraphTime: 0.72,
     description:
-      '주황 조준 레이저 고정 후 3발의 플라즈마 박격포탄을 투하하는 중포격 기체입니다.',
+      '주황 바닥 착탄 경고 원으로 고각 포물선 플라즈마 박격포탄 3발을 투하하는 중포격 기체입니다.',
   },
 
   vanguard_assassin: {
@@ -255,7 +255,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: false,
     telegraphTime: 0.30,
     description:
-      '좌우 회피 대시를 구사하며 4점사 펄스 사격을 가하는 은신 기동 기체입니다.',
+      '고속 측면 점멸 회피와 4연속 초승달 블레이드 부채꼴 사격을 구사하는 은신 기동 기체입니다.',
   },
 
   aegis_overlord_boss: {
@@ -280,7 +280,7 @@ const ENEMY_ARCHETYPES = {
     hasShield: true,
     telegraphTime: 0.68,
     description:
-      '이지스 건조 도크를 수호하는 궤도 사령 보스입니다. 위상 방어막 전개 시 EMP 파일런과 쉴드 중계기를 파괴하세요.',
+      '이지스 건조 도크를 수호하는 궤도 사령 보스입니다. 좌우 날개 코어와 EMP 파일런으로 위상 방어막을 붕괴시키세요.',
   },
 
   // === ACT 3: ORBITAL ABYSS CORE ARCHETYPES (WAVES 11-15) ===
@@ -576,10 +576,9 @@ const WAVES = [
     scoreBonus: 3000,
     gimmick: { empPylons: true, orbitalSweep: false, shieldRelays: false },
     enemies: [
-      { type: 'interceptor_drone', count: 5 },
-      { type: 'shock_breacher', count: 4 },
-      { type: 'tactical_trooper', count: 4 },
-      { type: 'rail_warden', count: 2 },
+      { type: 'interceptor_drone', count: 6 },
+      { type: 'shock_breacher', count: 5 },
+      { type: 'rail_warden', count: 3 },
     ],
   },
   {
@@ -653,7 +652,7 @@ const WAVES = [
     mapIndex: 5,
     name: 'AEGIS-IX · 궤도 군주',
     subtitle: '제99구역 사령 도크 — 궤도 군주 격파',
-    objective: 'AEGIS-IX 격파 · 방어막 가동 시 EMP 파일런과 중계기 파괴',
+    objective: 'AEGIS-IX 격파 · 좌우 날개 코어와 EMP 파일런으로 위상 방어막 파괴',
     objectiveType: 'boss',
     controlZoneActive: false,
     isBossWave: true,
@@ -677,7 +676,7 @@ const WAVES = [
         fireRateMultiplier: 1.0,
         burstCount: 4,
         shieldPulse: false,
-        callout: 'AEGIS-IX 출현 — 상단 날개 관 코어를 사격하세요',
+        callout: 'AEGIS-IX 출현 — 좌우 날개 코어를 집중 사격하세요',
         escorts: [],
       },
       {
@@ -688,7 +687,7 @@ const WAVES = [
         fireRateMultiplier: 1.28,
         burstCount: 6,
         shieldPulse: true,
-        callout: '2페이즈 방진 — EMP 파일런과 중계기를 파괴해 방어막을 해제하세요',
+        callout: '2페이즈 방진 — 날개 코어나 EMP 파일런을 파괴해 위상 방어막을 붕괴시키세요',
         escorts: [
           { type: 'interceptor_drone', count: 3 },
           { type: 'rail_warden', count: 1 },

@@ -7,10 +7,15 @@ const TWO_PI = Math.PI * 2;
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const FLASH_COLOR = new THREE.Color(0xffffff);
 const SHIELD_FLASH_COLOR = new THREE.Color(0xffd080);
+const CYAN_SHIELD_FLASH_COLOR = new THREE.Color(0xa5f3fc);
 const PHASE2_RING_COLOR = new THREE.Color(0xff7b00);
 const PHASE3_RING_COLOR = new THREE.Color(0xff1e00);
 const TELEPORT_GLOW_COLOR = new THREE.Color(0xc084fc);
 const OVERLOAD_GLOW_COLOR = new THREE.Color(0xff2a6d);
+const RAIL_CHARGE_COLOR = new THREE.Color(0x00f0ff);
+const SHOCK_SURGE_COLOR = new THREE.Color(0x22d3ee);
+const WING_BURNOUT_COLOR = new THREE.Color(0x161b24);
+const WING_BURNOUT_EMISSIVE = new THREE.Color(0x05080f);
 
 function wrapAngle(a) {
   let angle = a;
@@ -101,6 +106,20 @@ class Enemy {
     this._turretShieldActive = Boolean(archetype.turretShieldEnabled);
     this._coreExposedTimer = 0;
 
+    // Act 2 Mechanic State: Shock Breacher Thruster Surge, Assassin Blink-Dash, Overlord Wing Cores
+    this._shockDashTimer = 0;
+    this._shockDashCooldown = archetype.id === 'shock_breacher' ? 1.4 + Math.random() * 1.2 : 0;
+    this._assassinBlinkCooldown = archetype.id === 'vanguard_assassin' ? 1.4 + Math.random() * 1.2 : 0;
+    this._customTintActive = false;
+
+    this._wingCoreMaxHpL = 0;
+    this._wingCoreMaxHpR = 0;
+    this._wingCoreHpL = 0;
+    this._wingCoreHpR = 0;
+    this._wingCoreDestroyedL = false;
+    this._wingCoreDestroyedR = false;
+    this._initWingCoreState(this.maxHp);
+
     // Flying drone starts aloft above floor
     if (!isDormant && archetype.isFlying) {
       const floorY = collisionWorld.getGroundHeightAt(this.position.x, this.position.z, 20);
@@ -161,7 +180,8 @@ class Enemy {
     this._phaseName =
       this.bossPhases && this.bossPhases.length > 0 ? this.bossPhases[0].name : '';
     this._bossPatternCycle = 0;
-    this._bossActivePattern = 'rotary_barrage';
+    this._bossActivePattern =
+      archetype.id === 'aegis_overlord_boss' ? 'orbital_fan' : 'rotary_barrage';
     this._bossBurstShotIdx = 0;
 
     // Sniper / Mortar locked target point (locks smoothly then freezes final 0.2s for dash counterplay)
@@ -172,11 +192,17 @@ class Enemy {
     // Pre-allocated hit spheres (zero-GC getHitSpheres) — +15% player-favored hitbox expansion
     const HITBOX_SCALE = 1.15;
     const headR = archetype.headRadius * 1.18 * HITBOX_SCALE;
-    const bodyR = archetype.radius * 0.94 * HITBOX_SCALE;
-    const lowerR = archetype.radius * 0.85 * HITBOX_SCALE;
+    const bodyR =
+      archetype.id === 'aegis_overlord_boss'
+        ? 1.15
+        : archetype.radius * 0.94 * HITBOX_SCALE;
+    const lowerR =
+      archetype.id === 'aegis_overlord_boss'
+        ? 1.05
+        : archetype.radius * 0.85 * HITBOX_SCALE;
     const shieldR = archetype.isBoss
       ? archetype.id === 'aegis_overlord_boss'
-        ? 1.85
+        ? 1.48
         : 1.68
       : archetype.id === 'rail_warden'
       ? 0.74
@@ -210,6 +236,24 @@ class Enemy {
       isShield: true,
       entity: this,
     };
+    this._sphereWingL = {
+      center: new THREE.Vector3(),
+      radius: 0.72,
+      isHead: false,
+      isShield: false,
+      weakpoint: 'wingCoreL',
+      hitMult: 1.45,
+      entity: this,
+    };
+    this._sphereWingR = {
+      center: new THREE.Vector3(),
+      radius: 0.72,
+      isHead: false,
+      isShield: false,
+      weakpoint: 'wingCoreR',
+      hitMult: 1.45,
+      entity: this,
+    };
 
     this._hitSpheres3 = [this._sphereHead, this._sphereTorso, this._sphereLower];
     this._hitSpheres4 = [
@@ -218,6 +262,7 @@ class Enemy {
       this._sphereLower,
       this._sphereShield,
     ];
+    this._bossHitSpheres = [];
 
     // Pre-allocated scratch vectors & raycast structs (strictly zero-GC update)
     this._eyePos = new THREE.Vector3();
@@ -232,6 +277,41 @@ class Enemy {
     this._laserEndLocal = new THREE.Vector3();
     this._laserDirLocal = new THREE.Vector3();
     this._laserEndWorld = new THREE.Vector3();
+    this._mortarTarget = new THREE.Vector3();
+    this._projExtraOpts = {
+      isMortar: false,
+      targetPos: this._mortarTarget,
+      gravity: 22.0,
+      splashRadius: 3.4,
+      flightTime: 1.4,
+      boltColor: 0,
+    };
+    this._wingCoreWorldPos = new THREE.Vector3();
+    this._wingShotDir = new THREE.Vector3();
+    this._sweepStartPos = new THREE.Vector3();
+    this._sweepEndPos = new THREE.Vector3();
+    this._orbitalSweepPayload = {
+      startPos: this._sweepStartPos,
+      endPos: this._sweepEndPos,
+      telegraphDuration: 1.15,
+      sweepDuration: 1.35,
+      beamRadius: 2.15,
+      damage: 28,
+      boss: this,
+    };
+    this._wingShatterPayload = {
+      boss: this,
+      side: 'L',
+      sideLabel: '좌',
+      remaining: 1,
+      position: this._wingCoreWorldPos,
+      shieldBroken: false,
+    };
+    this._droneSalvoPayload = {
+      boss: this,
+      position: this.position,
+      phase: 1,
+    };
     this._rayHit = {
       hit: false,
       distance: 0,
@@ -254,6 +334,67 @@ class Enemy {
     this.scaleMult = Number.isFinite(mult) && mult > 0 ? mult : 1.0;
     if (this.rig && this.rig.root) {
       this.rig.root.scale.setScalar(this.scaleMult);
+    }
+  }
+
+  /**
+   * Update scaled maxHp and sync destructible boss wing-core HP pools cleanly.
+   * @param {number} newMaxHp
+   */
+  setMaxHp(newMaxHp) {
+    if (!Number.isFinite(newMaxHp) || newMaxHp <= 0) return;
+    this.maxHp = Math.round(newMaxHp);
+    this.hp = this.maxHp;
+    this._initWingCoreState(this.maxHp);
+  }
+
+  /** @private */
+  _initWingCoreState(bossMaxHp) {
+    if (this.archetype && this.archetype.id === 'aegis_overlord_boss') {
+      const coreMax = Math.min(1800, Math.max(450, Math.round(bossMaxHp * 0.18)));
+      this._wingCoreMaxHpL = coreMax;
+      this._wingCoreMaxHpR = coreMax;
+      this._wingCoreHpL = coreMax;
+      this._wingCoreHpR = coreMax;
+      this._wingCoreDestroyedL = false;
+      this._wingCoreDestroyedR = false;
+    } else {
+      this._wingCoreMaxHpL = 0;
+      this._wingCoreMaxHpR = 0;
+      this._wingCoreHpL = 0;
+      this._wingCoreHpR = 0;
+      this._wingCoreDestroyedL = false;
+      this._wingCoreDestroyedR = false;
+    }
+  }
+
+  /** @private */
+  _restoreWingCoreVisuals() {
+    if (!this.rig) return;
+    const cores = [this.rig.wingCoreL, this.rig.wingCoreR];
+    for (let i = 0; i < cores.length; i++) {
+      const wc = cores[i];
+      if (!wc) continue;
+      wc.visible = true;
+      const mat = wc.userData && wc.userData.coreMaterial;
+      if (mat) {
+        if (mat.userData.baseColor) mat.color.copy(mat.userData.baseColor);
+        if (mat.userData.baseEmissive) mat.emissive.copy(mat.userData.baseEmissive);
+        if (mat.userData.baseEmissiveIntensity !== undefined) {
+          mat.emissiveIntensity = mat.userData.baseEmissiveIntensity;
+        }
+      }
+      const haloMat = wc.userData && wc.userData.haloMaterial;
+      if (haloMat) {
+        if (haloMat.userData.baseColor) haloMat.color.copy(haloMat.userData.baseColor);
+        if (haloMat.userData.baseEmissive) haloMat.emissive.copy(haloMat.userData.baseEmissive);
+        if (haloMat.userData.baseEmissiveIntensity !== undefined) {
+          haloMat.emissiveIntensity = haloMat.userData.baseEmissiveIntensity;
+        }
+      }
+      if (wc.userData && wc.userData.haloMesh) {
+        wc.userData.haloMesh.visible = true;
+      }
     }
   }
 
@@ -320,6 +461,12 @@ class Enemy {
     this._turretShieldActive = Boolean(this.archetype.turretShieldEnabled);
     this._coreExposedTimer = 0;
 
+    this._shockDashTimer = 0;
+    this._shockDashCooldown = this.archetype.id === 'shock_breacher' ? 1.4 + Math.random() * 1.2 : 0;
+    this._assassinBlinkCooldown = this.archetype.id === 'vanguard_assassin' ? 1.4 + Math.random() * 1.2 : 0;
+    this._customTintActive = false;
+    this._initWingCoreState(this.maxHp);
+
     this._strafeDir = Math.random() < 0.5 ? 1 : -1;
     this._strafeSwitchTimer = 1.6 + Math.random() * 1.6;
     this._coverPauseTimer = 0;
@@ -345,7 +492,8 @@ class Enemy {
     this._phaseName =
       this.bossPhases && this.bossPhases.length > 0 ? this.bossPhases[0].name : '';
     this._bossPatternCycle = 0;
-    this._bossActivePattern = 'rotary_barrage';
+    this._bossActivePattern =
+      this.archetype.id === 'aegis_overlord_boss' ? 'orbital_fan' : 'rotary_barrage';
     this._bossBurstShotIdx = 0;
 
     this._lockedAimPoint.set(0, 0, 0);
@@ -436,6 +584,7 @@ class Enemy {
       }
 
       this._hideLaser();
+      this._restoreWingCoreVisuals();
 
       if (rig.healthBarBg) {
         rig.healthBarBg.visible = false;
@@ -461,6 +610,12 @@ class Enemy {
     this._blinkTelegraphTimer = 0;
     this._turretShieldActive = false;
     this._coreExposedTimer = 0;
+    this._shockDashTimer = 0;
+    this._customTintActive = false;
+    this._wingCoreHpL = 0;
+    this._wingCoreHpR = 0;
+    this._wingCoreDestroyedL = false;
+    this._wingCoreDestroyedR = false;
     this._hideLaser();
     if (this.rig) {
       if (this.rig.overloadRing) {
@@ -601,15 +756,54 @@ class Enemy {
       this._sphereLower.center.set(px, py + h * 0.28, pz);
     }
 
+    if (this.archetype.id === 'aegis_overlord_boss') {
+      const list = this._bossHitSpheres;
+      list.length = 0;
+      list.push(this._sphereHead, this._sphereTorso, this._sphereLower);
+
+      if ((this._phaseShieldTimer > 0 || this._turretShieldActive) && this.rig.shieldMesh) {
+        this._sphereShield.center.set(px, py + 2.04, pz);
+        list.push(this._sphereShield);
+      }
+
+      if (this._wingCoreHpL > 0) {
+        if (this.rig.wingCoreL) {
+          this.rig.wingCoreL.getWorldPosition(this._sphereWingL.center);
+        } else {
+          const sinY = Math.sin(this._yaw);
+          const cosY = Math.cos(this._yaw);
+          this._sphereWingL.center.set(
+            px + cosY * 1.62 - sinY * 0.14,
+            py + 3.92,
+            pz - sinY * 1.62 - cosY * 0.14
+          );
+        }
+        list.push(this._sphereWingL);
+      }
+
+      if (this._wingCoreHpR > 0) {
+        if (this.rig.wingCoreR) {
+          this.rig.wingCoreR.getWorldPosition(this._sphereWingR.center);
+        } else {
+          const sinY = Math.sin(this._yaw);
+          const cosY = Math.cos(this._yaw);
+          this._sphereWingR.center.set(
+            px - cosY * 1.62 - sinY * 0.14,
+            py + 3.92,
+            pz + sinY * 1.62 - cosY * 0.14
+          );
+        }
+        list.push(this._sphereWingR);
+      }
+
+      return list;
+    }
+
     if (this.archetype.hasShield) {
       if (this.archetype.isBoss) {
         if ((this._phaseShieldTimer > 0 || this._turretShieldActive) && this.rig.shieldMesh) {
           const bossShieldY =
-            this.archetype.id === 'transcendent_omega_boss'
-              ? 2.55
-              : this.archetype.id === 'aegis_overlord_boss'
-              ? 2.28
-              : 2.02;
+            this.archetype.id === 'transcendent_omega_boss' ? 2.55 : 2.02;
           this._sphereShield.center.set(px, py + bossShieldY, pz);
           return this._hitSpheres4;
         }
@@ -754,6 +948,21 @@ class Enemy {
       this._checkBossPhaseTransition();
     }
 
+    // AEGIS-IX Destructible Left/Right Wing Core Weakpoints
+    if (this.hp > 0 && this.archetype.id === 'aegis_overlord_boss' && options && options.weakpoint) {
+      if (options.weakpoint === 'wingCoreL' && this._wingCoreHpL > 0) {
+        this._wingCoreHpL = Math.max(0, this._wingCoreHpL - dealt);
+        if (this._wingCoreHpL <= 0 && !this._wingCoreDestroyedL) {
+          this._destroyWingCore('L');
+        }
+      } else if (options.weakpoint === 'wingCoreR' && this._wingCoreHpR > 0) {
+        this._wingCoreHpR = Math.max(0, this._wingCoreHpR - dealt);
+        if (this._wingCoreHpR <= 0 && !this._wingCoreDestroyedR) {
+          this._destroyWingCore('R');
+        }
+      }
+    }
+
     // Death Check
     if (this.hp <= 0) {
       this._enterDeathState(Boolean(isHeadshot), knockbackDir);
@@ -761,6 +970,66 @@ class Enemy {
     }
 
     return { dealt, killed: false, blockedByShield: false };
+  }
+
+  /**
+   * Shatter one of AEGIS-IX's destructible Wing Core Weakpoints, collapsing its phase shield,
+   * staggering the boss, darkening the destroyed core, and emitting HUD/VFX callouts.
+   * @private
+   */
+  _destroyWingCore(side) {
+    const isLeft = side === 'L';
+    if (isLeft) {
+      this._wingCoreHpL = 0;
+      this._wingCoreDestroyedL = true;
+    } else {
+      this._wingCoreHpR = 0;
+      this._wingCoreDestroyedR = true;
+    }
+
+    const coreObj = this.rig ? (isLeft ? this.rig.wingCoreL : this.rig.wingCoreR) : null;
+    if (coreObj) {
+      coreObj.getWorldPosition(this._wingCoreWorldPos);
+      const coreMat = coreObj.userData && coreObj.userData.coreMaterial;
+      if (coreMat) {
+        coreMat.color.copy(WING_BURNOUT_COLOR);
+        coreMat.emissive.copy(WING_BURNOUT_EMISSIVE);
+        coreMat.emissiveIntensity = 0.06;
+      }
+      const haloMat = coreObj.userData && coreObj.userData.haloMaterial;
+      if (haloMat) {
+        haloMat.color.copy(WING_BURNOUT_COLOR);
+        haloMat.emissive.copy(WING_BURNOUT_EMISSIVE);
+        haloMat.emissiveIntensity = 0.04;
+      }
+      if (coreObj.userData && coreObj.userData.haloMesh) {
+        coreObj.userData.haloMesh.visible = false;
+      }
+    } else {
+      this._wingCoreWorldPos.set(
+        this.position.x + (isLeft ? 1.62 : -1.62),
+        this.position.y + 3.92,
+        this.position.z
+      );
+    }
+
+    const hadShield = this._phaseShieldTimer > 0;
+    this._phaseShieldTimer = 0;
+    this._shieldFlashTimer = 0.55;
+    this._coreExposedTimer = Math.max(this._coreExposedTimer, 4.2);
+    this.state = 'stagger';
+    this._staggerTimer = 1.35;
+    this._burstRemaining = 0;
+    this._hitFlashTimer = 0.28;
+
+    const remaining = (this._wingCoreHpL > 0 ? 1 : 0) + (this._wingCoreHpR > 0 ? 1 : 0);
+    if (this.eventBus) {
+      this._wingShatterPayload.side = side;
+      this._wingShatterPayload.sideLabel = isLeft ? '좌' : '우';
+      this._wingShatterPayload.remaining = remaining;
+      this._wingShatterPayload.shieldBroken = hadShield || remaining === 0;
+      this.eventBus.emit(EVENTS.BOSS_WING_CORE_SHATTERED, this._wingShatterPayload);
+    }
   }
 
   /**
@@ -783,7 +1052,10 @@ class Enemy {
         this._staggerTimer = 0.72;
         this._burstRemaining = 0;
         if (p.shieldPulse) {
-          this._phaseShieldTimer = 3.8;
+          const hasIntactWingCore =
+            this.archetype.id === 'aegis_overlord_boss' &&
+            (this._wingCoreHpL > 0 || this._wingCoreHpR > 0);
+          this._phaseShieldTimer = hasIntactWingCore ? 10.0 : 3.8;
           this._shieldFlashTimer = 0.5;
         }
 
@@ -879,6 +1151,15 @@ class Enemy {
     }
     if (this._attackCooldown > 0) {
       this._attackCooldown = Math.max(0, this._attackCooldown - clampedDt);
+    }
+    if (this._shockDashTimer > 0) {
+      this._shockDashTimer = Math.max(0, this._shockDashTimer - clampedDt);
+    }
+    if (this._shockDashCooldown > 0) {
+      this._shockDashCooldown = Math.max(0, this._shockDashCooldown - clampedDt);
+    }
+    if (this._assassinBlinkCooldown > 0) {
+      this._assassinBlinkCooldown = Math.max(0, this._assassinBlinkCooldown - clampedDt);
     }
     if (this._recoilAnim > 0) {
       this._recoilAnim = Math.max(0, this._recoilAnim - clampedDt * 6.5);
@@ -1056,6 +1337,19 @@ class Enemy {
         desiredVx = this._moveDir.x;
         desiredVz = this._moveDir.z;
 
+        // Shock Breacher forward thruster surge burst when closing in
+        if (this.archetype.id === 'shock_breacher' && horizDist > 6.5) {
+          if (this._shockDashCooldown <= 0 && horizDist <= 22.0) {
+            this._shockDashTimer = 0.54;
+            this._shockDashCooldown = 3.1 + Math.random() * 1.1;
+          }
+          if (this._shockDashTimer > 0) {
+            const invH = 1 / horizDist;
+            desiredVx = dx * invH * moveSpeed * 2.15;
+            desiredVz = dz * invH * moveSpeed * 2.15;
+          }
+        }
+
         // Transition into tactical strafe once within attack range with clear LOS (Overload rushers keep charging!)
         if (!this._overloadActive && this._hasLOS && totalDist <= this.archetype.attackRange * 0.94) {
           this.state = 'strafe';
@@ -1072,25 +1366,49 @@ class Enemy {
           break;
         }
 
-        // Periodic strafe direction reversal + agile assassin dash burst
+        // Periodic strafe direction reversal + agile assassin blink-dash & interceptor aerial sweep
         this._strafeSwitchTimer -= clampedDt;
         if (this._strafeSwitchTimer <= 0) {
           this._strafeDir = -this._strafeDir;
           const isAgile =
             this.archetype.id === 'vanguard_assassin' || this.archetype.id === 'interceptor_drone';
-          this._strafeSwitchTimer = isAgile ? 1.0 + Math.random() * 1.3 : 1.6 + Math.random() * 1.9;
+          this._strafeSwitchTimer = isAgile ? 0.95 + Math.random() * 1.2 : 1.6 + Math.random() * 1.9;
 
           if (this.archetype.id === 'vanguard_assassin' && horizDist > 0.01) {
+            if (this._assassinBlinkCooldown <= 0 && this._tryLateralBlinkDash(playerPos)) {
+              this._assassinBlinkCooldown = 2.0 + Math.random() * 1.0;
+            } else {
+              const invH = 1 / horizDist;
+              const dashSideX = -(dz * invH) * this._strafeDir;
+              const dashSideZ = (dx * invH) * this._strafeDir;
+              this.velocity.x += dashSideX * 11.5;
+              this.velocity.z += dashSideZ * 11.5;
+            }
+          } else if (this.archetype.id === 'interceptor_drone' && horizDist > 0.01) {
             const invH = 1 / horizDist;
             const dashSideX = -(dz * invH) * this._strafeDir;
             const dashSideZ = (dx * invH) * this._strafeDir;
-            this.velocity.x += dashSideX * 9.5;
-            this.velocity.z += dashSideZ * 9.5;
+            this.velocity.x += dashSideX * 5.8;
+            this.velocity.z += dashSideZ * 5.8;
           } else if (
             (this.archetype.id === 'tactical_trooper' || this.archetype.id === 'sniper_stalker') &&
             Math.random() < 0.32
           ) {
             this._coverPauseTimer = 0.45 + Math.random() * 0.4;
+          }
+        }
+
+        // Shock Breacher closing thruster surge inside mid-range strafe
+        if (this.archetype.id === 'shock_breacher' && horizDist > 8.0) {
+          if (this._shockDashCooldown <= 0 && horizDist <= 18.0) {
+            this._shockDashTimer = 0.50;
+            this._shockDashCooldown = 3.2 + Math.random() * 1.0;
+          }
+          if (this._shockDashTimer > 0) {
+            const invH = 1 / horizDist;
+            desiredVx = dx * invH * moveSpeed * 2.15;
+            desiredVz = dz * invH * moveSpeed * 2.15;
+            break;
           }
         }
 
@@ -1115,8 +1433,8 @@ class Enemy {
               ? 0.42
               : this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery'
               ? 0.50
-              : this.archetype.id === 'vanguard_assassin'
-              ? 0.95
+              : this.archetype.id === 'vanguard_assassin' || this.archetype.id === 'interceptor_drone'
+              ? 0.96
               : this.archetype.id === 'shock_breacher'
               ? 0.88
               : 0.82;
@@ -1128,8 +1446,8 @@ class Enemy {
             const strafeMult =
               this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery'
                 ? 0.65
-                : this.archetype.id === 'vanguard_assassin'
-                ? 0.92
+                : this.archetype.id === 'vanguard_assassin' || this.archetype.id === 'interceptor_drone'
+                ? 0.94
                 : 0.78;
             const strafeSpd = moveSpeed * strafeMult;
             vx = (vx / mag) * strafeSpd;
@@ -1167,7 +1485,7 @@ class Enemy {
             this.archetype.telegraphTime / (this.archetype.isBoss ? Math.sqrt(this._phaseFireMult) : 1.0);
           this._sniperLockFrozen = false;
           this._lockedAimPoint.copy(playerEyePos);
-          this._lockedAimPoint.y -= 0.16;
+          this._lockedAimPoint.y -= this.archetype.id === 'mortar_artillery' ? 1.45 : 0.16;
         }
         break;
       }
@@ -1182,8 +1500,9 @@ class Enemy {
         if (this.archetype.isFlying && horizDist > 0.01) {
           const sideX = -(dz / horizDist) * this._strafeDir;
           const sideZ = (dx / horizDist) * this._strafeDir;
-          desiredVx = sideX * moveSpeed * 0.45;
-          desiredVz = sideZ * moveSpeed * 0.45;
+          const flyDrift = this.archetype.id === 'interceptor_drone' ? 0.72 : 0.45;
+          desiredVx = sideX * moveSpeed * flyDrift;
+          desiredVz = sideZ * moveSpeed * flyDrift;
         } else if (
           (this.archetype.id === 'heavy_enforcer' || this.archetype.id === 'rail_warden') &&
           horizDist > 6
@@ -1191,23 +1510,40 @@ class Enemy {
           desiredVx = (dx / horizDist) * moveSpeed * 0.35;
           desiredVz = (dz / horizDist) * moveSpeed * 0.35;
         } else if (this.archetype.id === 'shock_breacher' && horizDist > 5.0) {
-          desiredVx = (dx / horizDist) * moveSpeed * 0.55;
-          desiredVz = (dz / horizDist) * moveSpeed * 0.55;
+          desiredVx = (dx / horizDist) * moveSpeed * 0.62;
+          desiredVz = (dz / horizDist) * moveSpeed * 0.62;
         }
 
-        // Deadeye Recon crimson & Siege Mortar molten-amber visible lock-on laser telegraph!
-        if (this.archetype.id === 'sniper_stalker' || this.archetype.id === 'mortar_artillery') {
+        // Deadeye Recon crimson lock-on laser telegraph (Act 1 sniper ONLY!)
+        if (this.archetype.id === 'sniper_stalker') {
           if (progress < 0.78) {
-            // Smoothly tracks player chest during first 78% of lock-on
             this._lockedAimPoint.x += (playerEyePos.x - this._lockedAimPoint.x) * (1 - Math.exp(-10 * clampedDt));
             this._lockedAimPoint.y += (playerEyePos.y - 0.18 - this._lockedAimPoint.y) * (1 - Math.exp(-10 * clampedDt));
             this._lockedAimPoint.z += (playerEyePos.z - this._lockedAimPoint.z) * (1 - Math.exp(-10 * clampedDt));
           } else {
-            // Freeze lock for final ~0.20s so dash/slide counterplay feels fair & crisp!
             this._sniperLockFrozen = true;
           }
           this.isSniperLocking = true;
           this._updateSniperLaser(progress, elapsedTime);
+        } else if (this.archetype.id === 'rail_warden') {
+          // Rail Warden: crisp cyan aiming telegraph beam + charge flash (no sniper alert popup)
+          if (progress < 0.72) {
+            this._lockedAimPoint.x += (playerEyePos.x - this._lockedAimPoint.x) * (1 - Math.exp(-11 * clampedDt));
+            this._lockedAimPoint.y += (playerEyePos.y - 0.20 - this._lockedAimPoint.y) * (1 - Math.exp(-11 * clampedDt));
+            this._lockedAimPoint.z += (playerEyePos.z - this._lockedAimPoint.z) * (1 - Math.exp(-11 * clampedDt));
+          } else {
+            this._sniperLockFrozen = true;
+          }
+          this._updateSniperLaser(progress, elapsedTime);
+        } else if (this.archetype.id === 'mortar_artillery') {
+          // Mortar Artillery: locks onto player's floor area before launching parabolic plasma shells
+          if (progress < 0.75) {
+            this._lockedAimPoint.x += (playerPos.x - this._lockedAimPoint.x) * (1 - Math.exp(-9 * clampedDt));
+            this._lockedAimPoint.y += (playerPos.y - this._lockedAimPoint.y) * (1 - Math.exp(-9 * clampedDt));
+            this._lockedAimPoint.z += (playerPos.z - this._lockedAimPoint.z) * (1 - Math.exp(-9 * clampedDt));
+          } else {
+            this._sniperLockFrozen = true;
+          }
         }
 
         // Abort telegraph if player completely breaks LOS before final lock
@@ -1232,8 +1568,9 @@ class Enemy {
       case 'attack': {
         // Drones continue drifting while firing bursts
         if (this.archetype.isFlying && horizDist > 0.01) {
-          desiredVx = -(dz / horizDist) * this._strafeDir * moveSpeed * 0.55;
-          desiredVz = (dx / horizDist) * this._strafeDir * moveSpeed * 0.55;
+          const atkDrift = this.archetype.id === 'interceptor_drone' ? 0.85 : 0.55;
+          desiredVx = -(dz / horizDist) * this._strafeDir * moveSpeed * atkDrift;
+          desiredVz = (dx / horizDist) * this._strafeDir * moveSpeed * atkDrift;
         }
 
         this._burstShotTimer -= clampedDt;
@@ -1388,7 +1725,8 @@ class Enemy {
   }
 
   /**
-   * Smooth 3D hovering movement with altitude control & wall collision for Rusher Drone.
+   * Smooth 3D hovering movement with altitude control & wall collision for Flying Drones.
+   * Interceptor Drones cruise higher with wider aerial weave; Rusher Drones pursue closer.
    * @private
    */
   _integrateFlyingMovement(desiredVx, desiredVz, dt, elapsedTime, playerEyePos) {
@@ -1397,11 +1735,19 @@ class Enemy {
       this.position.z,
       this.position.y + 1.2
     );
-    const hoverWave = Math.sin(elapsedTime * 3.4 + this._hoverSeed) * 0.28;
-    const targetY = Math.max(
-      floorY + 1.85,
-      Math.min(floorY + 4.8, playerEyePos.y + 0.55 + hoverWave)
-    );
+    const isInterceptor = this.archetype.id === 'interceptor_drone';
+    const hoverWave = isInterceptor
+      ? Math.sin(elapsedTime * 4.4 + this._hoverSeed) * 0.45
+      : Math.sin(elapsedTime * 3.4 + this._hoverSeed) * 0.28;
+    const targetY = isInterceptor
+      ? Math.max(
+          floorY + 2.85,
+          Math.min(floorY + 5.8, playerEyePos.y + 1.55 + hoverWave)
+        )
+      : Math.max(
+          floorY + 1.85,
+          Math.min(floorY + 4.8, playerEyePos.y + 0.55 + hoverWave)
+        );
 
     const blend = 1 - Math.exp(-6.5 * dt);
     this.velocity.x += (desiredVx - this.velocity.x) * blend;
@@ -1422,6 +1768,59 @@ class Enemy {
       this._strafeDir = -this._strafeDir;
       this._strafeSwitchTimer = 1.1;
     }
+  }
+
+  /**
+   * Perform a rapid lateral blink-dash perpendicular to the player for Vanguard Assassin.
+   * Zero heap allocations.
+   * @private
+   */
+  _tryLateralBlinkDash(playerPos) {
+    const dx = playerPos.x - this.position.x;
+    const dz = playerPos.z - this.position.z;
+    const hDist = Math.hypot(dx, dz);
+    if (hDist < 0.5) return false;
+
+    const invH = 1 / hDist;
+    const sideX = -(dz * invH) * this._strafeDir;
+    const sideZ = (dx * invH) * this._strafeDir;
+
+    const dashDist = 4.4 + Math.random() * 1.4;
+    this._eyePos.set(this.position.x, this.position.y + 0.9, this.position.z);
+    this._probeDir.set(sideX, 0, sideZ);
+    const wallHit = this.collisionWorld.raycastWorld(
+      this._eyePos,
+      this._probeDir,
+      dashDist + this.archetype.radius + 0.4,
+      this._rayHit
+    );
+    const actualDist = wallHit
+      ? Math.max(0, wallHit.distance - this.archetype.radius - 0.35)
+      : dashDist;
+    if (actualDist < 2.2) return false;
+
+    const tx = this.position.x + sideX * actualDist;
+    const tz = this.position.z + sideZ * actualDist;
+    const ty = this.collisionWorld.getGroundHeightAt(tx, tz, this.position.y + 2.0);
+    if (!Number.isFinite(ty) || Math.abs(ty - this.position.y) > 1.6) return false;
+    if (!this.collisionWorld.hasClearance(tx, ty + 0.05, tz, this.archetype.radius, this.archetype.height)) {
+      return false;
+    }
+
+    this._blinkFromPos.copy(this.position);
+    this.position.set(tx, ty, tz);
+    this.velocity.set(sideX * 7.0, 0, sideZ * 7.0);
+    this.rig.root.position.copy(this.position);
+    this._hitFlashTimer = 0.12;
+    if (this.eventBus) {
+      this.eventBus.emit(EVENTS.ENEMY_TELEPORT, {
+        enemy: this,
+        fromPos: this._blinkFromPos,
+        toPos: this.position,
+        color: 0xf43f5e,
+      });
+    }
+    return true;
   }
 
   /**
@@ -1455,6 +1854,7 @@ class Enemy {
       case 'void_swarmer':
         return 2;
       case 'interceptor_drone':
+        return 1; // Fires 3-bolt angled plasma spread fan per aerial sweep
       case 'abyss_sentinel':
         return 3;
       case 'tactical_trooper':
@@ -1464,13 +1864,13 @@ class Enemy {
       case 'void_warper':
         return 2;
       case 'shock_breacher':
-        return 1; // Fires 4-pellet pneumatic buckshot fan per trigger pull
+        return 1; // Fires 4-pellet pneumatic EMP buckshot fan per trigger pull
       case 'rail_warden':
-        return 2;
+        return 2; // Charged dual piercing plasma rail burst
       case 'mortar_artillery':
-        return 3;
+        return 3; // 3-shell parabolic plasma mortar salvo
       case 'vanguard_assassin':
-        return 4;
+        return 1; // 4-blade wide crescent fan volley
       case 'cyber_mech_boss':
         if (this._bossActivePattern === 'molten_fan') return this.currentPhase >= 3 ? 3 : 2;
         if (this._bossActivePattern === 'twin_slam_salvo') return this.currentPhase >= 2 ? 3 : 2;
@@ -1478,16 +1878,10 @@ class Enemy {
         return this._phaseBurstCount;
       case 'aegis_overlord_boss':
         if (this._bossActivePattern === 'orbital_fan') return this.currentPhase >= 3 ? 3 : 2;
-        if (this._bossActivePattern === 'ring_nova') return this.currentPhase >= 3 ? 2 : 1;
+        if (this._bossActivePattern === 'orbital_laser_sweep') return 2;
+        if (this._bossActivePattern === 'drone_salvo') return this.currentPhase >= 2 ? 3 : 2;
         if (this._bossActivePattern === 'sniper_lance') return this.currentPhase >= 2 ? 3 : 2;
-        if (this._bossActivePattern === 'cross_barrage') return 3;
-        return this._phaseBurstCount > 1
-          ? this._phaseBurstCount
-          : this.currentPhase >= 3
-          ? 8
-          : this.currentPhase === 2
-          ? 6
-          : 4;
+        return 2;
       case 'transcendent_omega_boss':
         if (this._bossActivePattern === 'void_lance_fan') return this.currentPhase >= 3 ? 3 : 2;
         if (this._bossActivePattern === 'abyss_ring_nova') return this.currentPhase >= 3 ? 2 : 1;
@@ -1512,22 +1906,22 @@ class Enemy {
       case 'void_warper':
         return 0.14;
       case 'rail_warden':
-        return 0.18;
+        return 0.14;
       case 'mortar_artillery':
-        return 0.16;
+        return 0.22;
       case 'vanguard_assassin':
-        return 0.085;
+        return 0.10;
       case 'cyber_mech_boss':
         if (this._bossActivePattern === 'molten_fan') return 0.32;
         if (this._bossActivePattern === 'twin_slam_salvo') return 0.28;
         if (this._bossActivePattern === 'spiral_barrage') return 0.11;
         return Math.max(0.10, 0.19 / this._phaseFireMult);
       case 'aegis_overlord_boss':
-        if (this._bossActivePattern === 'orbital_fan') return 0.28;
-        if (this._bossActivePattern === 'ring_nova') return 0.42;
+        if (this._bossActivePattern === 'orbital_fan') return 0.26;
+        if (this._bossActivePattern === 'orbital_laser_sweep') return 0.46;
+        if (this._bossActivePattern === 'drone_salvo') return 0.24;
         if (this._bossActivePattern === 'sniper_lance') return 0.26;
-        if (this._bossActivePattern === 'cross_barrage') return 0.24;
-        return Math.max(0.09, 0.16 / this._phaseFireMult);
+        return Math.max(0.14, 0.22 / this._phaseFireMult);
       case 'transcendent_omega_boss':
         if (this._bossActivePattern === 'void_lance_fan') return 0.26;
         if (this._bossActivePattern === 'abyss_ring_nova') return 0.38;
@@ -1554,8 +1948,8 @@ class Enemy {
     } else if (this.archetype.id === 'aegis_overlord_boss') {
       const patterns =
         this.currentPhase >= 2
-          ? ['rail_volley', 'orbital_fan', 'ring_nova', 'sniper_lance', 'cross_barrage']
-          : ['rail_volley', 'orbital_fan', 'sniper_lance', 'ring_nova'];
+          ? ['orbital_fan', 'orbital_laser_sweep', 'drone_salvo', 'sniper_lance']
+          : ['orbital_fan', 'sniper_lance', 'orbital_laser_sweep', 'drone_salvo'];
       this._bossActivePattern = patterns[this._bossPatternCycle % patterns.length];
       this._bossPatternCycle++;
     } else if (this.archetype.id === 'transcendent_omega_boss') {
@@ -1597,16 +1991,9 @@ class Enemy {
       );
     }
 
-    // Aim point (sniper shoots along locked telegraph beam; others aim cleanly at player torso/eye)
-    if (this.archetype.id === 'sniper_stalker') {
+    // Aim point (sniper/rail shoot along locked telegraph beam; others aim cleanly at player torso/eye)
+    if (this.archetype.id === 'sniper_stalker' || this.archetype.id === 'rail_warden') {
       this._shotDir.subVectors(this._lockedAimPoint, this._muzzleWorld);
-    } else if (this.archetype.id === 'mortar_artillery') {
-      // Mortar locks onto target area slightly softened for 3-round bombardment salvo
-      this._shotDir.set(
-        this._lockedAimPoint.x - this._muzzleWorld.x,
-        playerEyePos.y - 0.18 - this._muzzleWorld.y,
-        this._lockedAimPoint.z - this._muzzleWorld.z
-      );
     } else {
       this._shotDir.set(
         playerEyePos.x - this._muzzleWorld.x,
@@ -1626,23 +2013,25 @@ class Enemy {
       this.archetype.id === 'heavy_enforcer'
         ? 0.18
         : this.archetype.id === 'mortar_artillery'
-        ? 0.19
+        ? 0.22
         : this.archetype.id === 'aegis_overlord_boss'
         ? 0.17
         : this.archetype.isBoss
         ? 0.16
         : this.archetype.id === 'rail_warden'
-        ? 0.14
+        ? 0.11
         : this.archetype.id === 'shock_breacher' || this.archetype.id === 'sniper_stalker'
         ? 0.08
         : 0.09;
 
-    const isSniperBeam = this.archetype.id === 'sniper_stalker';
+    const isSniperBeam =
+      this.archetype.id === 'sniper_stalker' || this.archetype.id === 'rail_warden';
     this._recoilAnim = 1.0;
 
-    // Shock Breacher 4-pellet pneumatic buckshot fan (zero-GC)
-    if (this.archetype.id === 'shock_breacher') {
-      const fanAngles = [-0.11, -0.036, 0.036, 0.11];
+    // Interceptor Drone: 3-bolt angled plasma spread fan with banking tilt
+    if (this.archetype.id === 'interceptor_drone') {
+      const fanAngles = [-0.15, 0, 0.15];
+      const tiltStep = 0.03 * this._strafeDir;
       for (let i = 0; i < fanAngles.length; i++) {
         const a = fanAngles[i];
         const cosA = Math.cos(a);
@@ -1650,7 +2039,7 @@ class Enemy {
         this._fanDir
           .set(
             this._shotDir.x * cosA - this._shotDir.z * sinA,
-            this._shotDir.y + (Math.random() - 0.5) * 0.038,
+            this._shotDir.y + (i - 1) * tiltStep,
             this._shotDir.x * sinA + this._shotDir.z * cosA
           )
           .normalize();
@@ -1659,8 +2048,103 @@ class Enemy {
           this._fanDir,
           this.archetype.projectileSpeed,
           this.archetype.damage,
-          this.archetype.color,
+          0x38bdf8,
           projRadius,
+          this.archetype.id,
+          false
+        );
+      }
+      return;
+    }
+
+    // Shock Breacher: 4-pellet pneumatic EMP buckshot fan (zero-GC)
+    if (this.archetype.id === 'shock_breacher') {
+      const fanAngles = [-0.12, -0.04, 0.04, 0.12];
+      for (let i = 0; i < fanAngles.length; i++) {
+        const a = fanAngles[i];
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        this._fanDir
+          .set(
+            this._shotDir.x * cosA - this._shotDir.z * sinA,
+            this._shotDir.y + (Math.random() - 0.5) * 0.036,
+            this._shotDir.x * sinA + this._shotDir.z * cosA
+          )
+          .normalize();
+        spawnProjectileFn(
+          this._muzzleWorld,
+          this._fanDir,
+          this.archetype.projectileSpeed,
+          this.archetype.damage,
+          0x22d3ee,
+          projRadius,
+          this.archetype.id,
+          false
+        );
+      }
+      return;
+    }
+
+    // Mortar Artillery: True parabolic arcing plasma mortar shells with floor warning rings
+    if (this.archetype.id === 'mortar_artillery') {
+      const shotIdx = 3 - this._burstRemaining;
+      const scatterAngle = shotIdx === 0 ? 0 : (shotIdx === 1 ? 1.15 : -1.15) + this._yaw;
+      const scatterDist = shotIdx === 0 ? 0 : 2.55;
+      const tx = Math.max(-27, Math.min(27, this._lockedAimPoint.x + Math.cos(scatterAngle) * scatterDist));
+      const tz = Math.max(-27, Math.min(27, this._lockedAimPoint.z + Math.sin(scatterAngle) * scatterDist));
+      const floorY = this.collisionWorld.getGroundHeightAt(
+        tx,
+        tz,
+        Math.max(playerEyePos.y + 1.5, this.position.y + 3.0)
+      );
+      this._mortarTarget.set(tx, (Number.isFinite(floorY) ? floorY : 0) + 0.06, tz);
+
+      const hDist = Math.hypot(tx - this._muzzleWorld.x, tz - this._muzzleWorld.z);
+      const flightTime = Math.max(1.05, Math.min(1.75, hDist / 18.0));
+
+      this._projExtraOpts.isMortar = true;
+      this._projExtraOpts.gravity = 22.0;
+      this._projExtraOpts.splashRadius = 3.35;
+      this._projExtraOpts.flightTime = flightTime;
+      this._projExtraOpts.boltColor = 0xff7b00;
+
+      spawnProjectileFn(
+        this._muzzleWorld,
+        this._shotDir,
+        this.archetype.projectileSpeed,
+        this.archetype.damage,
+        0xff7b00,
+        projRadius,
+        this.archetype.id,
+        false,
+        this._projExtraOpts
+      );
+      this._projExtraOpts.isMortar = false;
+      return;
+    }
+
+    // Vanguard Assassin: 4-blade wide crescent fan volley
+    if (this.archetype.id === 'vanguard_assassin') {
+      const crescentYaw = [-0.27, -0.09, 0.09, 0.27];
+      const crescentPitch = [0.014, -0.010, -0.010, 0.014];
+      for (let i = 0; i < crescentYaw.length; i++) {
+        const a = crescentYaw[i];
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        this._fanDir
+          .set(
+            this._shotDir.x * cosA - this._shotDir.z * sinA,
+            this._shotDir.y + crescentPitch[i],
+            this._shotDir.x * sinA + this._shotDir.z * cosA
+          )
+          .normalize();
+        spawnProjectileFn(
+          this._muzzleWorld,
+          this._fanDir,
+          this.archetype.projectileSpeed * 1.05,
+          this.archetype.damage,
+          0xf43f5e,
+          0.11,
           this.archetype.id,
           false
         );
@@ -1749,31 +2233,31 @@ class Enemy {
       }
     }
 
-    // Stage 10 Boss (AEGIS-IX // ORBITAL OVERLORD) diversified attack patterns
+    // Stage 10 Boss (AEGIS-IX // ORBITAL OVERLORD) exclusive Orbital Fleet patterns
     if (this.archetype.id === 'aegis_overlord_boss') {
       const shotIdx = this._bossBurstShotIdx++;
       if (this._bossActivePattern === 'orbital_fan') {
         const spreadAngles =
           this.currentPhase >= 3
-            ? [-0.26, -0.17, -0.085, 0, 0.085, 0.17, 0.26]
-            : [-0.20, -0.10, 0, 0.10, 0.20];
+            ? [-0.27, -0.18, -0.09, 0, 0.09, 0.18, 0.27]
+            : [-0.22, -0.11, 0, 0.11, 0.22];
         for (let i = 0; i < spreadAngles.length; i++) {
-          const a = spreadAngles[i] + (shotIdx % 2 === 0 ? 0 : 0.04);
+          const a = spreadAngles[i] + (shotIdx % 2 === 0 ? 0 : 0.045);
           const cosA = Math.cos(a);
           const sinA = Math.sin(a);
           this._fanDir
             .set(
               this._shotDir.x * cosA - this._shotDir.z * sinA,
-              this._shotDir.y + (Math.random() - 0.5) * 0.02,
+              this._shotDir.y + (Math.random() - 0.5) * 0.018,
               this._shotDir.x * sinA + this._shotDir.z * cosA
             )
             .normalize();
           spawnProjectileFn(
             this._muzzleWorld,
             this._fanDir,
-            this.archetype.projectileSpeed * 0.96,
-            this.archetype.damage * 0.85,
-            0x00e5ff,
+            this.archetype.projectileSpeed * 0.98,
+            this.archetype.damage * 0.84,
+            (i + shotIdx) % 2 === 0 ? 0x00e5ff : 0xf59e0b,
             0.17,
             this.archetype.id,
             false
@@ -1781,65 +2265,170 @@ class Enemy {
         }
         return;
       }
-      if (this._bossActivePattern === 'ring_nova') {
-        const count = this.currentPhase >= 3 ? 16 : 12;
-        const baseYaw = this._yaw + shotIdx * (Math.PI / count);
-        for (let i = 0; i < count; i++) {
-          const ang = baseYaw + (i / count) * Math.PI * 2;
-          this._fanDir.set(Math.sin(ang), -0.06, Math.cos(ang)).normalize();
+
+      if (this._bossActivePattern === 'orbital_laser_sweep') {
+        if (shotIdx === 0 && this.eventBus) {
+          // Sweep lane across arena floor crossing player's current position
+          const dx = playerEyePos.x - this.position.x;
+          const dz = playerEyePos.z - this.position.z;
+          const dLen = Math.hypot(dx, dz) || 1;
+          const perpX = -dz / dLen;
+          const perpZ = dx / dLen;
+          const sweepDir = this._strafeDir || 1;
+          const halfSpan = this.currentPhase >= 3 ? 9.5 : 8.0;
+
+          const sx = Math.max(-25, Math.min(25, playerEyePos.x - perpX * halfSpan * sweepDir));
+          const sz = Math.max(-25, Math.min(25, playerEyePos.z - perpZ * halfSpan * sweepDir));
+          const ex = Math.max(-25, Math.min(25, playerEyePos.x + perpX * halfSpan * sweepDir));
+          const ez = Math.max(-25, Math.min(25, playerEyePos.z + perpZ * halfSpan * sweepDir));
+          const sy = this.collisionWorld.getGroundHeightAt(sx, sz, playerEyePos.y + 1.5);
+          const ey = this.collisionWorld.getGroundHeightAt(ex, ez, playerEyePos.y + 1.5);
+
+          this._sweepStartPos.set(sx, Number.isFinite(sy) ? sy : 0, sz);
+          this._sweepEndPos.set(ex, Number.isFinite(ey) ? ey : 0, ez);
+          this._orbitalSweepPayload.telegraphDuration = this.currentPhase >= 3 ? 0.95 : 1.15;
+          this._orbitalSweepPayload.sweepDuration = this.currentPhase >= 3 ? 1.25 : 1.35;
+          this._orbitalSweepPayload.beamRadius = this.currentPhase >= 3 ? 2.35 : 2.10;
+          this._orbitalSweepPayload.damage = Math.round(this.archetype.damage * 1.15);
+          this.eventBus.emit(EVENTS.BOSS_ORBITAL_SWEEP, this._orbitalSweepPayload);
+        } else {
+          // Flanking cyan suppression fan while orbital beam sweeps
+          const flankAngles = [-0.14, 0.14];
+          for (let i = 0; i < flankAngles.length; i++) {
+            const a = flankAngles[i];
+            const cosA = Math.cos(a);
+            const sinA = Math.sin(a);
+            this._fanDir
+              .set(
+                this._shotDir.x * cosA - this._shotDir.z * sinA,
+                this._shotDir.y,
+                this._shotDir.x * sinA + this._shotDir.z * cosA
+              )
+              .normalize();
+            spawnProjectileFn(
+              this._muzzleWorld,
+              this._fanDir,
+              this.archetype.projectileSpeed * 1.02,
+              this.archetype.damage * 0.78,
+              0x38bdf8,
+              0.16,
+              this.archetype.id,
+              false
+            );
+          }
+        }
+        return;
+      }
+
+      if (this._bossActivePattern === 'drone_salvo') {
+        // Coordinated arm-cannon + intact wingtip core salvo (destroying wing cores weakens salvo!)
+        const muzzles = [this.rig.weaponMuzzle, this.rig.leftWeaponMuzzle];
+        for (let m = 0; m < muzzles.length; m++) {
+          if (!muzzles[m]) continue;
+          muzzles[m].getWorldPosition(this._wingCoreWorldPos);
+          this._wingShotDir
+            .set(
+              playerEyePos.x - this._wingCoreWorldPos.x,
+              playerEyePos.y - 0.18 - this._wingCoreWorldPos.y,
+              playerEyePos.z - this._wingCoreWorldPos.z
+            )
+            .normalize();
           spawnProjectileFn(
-            this._muzzleWorld,
-            this._fanDir,
-            this.archetype.projectileSpeed * 0.72,
-            this.archetype.damage * 0.9,
-            i % 2 === 0 ? 0x38bdf8 : 0xf59e0b,
-            0.20,
+            this._wingCoreWorldPos,
+            this._wingShotDir,
+            this.archetype.projectileSpeed * 1.04,
+            this.archetype.damage * 0.80,
+            m === 0 ? 0x38bdf8 : 0xf59e0b,
+            0.16,
             this.archetype.id,
             false
           );
         }
-        return;
-      }
-      if (this._bossActivePattern === 'sniper_lance') {
-        spawnProjectileFn(
-          this._muzzleWorld,
-          this._shotDir,
-          68,
-          this.archetype.damage * 1.15,
-          0xf59e0b,
-          0.11,
-          this.archetype.id,
-          true
-        );
-        return;
-      }
-      if (this._bossActivePattern === 'cross_barrage') {
-        const offsets = [
-          [-0.08, 0.05],
-          [0.08, 0.05],
-          [-0.08, -0.04],
-          [0.08, -0.04],
-        ];
-        for (let i = 0; i < offsets.length; i++) {
-          const [yawOff, pitchOff] = offsets[i];
-          const cosA = Math.cos(yawOff);
-          const sinA = Math.sin(yawOff);
-          this._fanDir
+
+        if (this._wingCoreHpL > 0 && this.rig.wingCoreL) {
+          this.rig.wingCoreL.getWorldPosition(this._wingCoreWorldPos);
+          this._wingShotDir
             .set(
-              this._shotDir.x * cosA - this._shotDir.z * sinA,
-              this._shotDir.y + pitchOff,
-              this._shotDir.x * sinA + this._shotDir.z * cosA
+              playerEyePos.x - this._wingCoreWorldPos.x,
+              playerEyePos.y - 0.15 - this._wingCoreWorldPos.y,
+              playerEyePos.z - this._wingCoreWorldPos.z
             )
             .normalize();
           spawnProjectileFn(
-            this._muzzleWorld,
-            this._fanDir,
-            this.archetype.projectileSpeed * 1.06,
-            this.archetype.damage * 0.82,
-            i < 2 ? 0x38bdf8 : 0xf43f5e,
-            0.16,
+            this._wingCoreWorldPos,
+            this._wingShotDir,
+            this.archetype.projectileSpeed * 1.12,
+            this.archetype.damage * 0.72,
+            0x00e5ff,
+            0.14,
             this.archetype.id,
             false
+          );
+        }
+        if (this._wingCoreHpR > 0 && this.rig.wingCoreR) {
+          this.rig.wingCoreR.getWorldPosition(this._wingCoreWorldPos);
+          this._wingShotDir
+            .set(
+              playerEyePos.x - this._wingCoreWorldPos.x,
+              playerEyePos.y - 0.15 - this._wingCoreWorldPos.y,
+              playerEyePos.z - this._wingCoreWorldPos.z
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._wingCoreWorldPos,
+            this._wingShotDir,
+            this.archetype.projectileSpeed * 1.12,
+            this.archetype.damage * 0.72,
+            0x00e5ff,
+            0.14,
+            this.archetype.id,
+            false
+          );
+        }
+
+        if (shotIdx === 0 && this.currentPhase >= 2 && this.eventBus) {
+          this._droneSalvoPayload.phase = this.currentPhase;
+          this.eventBus.emit(EVENTS.BOSS_DRONE_SALVO, this._droneSalvoPayload);
+        }
+        return;
+      }
+
+      if (this._bossActivePattern === 'sniper_lance') {
+        // Twin converging amber + cyan piercing rail lances from left & right siege cannons
+        const muzzles = [this.rig.weaponMuzzle, this.rig.leftWeaponMuzzle];
+        let fired = 0;
+        for (let m = 0; m < muzzles.length; m++) {
+          if (!muzzles[m]) continue;
+          muzzles[m].getWorldPosition(this._wingCoreWorldPos);
+          this._wingShotDir
+            .set(
+              playerEyePos.x - this._wingCoreWorldPos.x,
+              playerEyePos.y - 0.14 - this._wingCoreWorldPos.y,
+              playerEyePos.z - this._wingCoreWorldPos.z
+            )
+            .normalize();
+          spawnProjectileFn(
+            this._wingCoreWorldPos,
+            this._wingShotDir,
+            68,
+            this.archetype.damage * 0.92,
+            m === 0 ? 0xf59e0b : 0x38bdf8,
+            0.11,
+            this.archetype.id,
+            true
+          );
+          fired++;
+        }
+        if (fired === 0) {
+          spawnProjectileFn(
+            this._muzzleWorld,
+            this._shotDir,
+            68,
+            this.archetype.damage * 1.1,
+            0xf59e0b,
+            0.11,
+            this.archetype.id,
+            true
           );
         }
         return;
@@ -2053,8 +2642,8 @@ class Enemy {
 
     if (laser.material) {
       laser.material.opacity = this._sniperLockFrozen ? 0.96 : 0.52 + progress * 0.40;
-      if (this.archetype.id === 'mortar_artillery') {
-        laser.material.color.setHex(this._sniperLockFrozen ? 0xff7b00 : 0xea580c);
+      if (this.archetype.id === 'rail_warden') {
+        laser.material.color.setHex(this._sniperLockFrozen ? 0xe0ffff : 0x00f0ff);
       } else {
         laser.material.color.setHex(this._sniperLockFrozen ? 0xff1111 : 0xe62020);
       }
@@ -2141,17 +2730,18 @@ class Enemy {
       if (rig.leftLeg) rig.leftLeg.rotation.x = stride;
       if (rig.rightLeg) rig.rightLeg.rotation.x = -stride;
 
-      // Subtle torso walk bounce + stagger lean-back
+      // Subtle torso walk bounce + stagger lean-back + shock breacher thruster lunge lean
       const staggerLean = this.state === 'stagger' ? -0.22 : 0;
+      const surgeLean = this._shockDashTimer > 0 ? 0.28 : 0;
       const telegraphLean = this.state === 'telegraph' ? 0.08 : 0;
       rig.bodyGroup.position.y = bob;
       rig.bodyGroup.rotation.x +=
-        (staggerLean + telegraphLean - rig.bodyGroup.rotation.x) * (1 - Math.exp(-12 * dt));
+        (staggerLean + surgeLean + telegraphLean - rig.bodyGroup.rotation.x) * (1 - Math.exp(-12 * dt));
 
       // Weapon arm recoil & aiming brace
       if (rig.rightArm) {
         if (this.archetype.id === 'mortar_artillery') {
-          const elev = this.state === 'telegraph' ? -0.08 : -0.22;
+          const elev = this.state === 'telegraph' ? -0.64 : -0.26;
           rig.rightArm.rotation.x = elev - this._recoilAnim * 0.28;
         } else {
           const recoilPitch = this._recoilAnim * (this.archetype.isBoss ? 0.14 : 0.22);
@@ -2194,10 +2784,28 @@ class Enemy {
           ring.rotation.z += -dir * (0.45 + i * 0.22) * ringBoost * dt;
         }
 
-        // Boss cranial reactor breathing pulse
+        // Boss cranial reactor breathing pulse & AEGIS-IX Wing Core rotation
         if (rig.headGroup) {
           const pulse = 1.0 + Math.sin(elapsedTime * (4.5 * this.currentPhase)) * 0.045;
           rig.headGroup.scale.set(pulse, pulse, pulse);
+        }
+        if (this.archetype.id === 'aegis_overlord_boss') {
+          const coreL = rig.wingCoreL;
+          if (coreL && this._wingCoreHpL > 0 && coreL.userData && coreL.userData.haloMesh) {
+            coreL.userData.haloMesh.rotation.z += dt * 3.2 * this._phaseSpeedMult;
+            const pL = 1.0 + Math.sin(elapsedTime * 6.5) * 0.08;
+            coreL.scale.setScalar(pL);
+          } else if (coreL && this._wingCoreDestroyedL) {
+            coreL.scale.setScalar(0.82);
+          }
+          const coreR = rig.wingCoreR;
+          if (coreR && this._wingCoreHpR > 0 && coreR.userData && coreR.userData.haloMesh) {
+            coreR.userData.haloMesh.rotation.z -= dt * 3.2 * this._phaseSpeedMult;
+            const pR = 1.0 + Math.cos(elapsedTime * 6.5) * 0.08;
+            coreR.scale.setScalar(pR);
+          } else if (coreR && this._wingCoreDestroyedR) {
+            coreR.scale.setScalar(0.82);
+          }
         }
       }
     }
@@ -2260,7 +2868,9 @@ class Enemy {
           const fade = this._phaseShieldTimer > 0 ? Math.min(1, this._phaseShieldTimer / 0.6) : 1.0;
           const pulse = (this._turretShieldActive ? 0.34 : 0.42) + Math.sin(elapsedTime * 14) * 0.1;
           sMat.opacity = (pulse + flashT * 0.42) * fade;
-          sMat.emissive.lerpColors(sMat.userData.baseEmissive, SHIELD_FLASH_COLOR, flashT);
+          const bossFlashCol =
+            this.archetype.id === 'aegis_overlord_boss' ? CYAN_SHIELD_FLASH_COLOR : SHIELD_FLASH_COLOR;
+          sMat.emissive.lerpColors(sMat.userData.baseEmissive, bossFlashCol, flashT);
           sMat.emissiveIntensity = (this._turretShieldActive ? 1.85 : 2.2) + flashT * 3.5;
           shield.rotation.y += dt * 1.4;
         }
@@ -2268,29 +2878,66 @@ class Enemy {
         // Heavy Enforcer / Rail Warden / Abyss Sentinel welded blast shield
         const idlePulse = 0.72 + Math.sin(elapsedTime * 5.0 + this._hoverSeed) * 0.06;
         sMat.opacity = Math.min(1, idlePulse + flashT * 0.25);
-        sMat.emissive.lerpColors(sMat.userData.baseEmissive, SHIELD_FLASH_COLOR, flashT);
+        const unitFlashCol =
+          this.archetype.id === 'rail_warden' || this.archetype.id === 'abyss_sentinel'
+            ? CYAN_SHIELD_FLASH_COLOR
+            : SHIELD_FLASH_COLOR;
+        sMat.emissive.lerpColors(sMat.userData.baseEmissive, unitFlashCol, flashT);
         sMat.emissiveIntensity = 1.45 + flashT * 3.8;
       }
     }
 
-    // Volatile Rusher glowing crimson body tint during Overload Frenzy
-    if (this._overloadActive && this.rig && this.rig.flashMaterials && this._hitFlashTimer <= 0) {
-      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(elapsedTime * 20));
-      const mats = this.rig.flashMaterials;
-      for (let i = 0; i < mats.length; i++) {
-        const m = mats[i];
-        if (m.userData.baseEmissive) {
-          m.emissive.lerpColors(m.userData.baseEmissive, OVERLOAD_GLOW_COLOR, pulse * 0.85);
-          m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + pulse * 3.2;
+    // Dynamic state emissive tints (Overload Frenzy, Teleport, Shock Thruster Surge, Rail Warden Cyan Charge)
+    const mats = this.rig ? this.rig.flashMaterials : null;
+    if (mats && this._hitFlashTimer <= 0) {
+      if (this._overloadActive) {
+        this._customTintActive = true;
+        const pulse = 0.55 + 0.45 * Math.abs(Math.sin(elapsedTime * 20));
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m.userData.baseEmissive) {
+            m.emissive.lerpColors(m.userData.baseEmissive, OVERLOAD_GLOW_COLOR, pulse * 0.85);
+            m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + pulse * 3.2;
+          }
         }
-      }
-    } else if (this._blinkTelegraphTimer > 0 && this.rig && this.rig.flashMaterials && this._hitFlashTimer <= 0) {
-      const mats = this.rig.flashMaterials;
-      for (let i = 0; i < mats.length; i++) {
-        const m = mats[i];
-        if (m.userData.baseEmissive) {
-          m.emissive.lerpColors(m.userData.baseEmissive, TELEPORT_GLOW_COLOR, 0.85);
-          m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + 3.0;
+      } else if (this._blinkTelegraphTimer > 0) {
+        this._customTintActive = true;
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m.userData.baseEmissive) {
+            m.emissive.lerpColors(m.userData.baseEmissive, TELEPORT_GLOW_COLOR, 0.85);
+            m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + 3.0;
+          }
+        }
+      } else if (this.archetype.id === 'shock_breacher' && this._shockDashTimer > 0) {
+        this._customTintActive = true;
+        const pulse = 0.6 + 0.4 * Math.abs(Math.sin(elapsedTime * 26));
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m.userData.baseEmissive) {
+            m.emissive.lerpColors(m.userData.baseEmissive, SHOCK_SURGE_COLOR, 0.72 * pulse);
+            m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + 2.4 * pulse;
+          }
+        }
+      } else if (this.archetype.id === 'rail_warden' && this.state === 'telegraph') {
+        this._customTintActive = true;
+        const chargeT = Math.max(0, Math.min(1, 1 - this._telegraphTimer / Math.max(0.05, this.archetype.telegraphTime)));
+        const spike = chargeT > 0.72 ? 1.0 : 0.35 + chargeT * 0.65;
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m.userData.baseEmissive) {
+            m.emissive.lerpColors(m.userData.baseEmissive, RAIL_CHARGE_COLOR, 0.82 * spike);
+            m.emissiveIntensity = (m.userData.baseEmissiveIntensity || 1.0) + (chargeT > 0.72 ? 4.2 : 2.2 * chargeT);
+          }
+        }
+      } else if (this._customTintActive) {
+        this._customTintActive = false;
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m.userData.baseEmissive) {
+            m.emissive.copy(m.userData.baseEmissive);
+            m.emissiveIntensity = m.userData.baseEmissiveIntensity || 0;
+          }
         }
       }
     }

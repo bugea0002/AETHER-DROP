@@ -10,6 +10,7 @@ const MAX_TRACERS = 40;
 const MAX_RAIL_BEAMS = 4;
 const MAX_RINGS = 28;
 const MAX_EXPLOSIONS = 6;
+const MAX_ORBITAL_SWEEPS = 2;
 const MAX_DYNAMIC_LIGHTS = 4;
 
 /**
@@ -72,6 +73,7 @@ class VfxManager {
     this._initDecals();
     this._initImpactRings();
     this._initExplosions();
+    this._initOrbitalSweeps();
 
     if (qualityConfig) {
       this.setQuality(qualityConfig);
@@ -719,6 +721,185 @@ class VfxManager {
     }
   }
 
+  /** @private */
+  _initOrbitalSweeps() {
+    const laneGeo = new THREE.PlaneGeometry(1.0, 1.0);
+    laneGeo.rotateX(-Math.PI * 0.5);
+    laneGeo.translate(0, 0, 0.5);
+
+    const edgeGeo = new THREE.PlaneGeometry(0.18, 1.0);
+    edgeGeo.rotateX(-Math.PI * 0.5);
+    edgeGeo.translate(0, 0, 0.5);
+
+    const beamOuterGeo = new THREE.CylinderGeometry(0.62, 0.92, 34, 14, 1, true);
+    beamOuterGeo.translate(0, 17, 0);
+
+    const beamCoreGeo = new THREE.CylinderGeometry(0.24, 0.34, 34, 10, 1, true);
+    beamCoreGeo.translate(0, 17, 0);
+
+    const beamHelixGeo = new THREE.CylinderGeometry(0.88, 1.18, 34, 7, 1, true);
+    beamHelixGeo.translate(0, 17, 0);
+
+    const ringGeo = new THREE.RingGeometry(0.66, 1.0, 28);
+    ringGeo.rotateX(-Math.PI * 0.5);
+
+    const discGeo = new THREE.CircleGeometry(0.68, 20);
+    discGeo.rotateX(-Math.PI * 0.5);
+
+    this._geometries.push(
+      laneGeo,
+      edgeGeo,
+      beamOuterGeo,
+      beamCoreGeo,
+      beamHelixGeo,
+      ringGeo,
+      discGeo
+    );
+
+    this._orbitalSweeps = [];
+    this._orbitalSweepCursor = 0;
+
+    for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+      const laneGroup = new THREE.Group();
+      laneGroup.visible = false;
+
+      const laneBgMat = new THREE.MeshBasicMaterial({
+        color: 0x0ea5e9,
+        transparent: true,
+        opacity: 0.24,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const laneFillMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const laneEdgeMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+
+      const laneBg = new THREE.Mesh(laneGeo, laneBgMat);
+      laneBg.renderOrder = 4;
+      const laneFill = new THREE.Mesh(laneGeo, laneFillMat);
+      laneFill.position.y = 0.01;
+      laneFill.renderOrder = 5;
+      const edgeL = new THREE.Mesh(edgeGeo, laneEdgeMat);
+      edgeL.position.y = 0.02;
+      edgeL.renderOrder = 5;
+      const edgeR = new THREE.Mesh(edgeGeo, laneEdgeMat);
+      edgeR.position.y = 0.02;
+      edgeR.renderOrder = 5;
+
+      laneGroup.add(laneBg, laneFill, edgeL, edgeR);
+      this.worldScene.add(laneGroup);
+
+      const beamGroup = new THREE.Group();
+      beamGroup.visible = false;
+
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0x00e5ff,
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xf0f9ff,
+        transparent: true,
+        opacity: 0.96,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const helixMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.58,
+        wireframe: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+
+      const outerMesh = new THREE.Mesh(beamOuterGeo, outerMat);
+      const coreMesh = new THREE.Mesh(beamCoreGeo, coreMat);
+      const helixMesh = new THREE.Mesh(beamHelixGeo, helixMat);
+      const impactRing = new THREE.Mesh(ringGeo, ringMat);
+      impactRing.position.y = 0.03;
+      const impactDisc = new THREE.Mesh(discGeo, coreMat);
+      impactDisc.position.y = 0.02;
+
+      beamGroup.add(outerMesh, coreMesh, helixMesh, impactRing, impactDisc);
+      beamGroup.frustumCulled = false;
+      beamGroup.renderOrder = 8;
+      this.worldScene.add(beamGroup);
+
+      this._materials.push(
+        laneBgMat,
+        laneFillMat,
+        laneEdgeMat,
+        outerMat,
+        coreMat,
+        helixMat,
+        ringMat
+      );
+
+      this._orbitalSweeps.push({
+        active: false,
+        age: 0,
+        telegraphDuration: 1.15,
+        sweepDuration: 1.35,
+        beamRadius: 2.1,
+        laneLength: 14,
+        startPos: new THREE.Vector3(),
+        endPos: new THREE.Vector3(),
+        laneGroup,
+        laneBg,
+        laneFill,
+        edgeL,
+        edgeR,
+        laneBgMat,
+        laneFillMat,
+        laneEdgeMat,
+        beamGroup,
+        outerMesh,
+        coreMesh,
+        helixMesh,
+        impactRing,
+        impactDisc,
+        outerMat,
+        coreMat,
+        helixMat,
+        ringMat,
+      });
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Internal Pool Helpers (Zero GC)
   // ---------------------------------------------------------------------------
@@ -1345,6 +1526,72 @@ class VfxManager {
     }
   }
 
+  /**
+   * Spawn an AEGIS-IX Orbital Laser Sweep: glowing floor telegraph lane across arena
+   * followed by a sky-to-ground sweeping vertical orbital strike beam. Zero allocations.
+   * @param {THREE.Vector3} startPos
+   * @param {THREE.Vector3} endPos
+   * @param {number} [telegraphDuration=1.15]
+   * @param {number} [sweepDuration=1.35]
+   * @param {number} [beamRadius=2.1]
+   */
+  spawnOrbitalLaserSweep(
+    startPos,
+    endPos,
+    telegraphDuration = 1.15,
+    sweepDuration = 1.35,
+    beamRadius = 2.1
+  ) {
+    if (!startPos || !endPos || !this._orbitalSweeps) return;
+    let sw = null;
+    for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+      if (!this._orbitalSweeps[i].active) {
+        sw = this._orbitalSweeps[i];
+        break;
+      }
+    }
+    if (!sw) {
+      sw = this._orbitalSweeps[this._orbitalSweepCursor];
+      this._orbitalSweepCursor = (this._orbitalSweepCursor + 1) % MAX_ORBITAL_SWEEPS;
+    }
+
+    sw.active = true;
+    sw.age = 0;
+    sw.telegraphDuration = Math.max(0.3, telegraphDuration || 1.15);
+    sw.sweepDuration = Math.max(0.4, sweepDuration || 1.35);
+    sw.beamRadius = Math.max(1.0, beamRadius || 2.1);
+
+    sw.startPos.set(startPos.x, (startPos.y || 0) + 0.06, startPos.z);
+    sw.endPos.set(endPos.x, (endPos.y || 0) + 0.06, endPos.z);
+
+    this._v1.subVectors(sw.endPos, sw.startPos);
+    this._v1.y = 0;
+    const laneLen = Math.max(1.0, this._v1.length());
+    sw.laneLength = laneLen;
+    this._v1.multiplyScalar(1 / laneLen);
+
+    sw.laneGroup.position.copy(sw.startPos);
+    this._orientZ(sw.laneGroup.quaternion, this._v1);
+
+    const w = sw.beamRadius * 2.0;
+    sw.laneBg.scale.set(w, 1, laneLen);
+    sw.laneFill.scale.set(w, 1, 0.05);
+    sw.edgeL.position.set(-sw.beamRadius, 0.02, 0);
+    sw.edgeL.scale.set(1, 1, laneLen);
+    sw.edgeR.position.set(sw.beamRadius, 0.02, 0);
+    sw.edgeR.scale.set(1, 1, laneLen);
+
+    sw.laneBgMat.opacity = 0.25;
+    sw.laneFillMat.opacity = 0.35;
+    sw.laneEdgeMat.opacity = 0.85;
+    sw.laneGroup.visible = true;
+
+    sw.beamGroup.position.copy(sw.startPos);
+    sw.beamGroup.visible = false;
+    sw.impactRing.scale.setScalar(sw.beamRadius);
+    sw.impactDisc.scale.setScalar(sw.beamRadius);
+  }
+
   // ---------------------------------------------------------------------------
   // Quality Scaling, Per-Frame Update, Reset & Disposal
   // ---------------------------------------------------------------------------
@@ -1631,6 +1878,79 @@ class VfxManager {
         exp.shock2Mat.opacity = 0.82 * fade * fade;
       }
     }
+
+    // 10. AEGIS-IX Orbital Laser Sweeps (Telegraph Lane -> Vertical Sky Strike Beam)
+    if (this._orbitalSweeps) {
+      for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+        const sw = this._orbitalSweeps[i];
+        if (!sw.active) continue;
+        sw.age += clampedDt;
+        const totalDur = sw.telegraphDuration + sw.sweepDuration;
+        if (sw.age >= totalDur) {
+          sw.active = false;
+          sw.laneGroup.visible = false;
+          sw.beamGroup.visible = false;
+          continue;
+        }
+
+        if (sw.age < sw.telegraphDuration) {
+          const tp = sw.age / sw.telegraphDuration;
+          const pulse = 0.55 + 0.45 * Math.sin(sw.age * (tp > 0.65 ? 28 : 12));
+          sw.laneGroup.visible = true;
+          sw.beamGroup.visible = false;
+          sw.laneFill.scale.set(sw.beamRadius * 2.0, 1, Math.max(0.05, sw.laneLength * tp));
+          sw.laneBgMat.opacity = (0.18 + 0.16 * tp) * pulse;
+          sw.laneFillMat.opacity = (0.28 + 0.40 * tp) * pulse;
+          sw.laneEdgeMat.opacity = 0.55 + 0.42 * pulse;
+        } else {
+          const sp = Math.min(1, (sw.age - sw.telegraphDuration) / sw.sweepDuration);
+          const fadeOut = sp > 0.84 ? Math.max(0, (1 - sp) / 0.16) : 1.0;
+
+          this._v1.lerpVectors(sw.startPos, sw.endPos, sp);
+          sw.beamGroup.position.copy(this._v1);
+          sw.beamGroup.visible = true;
+
+          const wobble = 0.92 + 0.14 * Math.sin(sw.age * 42);
+          const beamW = (sw.beamRadius / 2.1) * wobble;
+          sw.outerMesh.scale.set(beamW, 1, beamW);
+          sw.coreMesh.scale.set(beamW, 1, beamW);
+          sw.helixMesh.scale.set(beamW, 1, beamW);
+          sw.helixMesh.rotation.y += clampedDt * 11.0;
+          sw.impactRing.scale.setScalar(sw.beamRadius * (0.95 + 0.18 * Math.sin(sw.age * 30)));
+          sw.impactDisc.scale.setScalar(sw.beamRadius * 0.9);
+
+          sw.outerMat.opacity = 0.72 * fadeOut;
+          sw.coreMat.opacity = 0.96 * fadeOut;
+          sw.helixMat.opacity = 0.58 * fadeOut;
+          sw.ringMat.opacity = 0.90 * fadeOut;
+
+          sw.laneBgMat.opacity = 0.20 * (1 - sp);
+          sw.laneFillMat.opacity = 0.34 * (1 - sp);
+          sw.laneEdgeMat.opacity = 0.65 * (1 - sp);
+
+          if (Math.random() < 0.85) {
+            const ang = Math.random() * TWO_PI;
+            const spd = 3.5 + Math.random() * 6.5;
+            this._emitSpark(
+              this._v1,
+              Math.cos(ang) * spd,
+              4.0 + Math.random() * 8.0,
+              Math.sin(ang) * spd,
+              Math.random() < 0.45 ? 0xf59e0b : 0x38bdf8,
+              0.22 + Math.random() * 0.22,
+              1.15,
+              12.0,
+              2.6
+            );
+          }
+
+          if (this._maxDynamicLights > 1) {
+            const lSlot = this._allocWorldLightSlot();
+            this._spawnDynamicLight(lSlot, this._v2.set(this._v1.x, this._v1.y + 1.4, this._v1.z), 0x38bdf8, 8.5 * fadeOut, 14.0, 0.12);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -1683,6 +2003,14 @@ class VfxManager {
       this._explosions[i].group.visible = false;
     }
 
+    if (this._orbitalSweeps) {
+      for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+        this._orbitalSweeps[i].active = false;
+        this._orbitalSweeps[i].laneGroup.visible = false;
+        this._orbitalSweeps[i].beamGroup.visible = false;
+      }
+    }
+
     this._sparksDirty = false;
     this._casingsDirty = false;
   }
@@ -1703,6 +2031,12 @@ class VfxManager {
     for (let i = 0; i < MAX_DECALS; i++) this.worldScene.remove(this._decals[i].mesh);
     for (let i = 0; i < MAX_RINGS; i++) this.worldScene.remove(this._rings[i].mesh);
     for (let i = 0; i < MAX_EXPLOSIONS; i++) this.worldScene.remove(this._explosions[i].group);
+    if (this._orbitalSweeps) {
+      for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
+        this.worldScene.remove(this._orbitalSweeps[i].laneGroup);
+        this.worldScene.remove(this._orbitalSweeps[i].beamGroup);
+      }
+    }
 
     for (let i = 0; i < this._geometries.length; i++) this._geometries[i].dispose();
     for (let i = 0; i < this._materials.length; i++) this._materials[i].dispose();
