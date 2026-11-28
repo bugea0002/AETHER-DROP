@@ -980,6 +980,30 @@ class WaveDirector {
     if (this._interactables && payload.centralLowGravity && typeof this._interactables.setBossLowGravityOverride === 'function') {
       this._interactables.setBossLowGravityOverride(true);
     }
+    // Solo boss phase-transition sustain drops on walkable deck when no escorts are spawned
+    if (
+      payload.escorts.length === 0 &&
+      payload.phase >= 2 &&
+      this._bossEntity &&
+      this._interactables &&
+      typeof this._interactables.spawnItemDrop === 'function'
+    ) {
+      const bx = this._bossEntity.position.x;
+      const bz = this._bossEntity.position.z;
+      const tryDrop = (dx, dz, kind) => {
+        const tx = Math.max(-24, Math.min(24, bx + dx));
+        const tz = Math.max(-24, Math.min(24, bz + dz));
+        const gy = this.collisionWorld ? this.collisionWorld.getGroundHeightAt(tx, tz, 8, -9999) : 0;
+        if (gy > -5) {
+          this._dropTmpPos ? this._dropTmpPos.set(tx, gy, tz) : (this._dropTmpPos = new THREE.Vector3(tx, gy, tz));
+        } else {
+          this._dropTmpPos ? this._dropTmpPos.set(0, 0, 0) : (this._dropTmpPos = new THREE.Vector3(0, 0, 0));
+        }
+        this._interactables.spawnItemDrop(this._dropTmpPos, kind, 35);
+      };
+      tryDrop(-3.2, 2.5, 'health');
+      tryDrop(3.2, 2.5, 'shield');
+    }
     for (let i = 0; i < payload.escorts.length; i++) {
       const entry = payload.escorts[i];
       for (let c = 0; c < entry.count; c++) {
@@ -1187,6 +1211,21 @@ class WaveDirector {
   }
 
   /** @private */
+  _hasWaveEscorts(wave) {
+    return Boolean(
+      wave &&
+        Array.isArray(wave.enemies) &&
+        wave.enemies.some(
+          (entry) =>
+            entry &&
+            entry.type !== 'aegis_overlord_boss' &&
+            entry.type !== 'cyber_mech_boss' &&
+            entry.type !== 'transcendent_omega_boss'
+        )
+    );
+  }
+
+  /** @private */
   _handleDroneSalvoEscort(payload) {
     if (!this._active || !this._bossEntity || !this._bossEntity.isAlive || this._droneSalvoEscortCooldown > 0) {
       return;
@@ -1195,6 +1234,7 @@ class WaveDirector {
       this._currentWaveIndex >= 0 && this._currentWaveIndex < WAVES.length
         ? WAVES[this._currentWaveIndex]
         : null;
+    if (!this._hasWaveEscorts(wave)) return;
     if (this._livingTargets.length >= (wave ? wave.maxConcurrent : 8)) return;
 
     let droneCount = 0;
@@ -1279,7 +1319,11 @@ class WaveDirector {
     }
     this._comboTimer = SCORE_CONFIG.comboTimeout;
 
-    const baseScore = enemy.archetype.score + (isHeadshot ? SCORE_CONFIG.headshotBonus : 0);
+    const isEnvKill = Boolean(enemy.lastHitWasEnv);
+    const baseScore =
+      enemy.archetype.score +
+      (isHeadshot ? SCORE_CONFIG.headshotBonus : 0) +
+      (isEnvKill ? 150 : 0);
     const pointsAwarded = Math.round(baseScore * this.combo);
     this.score += pointsAwarded;
     this.totalKills++;
@@ -1377,26 +1421,29 @@ class WaveDirector {
           : aid === 'interceptor_drone' || aid === 'volatile_rusher'
           ? 18
           : 14;
-        this._interactables.spawnGoldDrop(enemy.position, goldAmt);
+        const dropPos = isEnvKill && enemy._lastSafeDropPos ? enemy._lastSafeDropPos : enemy.position;
+        this._interactables.spawnGoldDrop(dropPos, goldAmt);
         if (enemy.archetype.isBoss) {
           const bonusDrop = aid === 'transcendent_omega_boss' ? 120 : aid === 'aegis_overlord_boss' ? 90 : 60;
-          this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
-          this._interactables.spawnGoldDrop(enemy.position, bonusDrop);
+          this._interactables.spawnGoldDrop(dropPos, bonusDrop);
+          this._interactables.spawnGoldDrop(dropPos, bonusDrop);
         }
       }
       if (typeof this._interactables.spawnItemDrop === 'function') {
+        const dropPos = isEnvKill && enemy._lastSafeDropPos ? enemy._lastSafeDropPos : enemy.position;
         if (enemy.archetype.isBoss) {
-          this._interactables.spawnItemDrop(enemy.position, 'health', 35);
-          this._interactables.spawnItemDrop(enemy.position, 'shield', 35);
+          this._interactables.spawnItemDrop(dropPos, 'health', 35);
+          this._interactables.spawnItemDrop(dropPos, 'shield', 35);
         } else {
           const dropChance = isElite ? 0.45 : 0.26;
           if (Math.random() < dropChance) {
             const dropType = Math.random() < 0.62 ? 'health' : 'shield';
-            this._interactables.spawnItemDrop(enemy.position, dropType, 25);
+            this._interactables.spawnItemDrop(dropPos, dropType, 25);
           }
         }
       }
       if (typeof this._interactables.spawnWeaponDrop === 'function' && !enemy.archetype.isBoss) {
+        const dropPos = isEnvKill && enemy._lastSafeDropPos ? enemy._lastSafeDropPos : enemy.position;
         this._killsSinceWeaponDrop++;
         const baseChance = isElite ? 0.24 : 0.14;
         const pity = this._killsSinceWeaponDrop >= 7 ? 0.45 : 0;
@@ -1405,7 +1452,7 @@ class WaveDirector {
           // 60% Primary (BR-12, HV-7, K-9, M41-A), 40% Special Secondary (T-4, K-0, W-01)
           const pool = Math.random() < 0.6 ? [1, 2, 3, 0] : [5, 6, 4];
           const dropWeaponIdx = pool[Math.floor(Math.random() * pool.length)];
-          this._interactables.spawnWeaponDrop(enemy.position, dropWeaponIdx);
+          this._interactables.spawnWeaponDrop(dropPos, dropWeaponIdx);
         }
       }
     }
@@ -1429,6 +1476,7 @@ class WaveDirector {
         name: enemy.archetype.name,
         isBoss: enemy.archetype.isBoss,
         isHeadshot: Boolean(isHeadshot),
+        isEnvKill,
         isMelee: Boolean(enemy.lastHitWasMelee),
         position: enemy.position.clone(),
         headPosition: enemy.headPosition.clone(),
@@ -1600,9 +1648,10 @@ class WaveDirector {
           this._livingTargets.push(spawned);
         }
 
-        // Wave 2+: Mid-wave Golden Supply Drone surprise event (once per wave)
+        // Wave 2+: Mid-wave Golden Supply Drone surprise event (once per wave; skip on solo boss fights)
         if (
           this._currentWaveIndex >= 1 &&
+          (!wave.isBossWave || this._hasWaveEscorts(wave)) &&
           !this._supplyDroneSpawnedThisWave &&
           this._spawnQueue.length <= Math.max(2, Math.floor((this._currentWaveTotalEnemies || 8) * 0.5))
         ) {

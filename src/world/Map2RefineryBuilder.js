@@ -159,41 +159,51 @@ class Map2RefineryBuilder {
     const innerBound = half - 0.5; // 31.5
     const wallH = ARENA_CONFIG.wallHeight || 11; // 11
 
-    // Register exact interior arena bounds matching inner wall faces 1:1
-    this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
+    // Register inner bounds with minY = -10 so falls into Molten Slag Pit drop smoothly to -3.8m
+    this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, -10, 28);
 
-    // 1. Industrial Post-Apocalyptic PBR Materials (zero neon, zero MeshPhysicalMaterial)
+    // 1. Industrial Post-Apocalyptic PBR Materials
     const mats = this._createMaterials();
 
-    // 2. Sunken Concrete Drainage Basin, Perimeter Walls, Buttresses & Industrial Signboards
+    // 2. Open Center Molten Slag Pit & 4 Outer Concrete Basin Walkways + Perimeter Walls
     this._buildBasinFloorAndChannels(mats, innerBound);
     this._buildPerimeterWalls(mats, innerBound, wallH);
     this._buildWallSignboards(mats, innerBound);
 
-    // 3. Central Elevated Smelter Crucible (y=1.6m), 4x 5-Step Stairways & Overhead Turbine Hood
+    // 3. Central Smelter Island & 4 Narrow Cross-Bridges Over the Boiling Slag Pit (y=0.2m)
     this._buildCentralSmelterHub(mats);
 
-    // 4. Crossing High Pipeline Skybridges (y=4.2m), 4 Stepped Ramps (<=0.35m), 4 Silos & Pipelines
+    // 4. Crossing High Skybridges (y=4.2m), Ramps, Silos & Perimeter Industrial Cover
     this._buildSkybridgesAndRamps(mats);
     this._buildDistillationSilosAndPipelines(mats);
-
-    // 5. Industrial Basin Cover: Boiler Bunkers, Tank Barricades, Blast Doors & Approach Barriers
     this._buildIndustrialCover(mats);
 
-    // 6. Distant Refinery Smokestacks, Cooling Towers & Smog Dome
+    // 5. Distant Refinery Smokestacks, Cooling Towers & Smog Dome
     this._buildSkylineAndSkyDome(mats);
 
-    // 7. Smoggy Amber Atmospheric Lighting (Directional + Hemisphere + <= 2 PointLights)
+    // 6. Smoggy Amber Atmospheric Lighting
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // 8. Structured Arena Data (mathematically verified 100% collision-clear)
+    // 8 rectangular Pit Zones forming the 4 boiling Slag Quadrants outside bridges (±2.6) & center hub (±5.5)
+    const pitReturn = { x: 0, y: 0.25, z: 20.5 };
+    const pitZones = [
+      { minX: -16.0, maxX: -5.5, minZ: -16.0, maxZ: -2.6, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: -5.5, maxX: -2.6, minZ: -16.0, maxZ: -5.5, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: 5.5, maxX: 16.0, minZ: -16.0, maxZ: -2.6, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: 2.6, maxX: 5.5, minZ: -16.0, maxZ: -5.5, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: -16.0, maxX: -5.5, minZ: 2.6, maxZ: 16.0, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: -5.5, maxX: -2.6, minZ: 5.5, maxZ: 16.0, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: 5.5, maxX: 16.0, minZ: 2.6, maxZ: 16.0, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+      { minX: 2.6, maxX: 5.5, minZ: 5.5, maxZ: 16.0, triggerY: -1.1, damage: 35, returnPos: pitReturn },
+    ];
+
     const arenaData = {
       mapId: 'sunken_refinery',
       mapIndex: 1,
       mapCode: '제14구역',
       mapName: '제14구역 · 가라앉은 정유소',
-      mapSubtitle: '매연이 가득한 산업 용광로 구역',
+      mapSubtitle: '용광로 용융 구덩이 & 교량 밸브 구역',
       atmosphere: {
         bgColor: 0x3b352e,
         fogColor: 0x4d473f,
@@ -204,23 +214,20 @@ class Map2RefineryBuilder {
         yaw: 0,
       },
       enemySpawns: [
-        // 8 Sunken Drainage Basin Spawns (y = 0.05m, clear for up to r=0.85m, h=2.40m)
-        { pos: new THREE.Vector3(0.0, 0.05, -26.2), isElevated: false },
-        { pos: new THREE.Vector3(-14.0, 0.05, -27.5), isElevated: false },
-        { pos: new THREE.Vector3(14.0, 0.05, -27.5), isElevated: false },
-        { pos: new THREE.Vector3(-28.8, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(28.8, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(-25.5, 0.05, -18.2), isElevated: false },
-        { pos: new THREE.Vector3(25.5, 0.05, -18.2), isElevated: false },
-        { pos: new THREE.Vector3(0.0, 0.05, -22.2), isElevated: false },
-        // 4 Elevated Crossing Skybridge Spawns (y = 4.25m)
+        { pos: new THREE.Vector3(0.0, 0.25, -19.5), isElevated: false },
+        { pos: new THREE.Vector3(-14.0, 0.05, -26.5), isElevated: false },
+        { pos: new THREE.Vector3(14.0, 0.05, -26.5), isElevated: false },
+        { pos: new THREE.Vector3(-26.5, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(26.5, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(-21.5, 0.05, -18.5), isElevated: false },
+        { pos: new THREE.Vector3(21.5, 0.05, -18.5), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.25, -12.0), isElevated: false },
         { pos: new THREE.Vector3(-18.0, 4.25, 0.0), isElevated: true },
         { pos: new THREE.Vector3(18.0, 4.25, 0.0), isElevated: true },
         { pos: new THREE.Vector3(0.0, 4.25, -18.0), isElevated: true },
         { pos: new THREE.Vector3(0.0, 4.25, 18.0), isElevated: true },
       ],
       pickupSpawns: [
-        // 4 High-Ground Skybridge Intersection Pickups (y = 4.2m) + 2 South Basin Pickups (y = 0.0m)
         { pos: new THREE.Vector3(-18.0, 4.2, -18.0), type: 'shield' },
         { pos: new THREE.Vector3(18.0, 4.2, -18.0), type: 'health' },
         { pos: new THREE.Vector3(-18.0, 4.2, 18.0), type: 'ammo' },
@@ -229,22 +236,33 @@ class Map2RefineryBuilder {
         { pos: new THREE.Vector3(14.0, 0.0, 26.5), type: 'ammo' },
       ],
       barrelSpawns: [
-        // 3 Twin Chokepoint Barrel Pairs around West, East & North Crucible Approaches (7.2m spacing)
-        new THREE.Vector3(-11.4, 0.0, -3.6),
-        new THREE.Vector3(-11.4, 0.0, 3.6),
-        new THREE.Vector3(11.4, 0.0, -3.6),
-        new THREE.Vector3(11.4, 0.0, 3.6),
-        new THREE.Vector3(-3.6, 0.0, -11.4),
-        new THREE.Vector3(3.6, 0.0, -11.4),
+        new THREE.Vector3(0.0, 0.2, -6.8),
+        new THREE.Vector3(-6.8, 0.2, 0.0),
+        new THREE.Vector3(6.8, 0.2, 0.0),
+        new THREE.Vector3(-20.0, 0.0, -4.5),
+        new THREE.Vector3(20.0, 0.0, -4.5),
+        new THREE.Vector3(0.0, 0.0, -24.0),
       ],
       jumpPadSpawns: [
-        // Calibrated for g=26 m/s^2, v_horiz=11.0 m/s: clears y=4.2m skybridge lip at +1.18m, lands dead center (±17.75m)
         { pos: new THREE.Vector3(-7.5, 0.0, -28.5), launchVy: 17.0, launchDirX: 0, launchDirZ: 1 },
         { pos: new THREE.Vector3(7.5, 0.0, 28.5), launchVy: 17.0, launchDirX: 0, launchDirZ: -1 },
         { pos: new THREE.Vector3(-28.5, 0.0, 7.5), launchVy: 17.0, launchDirX: 1, launchDirZ: 0 },
         { pos: new THREE.Vector3(28.5, 0.0, -7.5), launchVy: 17.0, launchDirX: -1, launchDirZ: 0 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 1.6, 0),
+      pitZones,
+      steamValves: [
+        { x: -4.2, y: 0.2, z: -4.2, yaw: 0.78, interval: 10.0, offset: 1.5, radius: 7.4, force: 22 },
+        { x: 4.2, y: 0.2, z: -4.2, yaw: -0.78, interval: 10.0, offset: 4.0, radius: 7.4, force: 22 },
+        { x: -4.2, y: 0.2, z: 4.2, yaw: 2.35, interval: 10.0, offset: 6.5, radius: 7.4, force: 22 },
+        { x: 4.2, y: 0.2, z: 4.2, yaw: -2.35, interval: 10.0, offset: 9.0, radius: 7.4, force: 22 },
+      ],
+      destructibleBarricades: [
+        { x: -4.8, y: 0, z: 18.2, yaw: 0 },
+        { x: 4.8, y: 0, z: 18.2, yaw: 0 },
+        { x: -4.8, y: 0, z: -18.2, yaw: 0 },
+        { x: 4.8, y: 0, z: -18.2, yaw: 0 },
+      ],
+      controlZoneCenter: new THREE.Vector3(0, 0.2, -10.5),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
         minX: -innerBound,
@@ -475,45 +493,56 @@ class Map2RefineryBuilder {
    * @private
    */
   _buildBasinFloorAndChannels(mats, innerBound) {
-    const size = innerBound * 2; // 63m
-    const floorGeo = this._trackGeo(new THREE.PlaneGeometry(size + 2, size + 2));
-    const floorMesh = new THREE.Mesh(floorGeo, mats.floorMat);
-    floorMesh.rotation.x = -Math.PI * 0.5;
-    floorMesh.position.y = 0;
-    floorMesh.receiveShadow = true;
-    this.root.add(floorMesh);
-
-    // Solid ground floor AABB
-    this.collisionWorld.addBox(-34, -1.0, -34, 34, 0.0, 34, 'floor');
-
-    // Flush steel drainage trench plates guiding sightlines into the central smelter & ramps (non-colliding 0.012m height)
-    const grateSpecs = [
-      { x: 0, z: 20.5, w: 1.8, d: 18.0 },
-      { x: 0, z: -20.5, w: 1.8, d: 18.0 },
-      { x: -20.5, z: 0, w: 18.0, d: 1.8 },
-      { x: 20.5, z: 0, w: 18.0, d: 1.8 },
-      // Sump catch basins under the central perimeter corridors
-      { x: -12.0, z: 0, w: 1.4, d: 28.0 },
-      { x: 12.0, z: 0, w: 1.4, d: 28.0 },
-      { x: 0, z: -12.0, w: 28.0, d: 1.4 },
-      { x: 0, z: 12.0, w: 28.0, d: 1.4 },
+    // 4 Walkable Perimeter Floor Strips around the Open Center Molten Slag Pit ([-16..16])
+    const floorStrips = [
+      { minX: -34, maxX: 34, minZ: -34, maxZ: -16 },
+      { minX: -34, maxX: 34, minZ: 16, maxZ: 34 },
+      { minX: -34, maxX: -16, minZ: -16, maxZ: 16 },
+      { minX: 16, maxX: 34, minZ: -16, maxZ: 16 },
     ];
-
-    const trenchGeo = this._trackGeo(new THREE.BoxGeometry(1, 0.014, 1));
-    const trenchInst = new THREE.InstancedMesh(trenchGeo, mats.darkIronMat, grateSpecs.length);
-    trenchInst.receiveShadow = true;
-    const dummy = new THREE.Object3D();
-
-    for (let i = 0; i < grateSpecs.length; i++) {
-      const g = grateSpecs[i];
-      dummy.position.set(g.x, 0.007, g.z);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(g.w, 1, g.d);
-      dummy.updateMatrix();
-      trenchInst.setMatrixAt(i, dummy.matrix);
+    for (let i = 0; i < floorStrips.length; i++) {
+      const f = floorStrips[i];
+      const w = f.maxX - f.minX;
+      const d = f.maxZ - f.minZ;
+      const cx = (f.minX + f.maxX) * 0.5;
+      const cz = (f.minZ + f.maxZ) * 0.5;
+      const mGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, 0.5, d), w, 0.5, d, 4.0, 4.0));
+      const mesh = new THREE.Mesh(mGeo, mats.floorMat);
+      mesh.position.set(cx, -0.25, cz);
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
+      this.collisionWorld.addBox(f.minX, -1.0, f.minZ, f.maxX, 0.0, f.maxZ, 'floor');
     }
-    trenchInst.instanceMatrix.needsUpdate = true;
-    this.root.add(trenchInst);
+
+    // Sunken Molten Slag Pit Lining + Glowing Magma Pool at y = -3.8m
+    const pitWallGeo = this._trackGeo(new THREE.BoxGeometry(32.2, 4.2, 0.6));
+    const pitWallZGeo = this._trackGeo(new THREE.BoxGeometry(0.6, 4.2, 32.2));
+    for (const sz of [-16.2, 16.2]) {
+      const pw = new THREE.Mesh(pitWallGeo, mats.darkIronMat);
+      pw.position.set(0, -1.95, sz);
+      this.root.add(pw);
+    }
+    for (const sx of [-16.2, 16.2]) {
+      const pw = new THREE.Mesh(pitWallZGeo, mats.darkIronMat);
+      pw.position.set(sx, -1.95, 0);
+      this.root.add(pw);
+    }
+    const slagGeo = this._trackGeo(new THREE.PlaneGeometry(32.5, 32.5));
+    slagGeo.rotateX(-Math.PI * 0.5);
+    const slagMat = this._trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0xea580c,
+        emissive: new THREE.Color(0xff4500),
+        emissiveIntensity: 1.55,
+        roughness: 0.42,
+        metalness: 0.1,
+      })
+    );
+    const slagMesh = new THREE.Mesh(slagGeo, slagMat);
+    slagMesh.position.y = -3.8;
+    this.root.add(slagMesh);
+    this._furnaceGlowMat = slagMat;
+    this.collisionWorld.addBox(-16.5, -4.8, -16.5, 16.5, -3.8, 16.5, 'pit_floor');
   }
 
   /**
@@ -823,317 +852,52 @@ class Map2RefineryBuilder {
    * @private
    */
   _buildCentralSmelterHub(mats) {
-    const deckY = 1.6;
-    const apothem = 8.0; // 16m x 16m flat-to-flat octagon
-    const cornerR = apothem / Math.cos(Math.PI / 8); // ~8.659m
-
-    const octShape = new THREE.Shape();
-    for (let i = 0; i < 8; i++) {
-      const ang = (Math.PI / 4) * i + Math.PI / 8;
-      const x = Math.cos(ang) * cornerR;
-      const y = Math.sin(ang) * cornerR;
-      if (i === 0) octShape.moveTo(x, y);
-      else octShape.lineTo(x, y);
-    }
-    octShape.closePath();
-
-    // Solid armored smelter substructure plinth (y = 0..1.48m)
-    const plinthGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(octShape, {
-          depth: 1.48,
-          bevelEnabled: true,
-          bevelThickness: 0.04,
-          bevelSize: 0.06,
-          bevelSegments: 1,
-        }),
-        0.36,
-        0.36
-      )
-    );
-    plinthGeo.rotateX(-Math.PI * 0.5);
-    const plinthMesh = new THREE.Mesh(plinthGeo, mats.rustSteelMat);
-    plinthMesh.position.y = 0.02;
-    plinthMesh.castShadow = true;
-    plinthMesh.receiveShadow = true;
-    this.root.add(plinthMesh);
-
-    // Top industrial steel-grated refinery deck slab flush at y = 1.60m
-    const topGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(octShape, {
-          depth: 0.08,
-          bevelEnabled: false,
-        }),
-        0.16,
-        0.16
-      )
-    );
-    topGeo.rotateX(-Math.PI * 0.5);
-    const topMesh = new THREE.Mesh(topGeo, mats.daisGrateMat);
-    topMesh.position.y = deckY - 0.08;
-    topMesh.receiveShadow = true;
-    this.root.add(topMesh);
-
-    // Hazard-painted octagonal safety collar band around the smelter deck perimeter (y = 1.38..1.60m)
-    const collarGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.CylinderGeometry(cornerR + 0.02, cornerR + 0.05, 0.22, 8, 1, true),
-        18,
-        1
-      )
-    );
-    const collarMesh = new THREE.Mesh(collarGeo, mats.hazardMat);
-    collarMesh.position.y = deckY - 0.11;
-    collarMesh.rotation.y = Math.PI / 8;
-    this.root.add(collarMesh);
-
-    // Exact 5-box octagonal collision registration (solid from y=0 to y=1.60m, zero gaps)
-    this.collisionWorld.addBox(-5.65, 0, -5.65, 5.65, deckY, 5.65, 'platform');
-    this.collisionWorld.addBox(-8.0, 0, -3.31, 8.0, deckY, 3.31, 'platform');
-    this.collisionWorld.addBox(-3.31, 0, -8.0, 3.31, deckY, 8.0, 'platform');
-    this.collisionWorld.addBox(-6.85, 0, -4.45, 6.85, deckY, 4.45, 'platform');
-    this.collisionWorld.addBox(-4.45, 0, -6.85, 4.45, deckY, 6.85, 'platform');
-
-    // 4 Wide 5-Step Steel Stairways on North, South, West & East cardinal faces
-    // 5 steps: rise = 1.60 / 5 = 0.32m (<= 0.32m!), depth = 0.72m -> run = 3.60m (from 11.6m to 8.0m)
-    const stepCount = 5;
-    const stepRise = deckY / stepCount; // 0.32m
-    const stepDepth = 0.72;
-    const stairWidth = 5.2;
-
-    const stepSlabGeo = this._trackGeo(
-      scaleBoxUVs(
-        new THREE.BoxGeometry(stairWidth, 0.32, stepDepth),
-        stairWidth,
-        0.32,
-        stepDepth,
-        1.8,
-        0.72
-      )
-    );
-    const nosingGeo = this._trackGeo(
-      scaleBoxUVs(
-        new THREE.BoxGeometry(stairWidth - 0.12, 0.06, 0.09),
-        stairWidth - 0.12,
-        0.06,
-        0.09,
-        1.2,
-        0.4
-      )
-    );
-    const totalSteps = stepCount * 4;
-
-    const stepInst = new THREE.InstancedMesh(stepSlabGeo, mats.stepMat, totalSteps);
-    stepInst.castShadow = true;
-    stepInst.receiveShadow = true;
-    const nosingInst = new THREE.InstancedMesh(nosingGeo, mats.hazardMat, totalSteps);
-
-    // Sloped stair stringer side beams (flush, non-blocking)
-    const strLen = stepCount * stepDepth; // 3.60m
-    const strShape = new THREE.Shape();
-    strShape.moveTo(0, 0);
-    strShape.lineTo(strLen, 0);
-    strShape.lineTo(strLen, deckY + 0.08);
-    strShape.lineTo(0, 0.4);
-    strShape.closePath();
-
-    const strGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(strShape, {
-          depth: 0.22,
-          bevelEnabled: true,
-          bevelThickness: 0.03,
-          bevelSize: 0.03,
-          bevelSegments: 1,
-        }),
-        0.3,
-        0.3
-      )
-    );
-    strGeo.translate(0, 0, -0.11);
-
-    const stairConfigs = [
-      { dirX: 0, dirZ: 1, rotY: -Math.PI * 0.5 },   // North (-Z): climbs from z=-11.6 toward -8.0 (+Z)
-      { dirX: 0, dirZ: -1, rotY: Math.PI * 0.5 },   // South (+Z): climbs from z=11.6 toward 8.0 (-Z)
-      { dirX: 1, dirZ: 0, rotY: 0 },                // West (-X): climbs from x=-11.6 toward -8.0 (+X)
-      { dirX: -1, dirZ: 0, rotY: Math.PI },         // East (+X): climbs from x=11.6 toward 8.0 (-X)
+    const deckY = 0.20; // Clean low bridge lip <= stepHeight so sprinting onto bridges is seamless!
+    const bridgeSpans = [
+      // Central Foundry Island Deck (11m x 11m over deep pier)
+      { minX: -5.5, maxX: 5.5, minZ: -5.5, maxZ: 5.5, pier: true },
+      // 4 Crossing Steel Bridges (5.2m wide) connecting N/S/W/E perimeter walkways across the boiling slag!
+      { minX: -2.6, maxX: 2.6, minZ: -16.4, maxZ: -5.5, pier: false },
+      { minX: -2.6, maxX: 2.6, minZ: 5.5, maxZ: 16.4, pier: false },
+      { minX: -16.4, maxX: -5.5, minZ: -2.6, maxZ: 2.6, pier: false },
+      { minX: 5.5, maxX: 16.4, minZ: -2.6, maxZ: 2.6, pier: false },
     ];
 
-    const dummy = new THREE.Object3D();
-    let sIdx = 0;
+    for (let i = 0; i < bridgeSpans.length; i++) {
+      const b = bridgeSpans[i];
+      const w = b.maxX - b.minX;
+      const d = b.maxZ - b.minZ;
+      const cx = (b.minX + b.maxX) * 0.5;
+      const cz = (b.minZ + b.maxZ) * 0.5;
+      const slabH = b.pier ? 4.0 : 0.45;
+      const slabGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, slabH, d), w, slabH, d, 2.2, 2.2));
+      const mesh = new THREE.Mesh(slabGeo, mats.daisGrateMat);
+      mesh.position.set(cx, deckY - slabH * 0.5, cz);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
 
-    for (let s = 0; s < stairConfigs.length; s++) {
-      const sc = stairConfigs[s];
-      const isZ = sc.dirZ !== 0;
+      const curbGeo = this._trackGeo(new THREE.BoxGeometry(w + 0.08, 0.14, d + 0.08));
+      const curb = new THREE.Mesh(curbGeo, mats.hazardMat);
+      curb.position.set(cx, deckY - 0.1, cz);
+      this.root.add(curb);
 
-      // Side steel stringers flanking each stair
-      for (const sideOff of [-(stairWidth * 0.5 + 0.11), stairWidth * 0.5 + 0.11]) {
-        const strMesh = new THREE.Mesh(strGeo, mats.darkIronMat);
-        if (isZ) {
-          strMesh.position.set(sideOff, 0, -sc.dirZ * 11.6);
-        } else {
-          strMesh.position.set(-sc.dirX * 11.6, 0, sideOff);
-        }
-        strMesh.rotation.y = sc.rotY;
-        strMesh.castShadow = true;
-        strMesh.receiveShadow = true;
-        this.root.add(strMesh);
-      }
-
-      // 5 Steps (step i=0 outermost at ±11.6..10.88, step i=4 innermost flush at ±8.72..8.00)
-      for (let i = 0; i < stepCount; i++) {
-        const topY = (i + 1) * stepRise;
-        const distFromCenter = 11.6 - (i + 0.5) * stepDepth;
-
-        if (isZ) {
-          const zCenter = -sc.dirZ * distFromCenter;
-          const zMin = zCenter - stepDepth * 0.5;
-          const zMax = zCenter + stepDepth * 0.5;
-
-          dummy.position.set(0, topY - 0.16, zCenter);
-          dummy.rotation.set(0, 0, 0);
-          dummy.scale.set(1, 1, 1);
-          dummy.updateMatrix();
-          stepInst.setMatrixAt(sIdx, dummy.matrix);
-
-          const frontZ = zCenter - sc.dirZ * (stepDepth * 0.5 - 0.045);
-          dummy.position.set(0, topY - 0.03, frontZ);
-          dummy.updateMatrix();
-          nosingInst.setMatrixAt(sIdx, dummy.matrix);
-          sIdx++;
-
-          this.collisionWorld.addBox(
-            -stairWidth * 0.5,
-            0.0,
-            zMin,
-            stairWidth * 0.5,
-            topY,
-            zMax,
-            'ramp'
-          );
-        } else {
-          const xCenter = -sc.dirX * distFromCenter;
-          const xMin = xCenter - stepDepth * 0.5;
-          const xMax = xCenter + stepDepth * 0.5;
-
-          dummy.position.set(xCenter, topY - 0.16, 0);
-          dummy.rotation.set(0, Math.PI * 0.5, 0);
-          dummy.scale.set(1, 1, 1);
-          dummy.updateMatrix();
-          stepInst.setMatrixAt(sIdx, dummy.matrix);
-
-          const frontX = xCenter - sc.dirX * (stepDepth * 0.5 - 0.045);
-          dummy.position.set(frontX, topY - 0.03, 0);
-          dummy.rotation.set(0, Math.PI * 0.5, 0);
-          dummy.updateMatrix();
-          nosingInst.setMatrixAt(sIdx, dummy.matrix);
-          sIdx++;
-
-          this.collisionWorld.addBox(
-            xMin,
-            0.0,
-            -stairWidth * 0.5,
-            xMax,
-            topY,
-            stairWidth * 0.5,
-            'ramp'
-          );
-        }
-      }
+      this.collisionWorld.addBox(b.minX, deckY - slabH, b.minZ, b.maxX, deckY, b.maxZ, 'platform');
     }
 
-    stepInst.instanceMatrix.needsUpdate = true;
-    nosingInst.instanceMatrix.needsUpdate = true;
-    this.root.add(stepInst, nosingInst);
-
-    // Overhead Suspended Smelter Collector Hood + Exhaust Manifold + Rotating Turbine (y = 8.1..11.5m)
-    const hoodGroup = new THREE.Group();
-    hoodGroup.position.set(0, 8.2, 0);
-
-    // Sculpted LatheGeometry flared smelter exhaust hood
-    const hoodPoints = [
-      new THREE.Vector2(3.95, 0.0),
-      new THREE.Vector2(4.05, 0.25),
-      new THREE.Vector2(3.75, 0.55),
-      new THREE.Vector2(2.85, 1.35),
-      new THREE.Vector2(2.45, 1.85),
-      new THREE.Vector2(2.45, 2.25),
-      new THREE.Vector2(2.05, 2.55),
-      new THREE.Vector2(2.05, 3.45),
-      new THREE.Vector2(2.35, 3.55),
-      new THREE.Vector2(0.01, 3.60),
-    ];
-    const hoodGeo = this._trackGeo(new THREE.LatheGeometry(hoodPoints, 16));
-    const hoodMesh = new THREE.Mesh(hoodGeo, mats.rustSteelMat);
-    hoodGroup.add(hoodMesh);
-
-    // Flanged steel intake lip ring + hazard collar around lower smelter mouth
-    const lipGeo = this._trackGeo(new THREE.TorusGeometry(3.92, 0.16, 8, 24));
-    lipGeo.rotateX(Math.PI * 0.5);
-    const lipMesh = new THREE.Mesh(lipGeo, mats.darkIronMat);
-    lipMesh.position.y = 0.06;
-    hoodGroup.add(lipMesh);
-
-    // Glowing molten-orange furnace intake baffle recessed inside the collector hood
-    const glowConeGeo = this._trackGeo(new THREE.CylinderGeometry(1.75, 2.55, 0.45, 16));
-    const glowConeMesh = new THREE.Mesh(glowConeGeo, mats.furnaceGlowMat);
-    glowConeMesh.position.y = 0.48;
-    hoodGroup.add(glowConeMesh);
-
-    // Rotating 6-blade industrial turbine fan suspended inside hood mouth (y = 8.25m)
-    const rotorGroup = new THREE.Group();
-    rotorGroup.position.y = 0.08;
-
-    const hubGeo = this._trackGeo(new THREE.CylinderGeometry(0.68, 0.78, 0.46, 12));
-    const hubMesh = new THREE.Mesh(hubGeo, mats.darkIronMat);
-    rotorGroup.add(hubMesh);
-
-    const bladeShape = new THREE.Shape();
-    bladeShape.moveTo(0, -0.24);
-    bladeShape.lineTo(2.75, -0.44);
-    bladeShape.lineTo(2.95, 0.0);
-    bladeShape.lineTo(2.75, 0.44);
-    bladeShape.lineTo(0, 0.24);
-    bladeShape.closePath();
-
-    const bladeGeo = this._trackGeo(
-      new THREE.ExtrudeGeometry(bladeShape, {
-        depth: 0.08,
-        bevelEnabled: true,
-        bevelThickness: 0.015,
-        bevelSize: 0.015,
-        bevelSegments: 1,
-      })
-    );
-    bladeGeo.translate(0.55, 0, -0.04);
-
-    for (let b = 0; b < 6; b++) {
-      const ang = (Math.PI / 3) * b;
-      const bladeWrap = new THREE.Group();
-      bladeWrap.rotation.y = ang;
-      const bladeMesh = new THREE.Mesh(bladeGeo, mats.rustSteelMat);
-      bladeMesh.rotation.x = 0.44; // Pitched fan blade angle
-      bladeWrap.add(bladeMesh);
-      rotorGroup.add(bladeWrap);
-    }
-
-    hoodGroup.add(rotorGroup);
-    this._turbineRotor = rotorGroup;
-
-    // 4 heavy overhead structural steel suspension beams anchoring smelter hood to corner girders
-    const trussGeo = this._trackGeo(new THREE.BoxGeometry(0.45, 0.55, 36.0));
-    const diagTrussA = new THREE.Mesh(trussGeo, mats.darkIronMat);
-    diagTrussA.position.y = 2.15;
-    diagTrussA.rotation.y = Math.PI * 0.25;
-    hoodGroup.add(diagTrussA);
-
-    const diagTrussB = new THREE.Mesh(trussGeo, mats.darkIronMat);
-    diagTrussB.position.y = 2.15;
-    diagTrussB.rotation.y = -Math.PI * 0.25;
-    hoodGroup.add(diagTrussB);
-
-    this.root.add(hoodGroup);
+    // Overhead Smelter Exhaust Hood Suspended High (y=10.2m) so bridges have wide-open combat flow
+    const hoodGeo = this._trackGeo(new THREE.CylinderGeometry(2.6, 4.4, 2.4, 8));
+    const hood = new THREE.Mesh(hoodGeo, mats.darkIronMat);
+    hood.position.set(0, 10.6, 0);
+    this.root.add(hood);
+    const rotorGeo = this._trackGeo(new THREE.BoxGeometry(6.8, 0.18, 0.52));
+    this._turbineRotor = new THREE.Group();
+    this._turbineRotor.position.set(0, 9.2, 0);
+    const rA = new THREE.Mesh(rotorGeo, mats.rustSteelMat);
+    const rB = new THREE.Mesh(rotorGeo, mats.rustSteelMat);
+    rB.rotation.y = Math.PI * 0.5;
+    this._turbineRotor.add(rA, rB);
+    this.root.add(this._turbineRotor);
   }
 
   /**
@@ -1672,10 +1436,10 @@ class Map2RefineryBuilder {
     const bunkerValveGeo = this._trackGeo(new THREE.TorusGeometry(0.24, 0.045, 6, 12));
 
     const bunkerPositions = [
-      [-12.2, -11.5],
-      [12.2, -11.5],
-      [-12.2, 11.5],
-      [12.2, 11.5],
+      [-21.8, -8.5],
+      [21.8, -8.5],
+      [-21.8, 8.5],
+      [21.8, 8.5],
     ];
 
     for (let i = 0; i < bunkerPositions.length; i++) {
@@ -1735,10 +1499,10 @@ class Map2RefineryBuilder {
     );
 
     const tankSpecs = [
-      { x: 0, z: -14.0, rotY: 0 },
-      { x: 0, z: 14.0, rotY: 0 },
-      { x: -14.0, z: 0, rotY: Math.PI * 0.5 },
-      { x: 14.0, z: 0, rotY: Math.PI * 0.5 },
+      { x: 0, z: -20.5, rotY: 0 },
+      { x: 0, z: 20.5, rotY: 0 },
+      { x: -20.5, z: 0, rotY: Math.PI * 0.5 },
+      { x: 20.5, z: 0, rotY: Math.PI * 0.5 },
     ];
 
     for (let i = 0; i < tankSpecs.length; i++) {

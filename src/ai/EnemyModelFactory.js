@@ -21,17 +21,17 @@ const GLB_MODEL_REGISTRY = Object.freeze({
   sniper_stalker: './assets/models/sniper_stalker.glb?v=20261128a',
   cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261128a',
   // Act 2: Aegis Orbital Vanguard (Waves 6-10)
-  interceptor_drone: './assets/models/interceptor_drone.glb?v=20261128a',
-  shock_breacher: './assets/models/shock_breacher.glb?v=20261128a',
-  rail_warden: './assets/models/rail_warden.glb?v=20261128a',
-  mortar_artillery: './assets/models/mortar_artillery.glb?v=20261128a',
-  vanguard_assassin: './assets/models/vanguard_assassin.glb?v=20261128a',
+  interceptor_drone: './assets/models/interceptor_drone.glb?v=20261128g',
+  shock_breacher: './assets/models/shock_breacher.glb?v=20261128g',
+  rail_warden: './assets/models/rail_warden.glb?v=20261128g',
+  mortar_artillery: './assets/models/mortar_artillery.glb?v=20261128g',
+  vanguard_assassin: './assets/models/vanguard_assassin.glb?v=20261128g',
   aegis_overlord_boss: './assets/models/aegis_overlord.glb?v=20261128f',
   // Act 3: Abyssal Singularity Swarm (Waves 11-15)
-  volatile_rusher: './assets/models/volatile_rusher.glb?v=20261128a',
-  void_warper: './assets/models/void_warper.glb?v=20261128a',
-  void_swarmer: './assets/models/void_swarmer.glb?v=20261128a',
-  abyss_sentinel: './assets/models/abyss_sentinel.glb?v=20261128a',
+  volatile_rusher: './assets/models/volatile_rusher.glb?v=20261128g',
+  void_warper: './assets/models/void_warper.glb?v=20261128g',
+  void_swarmer: './assets/models/void_swarmer.glb?v=20261128g',
+  abyss_sentinel: './assets/models/abyss_sentinel.glb?v=20261128g',
   transcendent_omega_boss: './assets/models/transcendent_omega.glb?v=20261128f',
 });
 const ALL_GLB_MODELS = GLB_MODEL_REGISTRY;
@@ -1503,6 +1503,7 @@ class EnemyModelFactory {
         );
         break;
       case 'void_swarmer':
+        laserLine = this._createLaserBeam(ownedMaterials, ownedGeometries, root, 0xa855f7, 0x38bdf8);
         this._buildWithGlb(
           'void_swarmer',
           buildCtx(),
@@ -3683,17 +3684,17 @@ class EnemyModelFactory {
 
   _createRailWardenShieldMesh(ownedMaterials) {
     return this._createEnergyShieldMesh(ownedMaterials, {
-      geoKey: 'warden_blast_shield',
+      geoKey: 'warden_blast_shield_quad',
       geoFn: () => {
-        const geo = new THREE.CylinderGeometry(1.18, 1.18, 1.42, 18, 1, true, -0.44, 0.88);
-        geo.translate(0, 0, -1.08);
+        const geo = new THREE.CylinderGeometry(0.95, 1.00, 0.80, 18, 1, true, -0.58, 1.16);
+        geo.translate(0, 0, -0.96);
         return geo;
       },
       color: 0x22d3ee,
       emissive: 0x00e5ff,
-      emissiveIntensity: 1.95,
-      opacity: 0.78,
-      baseOpacity: 0.78,
+      emissiveIntensity: 1.85,
+      opacity: 0.74,
+      baseOpacity: 0.74,
       renderOrder: 6,
       mapKey: 'hexShield',
     });
@@ -3701,13 +3702,17 @@ class EnemyModelFactory {
 
   _createAbyssSentinelShieldMesh(ownedMaterials) {
     return this._createEnergyShieldMesh(ownedMaterials, {
-      geoKey: 'sentinel_shield',
-      geoFn: () => new THREE.BoxGeometry(0.92, 1.48, 0.09),
-      color: 0x38bdf8,
+      geoKey: 'sentinel_shield_hex_ward',
+      geoFn: () => {
+        const geo = new THREE.CylinderGeometry(0.96, 1.02, 1.02, 6, 1, true, -0.58, 1.16);
+        geo.translate(0, 0, -0.97);
+        return geo;
+      },
+      color: 0x8b5cf6,
       emissive: 0x38bdf8,
-      emissiveIntensity: 1.65,
-      opacity: 0.76,
-      baseOpacity: 0.76,
+      emissiveIntensity: 1.75,
+      opacity: 0.72,
+      baseOpacity: 0.72,
       renderOrder: 6,
       mapKey: 'hexShield',
     });

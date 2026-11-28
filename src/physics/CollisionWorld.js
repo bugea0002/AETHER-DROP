@@ -15,6 +15,10 @@ class CollisionWorld {
     this._boxes = [];
     /** @type {Array<{id:number, x:number, y:number, z:number, radius:number, launchVy:number, launchDirX:number, launchDirZ:number, lastTriggerTime:number}>} */
     this._jumpPads = [];
+    this._pitZones = [];
+    this._boostRails = [];
+    this._portals = [];
+    this._voidFallY = -999;
     this._nextBoxId = 1;
     this._nextPadId = 1;
 
@@ -82,6 +86,7 @@ class CollisionWorld {
       maxY: bxMaxY,
       maxZ: bxMaxZ,
       tag,
+      enabled: true,
     };
     this._boxes.push(box);
 
@@ -91,6 +96,79 @@ class CollisionWorld {
     }
 
     return box;
+  }
+
+  /**
+   * Enable or disable a collider box by its id (zero-GC toggling for barriers & destructible props).
+   * @param {number} id
+   * @param {boolean} enabled
+   * @returns {boolean}
+   */
+  setBoxEnabled(id, enabled) {
+    for (let i = 0; i < this._boxes.length; i++) {
+      if (this._boxes[i].id === id) {
+        this._boxes[i].enabled = Boolean(enabled);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Configure interactive 2-Tier Fall Hazards (Pits vs Void Cliffs), Boost Rails, and Portals.
+   */
+  setHazards({ pitZones = null, voidFallY = -999, boostRails = null, portals = null } = {}) {
+    this._pitZones.length = 0;
+    if (Array.isArray(pitZones)) {
+      for (let i = 0; i < pitZones.length; i++) this._pitZones.push(pitZones[i]);
+    }
+    this._boostRails.length = 0;
+    if (Array.isArray(boostRails)) {
+      for (let i = 0; i < boostRails.length; i++) this._boostRails.push(boostRails[i]);
+    }
+    this._portals.length = 0;
+    if (Array.isArray(portals)) {
+      for (let i = 0; i < portals.length; i++) this._portals.push(portals[i]);
+    }
+    this._voidFallY = Number.isFinite(voidFallY) ? voidFallY : -999;
+  }
+
+  getPitAt(x, y, z) {
+    for (let i = 0; i < this._pitZones.length; i++) {
+      const p = this._pitZones[i];
+      if (
+        x >= p.minX &&
+        x <= p.maxX &&
+        z >= p.minZ &&
+        z <= p.maxZ &&
+        y <= (Number.isFinite(p.triggerY) ? p.triggerY : -1.2)
+      ) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  getPitAtXZ(x, z) {
+    for (let i = 0; i < this._pitZones.length; i++) {
+      const p = this._pitZones[i];
+      if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  getVoidFallY() {
+    return this._voidFallY;
+  }
+
+  getBoostRails() {
+    return this._boostRails;
+  }
+
+  getPortals() {
+    return this._portals;
   }
 
   /**
@@ -133,6 +211,10 @@ class CollisionWorld {
   clear() {
     this._boxes.length = 0;
     this._jumpPads.length = 0;
+    this._pitZones.length = 0;
+    this._boostRails.length = 0;
+    this._portals.length = 0;
+    this._voidFallY = -999;
     this._hasCustomBounds = false;
     this._bounds.minX = -120;
     this._bounds.maxX = 120;
@@ -147,6 +229,13 @@ class CollisionWorld {
    */
   getBoxes() {
     return this._boxes;
+  }
+
+  /**
+   * Return current arena outer bounding box limits.
+   */
+  getBounds() {
+    return this._bounds;
   }
 
   /**
@@ -178,6 +267,7 @@ class CollisionWorld {
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
+      if (b.enabled === false) continue;
       if (
         maxX > b.minX &&
         minX < b.maxX &&
@@ -217,6 +307,7 @@ class CollisionWorld {
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
+      if (b.enabled === false) continue;
 
       // Vertical overlap check
       if (maxY <= b.minY || minY >= b.maxY) continue;
@@ -321,6 +412,7 @@ class CollisionWorld {
 
       for (let i = 0; i < boxes.length; i++) {
         const b = boxes[i];
+        if (b.enabled === false) continue;
         if (maxX <= b.minX || minX >= b.maxX || maxZ <= b.minZ || minZ >= b.maxZ) continue;
 
         // Swept downward landing onto box top
@@ -345,6 +437,7 @@ class CollisionWorld {
 
       for (let i = 0; i < boxes.length; i++) {
         const b = boxes[i];
+        if (b.enabled === false) continue;
         if (maxX <= b.minX || minX >= b.maxX || maxZ <= b.minZ || minZ >= b.maxZ) continue;
 
         // Swept upward bonk against box underside
@@ -368,6 +461,7 @@ class CollisionWorld {
     if (!result.grounded && vel.y <= 0.01) {
       for (let i = 0; i < boxes.length; i++) {
         const b = boxes[i];
+        if (b.enabled === false) continue;
         if (maxX <= b.minX || minX >= b.maxX || maxZ <= b.minZ || minZ >= b.maxZ) continue;
         if (pos.y >= b.maxY - 0.04 && pos.y <= b.maxY + GROUND_PROBE) {
           pos.y = b.maxY;
@@ -537,6 +631,7 @@ class CollisionWorld {
     const boxes = this._boxes;
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
+      if (b.enabled === false) continue;
 
       let tmin = -Infinity;
       let tmax = Infinity;
@@ -681,20 +776,22 @@ class CollisionWorld {
 
   /**
    * Return the highest box top surface containing (x, z) with box.maxY <= maxY.
-   * Defaults to 0 if no box covers (x, z).
+   * Defaults to fallbackY (0 for legacy callers; pass -9999 for AI ledge/void checks).
    *
    * @param {number} x
    * @param {number} z
    * @param {number} [maxY=20]
+   * @param {number} [fallbackY=0]
    * @returns {number}
    */
-  getGroundHeightAt(x, z, maxY = 20) {
+  getGroundHeightAt(x, z, maxY = 20, fallbackY = 0) {
     let found = false;
     let bestY = -Infinity;
     const boxes = this._boxes;
 
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
+      if (b.enabled === false) continue;
       if (
         x >= b.minX &&
         x <= b.maxX &&
@@ -709,7 +806,7 @@ class CollisionWorld {
       }
     }
 
-    return found ? bestY : 0;
+    return found ? bestY : fallbackY;
   }
 }
   __exports.CollisionWorld = CollisionWorld;

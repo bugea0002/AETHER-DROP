@@ -2,6 +2,7 @@
 __define("src/world/Map6OrbitalDrydockBuilder.js", (__exports, __require) => {
 const { ARENA_CONFIG } = __require("src/config/constants.js");
 const { TextureGenerator } = __require("src/world/TextureGenerator.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 function createRng(seed) {
   let a = seed >>> 0;
@@ -81,6 +82,7 @@ class Map6OrbitalDrydockBuilder {
     this._distantBeaconMat = null;
     this._keelLight = null;
     this._gantryLight = null;
+    this._propMounts = [];
 
     this._built = false;
   }
@@ -105,82 +107,90 @@ class Map6OrbitalDrydockBuilder {
     this.root.name = 'ArenaRoot_SECTOR99_AegisDrydock';
     this.scene.add(this.root);
 
-    const half = ARENA_CONFIG.halfSize; // 32
-    const innerBound = half - 0.5; // 31.5
+    const halfX = 29.5; // 60m width
+    const halfZ = 38.5; // 78m length: 3 Parallel Gantry Bridges over Deep Space Chasms!
     const wallH = ARENA_CONFIG.wallHeight; // 11
 
-    this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
+    // Open space void chasms drop freely down past voidFallY = -14!
+    this.collisionWorld.setArenaBounds(-halfX - 8, halfX + 8, -halfZ - 4, halfZ + 4, -26, 30);
 
     const mats = this._createMaterials();
-    this._buildDrydockFloorAndTurntable(mats, innerBound);
-    this._buildPerimeterWalls(mats, innerBound, wallH);
-    this._buildSectorSignboards(mats, innerBound);
-    this._buildGantriesAndRamps(mats, innerBound);
+    this._buildDrydockFloorAndTurntable(mats, halfX, halfZ);
+    this._buildPerimeterWalls(mats, halfX, halfZ, wallH);
+    this._buildSectorSignboards(mats, halfX, halfZ);
+    this._buildGantriesAndRamps(mats, halfX, halfZ);
     this._buildKeelButtressesAndBulkheads(mats);
-    this._buildCranesDreadnoughtAndSkyDome(mats, innerBound);
+    this._buildCranesDreadnoughtAndSkyDome(mats, halfX);
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // Jump pad calibration: deckY = 4.2m, g = 26 m/s^2, Vh = 11.0 m/s, Vy = 17.6 m/s
-    // Peak y = 5.96m, descending landing at y = 4.2m occurs at t = 1.0445s -> d = 11.49m.
     return {
       mapId: 'aegis_drydock',
       mapIndex: 5,
       mapCode: '제99구역',
       mapName: '제99구역 · 이지스 건조 도크',
-      mapSubtitle: '궤도 사령부 및 기함 선체 — 2막 보스 구역',
+      mapSubtitle: '3갈래 평행 도크 교량 & 심우주 균열 — 2막 보스 구역',
       atmosphere: {
         bgColor: 0x050712,
         fogColor: 0x0c1026,
         fogDensity: 0.0076,
       },
       playerSpawn: {
-        pos: new THREE.Vector3(0, 0.05, 22.8),
+        pos: new THREE.Vector3(0, 0.05, 30.5),
         yaw: 0,
       },
       enemySpawns: [
-        { pos: new THREE.Vector3(0.0, 0.05, -18.5), isElevated: false },
-        { pos: new THREE.Vector3(-4.2, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(4.2, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(0.0, 0.05, -8.5), isElevated: false },
-        { pos: new THREE.Vector3(-18.5, 0.05, -7.5), isElevated: false },
-        { pos: new THREE.Vector3(18.5, 0.05, -7.5), isElevated: false },
-        { pos: new THREE.Vector3(-18.5, 0.05, 7.5), isElevated: false },
-        { pos: new THREE.Vector3(18.5, 0.05, 7.5), isElevated: false },
-        { pos: new THREE.Vector3(-28.0, 4.25, -12.0), isElevated: true },
-        { pos: new THREE.Vector3(28.0, 4.25, -12.0), isElevated: true },
-        { pos: new THREE.Vector3(-28.0, 4.25, 12.0), isElevated: true },
-        { pos: new THREE.Vector3(28.0, 4.25, 12.0), isElevated: true },
+        { pos: new THREE.Vector3(0.0, 0.05, -24.0), isElevated: false },
+        { pos: new THREE.Vector3(-4.5, 0.05, -24.5), isElevated: false },
+        { pos: new THREE.Vector3(4.5, 0.05, -24.5), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.05, -9.5), isElevated: false },
+        { pos: new THREE.Vector3(-20.5, 0.05, -14.0), isElevated: false },
+        { pos: new THREE.Vector3(20.5, 0.05, -14.0), isElevated: false },
+        { pos: new THREE.Vector3(-20.5, 0.05, 14.0), isElevated: false },
+        { pos: new THREE.Vector3(20.5, 0.05, 14.0), isElevated: false },
+        { pos: new THREE.Vector3(-24.0, 4.25, -8.0), isElevated: true },
+        { pos: new THREE.Vector3(24.0, 4.25, -8.0), isElevated: true },
+        { pos: new THREE.Vector3(-24.0, 4.25, 8.0), isElevated: true },
+        { pos: new THREE.Vector3(24.0, 4.25, 8.0), isElevated: true },
       ],
       pickupSpawns: [
         { pos: new THREE.Vector3(-24.0, 4.20, 0.0), type: 'shield' },
         { pos: new THREE.Vector3(24.0, 4.20, 0.0), type: 'health' },
-        { pos: new THREE.Vector3(0.0, 4.20, -24.0), type: 'ammo' },
-        { pos: new THREE.Vector3(-28.5, 0.0, 0.0), type: 'ammo' },
-        { pos: new THREE.Vector3(28.5, 0.0, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(0.0, 0.0, 15.5), type: 'health' },
+        { pos: new THREE.Vector3(0.0, 0.0, -30.5), type: 'ammo' },
+        { pos: new THREE.Vector3(-20.5, 0.0, 0.0), type: 'ammo' },
+        { pos: new THREE.Vector3(20.5, 0.0, 0.0), type: 'shield' },
+        { pos: new THREE.Vector3(0.0, 0.0, 18.0), type: 'health' },
       ],
       barrelSpawns: [
-        new THREE.Vector3(-8.0, 0.0, 0.0),
-        new THREE.Vector3(8.0, 0.0, 0.0),
-        new THREE.Vector3(-3.0, 0.0, -13.0),
-        new THREE.Vector3(3.0, 0.0, -13.0),
-        new THREE.Vector3(-15.5, 0.0, 9.5),
-        new THREE.Vector3(15.5, 0.0, 9.5),
+        new THREE.Vector3(-6.0, 0.0, 0.0),
+        new THREE.Vector3(6.0, 0.0, 0.0),
+        new THREE.Vector3(-3.5, 0.0, -16.0),
+        new THREE.Vector3(3.5, 0.0, -16.0),
+        new THREE.Vector3(-20.5, 0.0, 18.0),
+        new THREE.Vector3(20.5, 0.0, -18.0),
       ],
       jumpPadSpawns: [
-        { pos: new THREE.Vector3(-13.5, 0.0, -17.0), launchVy: 17.6, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(13.5, 0.0, -17.0), launchVy: 17.6, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(-13.5, 0.0, 17.0), launchVy: 17.6, launchDirX: 0, launchDirZ: 1 },
-        { pos: new THREE.Vector3(13.5, 0.0, 17.0), launchVy: 17.6, launchDirX: 0, launchDirZ: 1 },
+        { pos: new THREE.Vector3(-19.0, 0.0, -25.0), launchVy: 17.6, launchDirX: -0.5, launchDirZ: 0.86 },
+        { pos: new THREE.Vector3(19.0, 0.0, -25.0), launchVy: 17.6, launchDirX: 0.5, launchDirZ: 0.86 },
+        { pos: new THREE.Vector3(-19.0, 0.0, 25.0), launchVy: 17.6, launchDirX: -0.5, launchDirZ: -0.86 },
+        { pos: new THREE.Vector3(19.0, 0.0, 25.0), launchVy: 17.6, launchDirX: 0.5, launchDirZ: -0.86 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 0.2, 0),
+      boostRails: [
+        { x: -20.5, y: 0, z: 8.0, minX: -22.2, maxX: -18.8, minZ: 1.0, maxZ: 15.0, width: 3.4, length: 13.0, dirX: 0, dirZ: -1, yaw: Math.PI, speed: 26.0 },
+        { x: 20.5, y: 0, z: -8.0, minX: 18.8, maxX: 22.2, minZ: -15.0, maxZ: -1.0, width: 3.4, length: 13.0, dirX: 0, dirZ: 1, yaw: 0, speed: 26.0 },
+      ],
+      barrierGates: [
+        { x: -20.5, y: 0, z: -15.0, yaw: 0, initialActive: true, width: 4.1, height: 3.2 },
+        { x: 20.5, y: 0, z: 15.0, yaw: 0, initialActive: false, width: 4.1, height: 3.2 },
+      ],
+      voidFallY: -14.0,
+      controlZoneCenter: new THREE.Vector3(0, 0.2, -14.0),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
-        minX: -innerBound,
-        maxX: innerBound,
-        minZ: -innerBound,
-        maxZ: innerBound,
+        minX: -halfX,
+        maxX: halfX,
+        minZ: -halfZ,
+        maxZ: halfZ,
       },
     };
   }
@@ -330,395 +340,171 @@ class Map6OrbitalDrydockBuilder {
     };
   }
 
-  _buildDrydockFloorAndTurntable(mats, innerBound) {
-    const floorSize = innerBound * 2 + 2;
-    const floorGeo = this._trackGeo(new THREE.PlaneGeometry(floorSize, floorSize));
-    const floorMesh = new THREE.Mesh(floorGeo, mats.drydockFloorMat);
-    floorMesh.rotation.x = -Math.PI * 0.5;
-    floorMesh.receiveShadow = true;
-    this.root.add(floorMesh);
-
-    this.collisionWorld.addBox(-34, -1.0, -34, 34, 0.0, 34, 'floor');
-
-    // Low octagonal Starship Keel Turntable (R=6.2m, y=0.20m)
-    const daisR = 6.2;
-    const daisShape = new THREE.Shape();
-    for (let i = 0; i < 8; i++) {
-      const a = (Math.PI / 4) * i + Math.PI / 8;
-      const x = Math.cos(a) * daisR;
-      const y = Math.sin(a) * daisR;
-      if (i === 0) daisShape.moveTo(x, y);
-      else daisShape.lineTo(x, y);
-    }
-    daisShape.closePath();
-
-    const daisGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(daisShape, {
-          depth: 0.14,
-          bevelEnabled: true,
-          bevelThickness: 0.06,
-          bevelSize: 0.14,
-          bevelSegments: 2,
-        }),
-        0.18,
-        0.18
-      )
-    );
-    daisGeo.rotateX(-Math.PI * 0.5);
-    const daisMesh = new THREE.Mesh(daisGeo, mats.hullArmorMat);
-    daisMesh.receiveShadow = true;
-    this.root.add(daisMesh);
-
-    this.collisionWorld.addBox(-4.38, 0, -4.38, 4.38, 0.2, 4.38, 'platform');
-    this.collisionWorld.addBox(-5.72, 0, -2.37, 5.72, 0.2, 2.37, 'platform');
-    this.collisionWorld.addBox(-2.37, 0, -5.72, 2.37, 0.2, 5.72, 'platform');
-
-    const collarGeo = this._trackGeo(new THREE.RingGeometry(4.45, 5.2, 8));
-    const collar = new THREE.Mesh(collarGeo, mats.darkIronMat);
-    collar.rotation.x = -Math.PI * 0.5;
-    collar.rotation.z = Math.PI / 8;
-    collar.position.y = 0.205;
-    this.root.add(collar);
-
-    const emberRingGeo = this._trackGeo(new THREE.RingGeometry(2.55, 2.9, 16));
-    const emberRing = new THREE.Mesh(emberRingGeo, mats.keelEmberMat);
-    emberRing.rotation.x = -Math.PI * 0.5;
-    emberRing.position.y = 0.207;
-    this.root.add(emberRing);
-  }
-
-  _buildPerimeterWalls(mats, innerBound, wallH) {
-    const wallThick = 1.5;
-    const wallSpan = innerBound * 2 + wallThick * 2;
-    const wallGeoX = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(wallSpan, wallH, wallThick), wallSpan, wallH, wallThick, 6.4, 5.5));
-    const wallGeoZ = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(wallThick, wallH, wallSpan), wallThick, wallH, wallSpan, 6.4, 5.5));
-
-    const defs = [
-      { geo: wallGeoX, pos: [0, wallH * 0.5, -(innerBound + wallThick * 0.5)], box: [-innerBound - wallThick, 0, -innerBound - wallThick, innerBound + wallThick, wallH + 4, -innerBound] },
-      { geo: wallGeoX, pos: [0, wallH * 0.5, innerBound + wallThick * 0.5], box: [-innerBound - wallThick, 0, innerBound, innerBound + wallThick, wallH + 4, innerBound + wallThick] },
-      { geo: wallGeoZ, pos: [-(innerBound + wallThick * 0.5), wallH * 0.5, 0], box: [-innerBound - wallThick, 0, -innerBound, -innerBound, wallH + 4, innerBound] },
-      { geo: wallGeoZ, pos: [innerBound + wallThick * 0.5, wallH * 0.5, 0], box: [innerBound, 0, -innerBound, innerBound + wallThick, wallH + 4, innerBound] },
+  _buildDrydockFloorAndTurntable(mats, halfX, halfZ) {
+    // 3 Parallel Gantry Bridges separated by 2 Deep-Space Void Chasms + 3 Cross-Connectors!
+    const decks = [
+      // West, Center (18m Boss Spine!), and East Parallel Bridges
+      { minX: -27.0, maxX: -14.5, minZ: -36.5, maxZ: 36.5 },
+      { minX: -9.0, maxX: 9.0, minZ: -36.5, maxZ: 36.5 },
+      { minX: 14.5, maxX: 27.0, minZ: -36.5, maxZ: 36.5 },
+      // 3 Cross-Connectors bridging Chasms at North, Center, South
+      { minX: -14.5, maxX: -9.0, minZ: -33.0, maxZ: -24.0 },
+      { minX: 9.0, maxX: 14.5, minZ: -33.0, maxZ: -24.0 },
+      { minX: -14.5, maxX: -9.0, minZ: -4.5, maxZ: 4.5 },
+      { minX: 9.0, maxX: 14.5, minZ: -4.5, maxZ: 4.5 },
+      { minX: -14.5, maxX: -9.0, minZ: 24.0, maxZ: 33.0 },
+      { minX: 9.0, maxX: 14.5, minZ: 24.0, maxZ: 33.0 },
     ];
-    for (let i = 0; i < defs.length; i++) {
-      const w = new THREE.Mesh(defs[i].geo, mats.bulkheadWallMat);
-      w.position.set(defs[i].pos[0], defs[i].pos[1], defs[i].pos[2]);
-      w.receiveShadow = true;
-      this.root.add(w);
-      const b = defs[i].box;
-      this.collisionWorld.addBox(b[0], b[1], b[2], b[3], b[4], b[5], 'wall');
+    for (const b of decks) {
+      const w = b.maxX - b.minX;
+      const d = b.maxZ - b.minZ;
+      const cx = (b.minX + b.maxX) * 0.5;
+      const cz = (b.minZ + b.maxZ) * 0.5;
+      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, 0.85, d), w, 0.85, d, 3.0, 3.0));
+      const m = new THREE.Mesh(geo, mats.drydockFloorMat);
+      m.position.set(cx, -0.425, cz);
+      m.receiveShadow = true;
+      this.root.add(m);
+      this.collisionWorld.addBox(b.minX, -0.95, b.minZ, b.maxX, 0.0, b.maxZ, 'floor');
     }
 
-    const upperRibGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(0.6, 5.0, 0.78), 0.6, 5.0, 0.78, 1.8, 1.8));
-    const offsets = [-24, -16, -8, 8, 16, 24];
-    const ribInst = new THREE.InstancedMesh(upperRibGeo, mats.darkIronMat, offsets.length * 4);
-    const dummy = new THREE.Object3D();
-    let idx = 0;
-    for (let side = 0; side < 4; side++) {
-      for (let i = 0; i < offsets.length; i++) {
-        const off = offsets[i];
-        if (side === 0) {
-          dummy.position.set(-innerBound + 0.25, 8.6, off);
-          dummy.rotation.set(0, 0, 0);
-        } else if (side === 1) {
-          dummy.position.set(innerBound - 0.25, 8.6, off);
-          dummy.rotation.set(0, Math.PI, 0);
-        } else if (side === 2) {
-          dummy.position.set(off, 8.6, -innerBound + 0.25);
-          dummy.rotation.set(0, -Math.PI * 0.5, 0);
-        } else {
-          dummy.position.set(off, 8.6, innerBound - 0.25);
-          dummy.rotation.set(0, Math.PI * 0.5, 0);
-        }
-        dummy.updateMatrix();
-        ribInst.setMatrixAt(idx++, dummy.matrix);
+    // Hazard caution curbs along inner open space chasms (x = ±9.15 & ±14.35 in open chasm bands!)
+    const curbGeo = this._trackGeo(new THREE.BoxGeometry(0.28, 0.08, 19.5));
+    for (const cx of [-9.14, 9.14, -14.36, 14.36]) {
+      for (const cz of [-14.25, 14.25]) {
+        const cm = new THREE.Mesh(curbGeo, mats.hazardMat);
+        cm.position.set(cx, 0.04, cz);
+        this.root.add(cm);
       }
     }
-    ribInst.instanceMatrix.needsUpdate = true;
-    this.root.add(ribInst);
+
+    // Center Keel Boss Arena Pad
+    const daisGeo = this._trackGeo(new THREE.CylinderGeometry(6.0, 6.6, 0.2, 8));
+    const dais = new THREE.Mesh(daisGeo, mats.hullArmorMat);
+    dais.position.y = 0.1;
+    dais.receiveShadow = true;
+    this.root.add(dais);
+    this.collisionWorld.addBox(-4.3, 0, -4.3, 4.3, 0.2, 4.3, 'platform');
+    this.collisionWorld.addBox(-5.6, 0, -2.3, 5.6, 0.2, 2.3, 'platform');
+    this.collisionWorld.addBox(-2.3, 0, -5.6, 2.3, 0.2, 5.6, 'platform');
   }
 
-  _buildSectorSignboards(mats, innerBound) {
+  _buildPerimeterWalls(mats, halfX, halfZ, wallH) {
+    // Only Bow/Stern end-dock structural bulkheads (keep side edges & chasms open into deep space!)
+    const wallThick = 1.6;
+    const endGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(18.0, wallH, wallThick), 18.0, wallH, wallThick, 5.0, 5.0));
+    for (const sz of [-(36.5 + wallThick * 0.5), 36.5 + wallThick * 0.5]) {
+      const m = new THREE.Mesh(endGeo, mats.bulkheadWallMat);
+      m.position.set(0, wallH * 0.5, sz);
+      m.receiveShadow = true;
+      this.root.add(m);
+    }
+    this.collisionWorld.addBox(-9.0, 0, -36.5 - wallThick, 9.0, wallH + 4, -36.5, 'wall');
+    this.collisionWorld.addBox(-9.0, 0, 36.5, 9.0, wallH + 4, 36.5 + wallThick, 'wall');
+  }
+
+  _buildSectorSignboards(mats, halfX, halfZ) {
     const configs = [
-      { title: 'AEGIS DRYDOCK', subtitle: 'KEEL CRADLE // SECTOR-99', accent: '#f09d38', pos: [0, 8.3, -(innerBound - 0.36)], rotY: 0 },
-      { title: 'AFT BULKHEAD', subtitle: 'ORBITAL BAY // SOUTH', accent: '#e05814', pos: [0, 8.3, innerBound - 0.36], rotY: Math.PI },
-      { title: 'PORT GANTRY', subtitle: 'CATWALK LEVEL +4.2M', accent: '#f09d38', pos: [-(innerBound - 0.36), 8.3, 0], rotY: Math.PI * 0.5 },
-      { title: 'STARBOARD GANTRY', subtitle: 'CATWALK LEVEL +4.2M', accent: '#f09d38', pos: [innerBound - 0.36, 8.3, 0], rotY: -Math.PI * 0.5 },
+      { title: 'AEGIS DRYDOCK', subtitle: 'TRIPLE GANTRY // SECTOR-99', accent: '#f09d38', pos: [0, 8.3, -36.1], rotY: 0 },
+      { title: 'AFT KEEL BAY', subtitle: 'BOSS CRUCIBLE // SOUTH', accent: '#e05814', pos: [0, 8.3, 36.1], rotY: Math.PI },
     ];
     const screenW = 5.6;
     const screenH = 3.2;
     const bezelGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(screenW + 0.5, screenH + 0.5, 0.24), screenW + 0.5, screenH + 0.5, 0.24, 2.0, 2.0));
     const boardGeo = this._trackGeo(new THREE.PlaneGeometry(screenW, screenH));
-
     for (let i = 0; i < configs.length; i++) {
       const cfg = configs[i];
       const tex = this._texGen.getSignboardTexture(cfg.title, cfg.subtitle, cfg.accent);
-      const boardMat = this._trackMat(
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          emissive: new THREE.Color(0xffffff),
-          emissiveMap: tex,
-          emissiveIntensity: 0.65,
-          roughness: 0.5,
-          metalness: 0.28,
-        })
-      );
+      const boardMat = this._trackMat(new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(0xffffff), emissiveMap: tex, emissiveIntensity: 0.65, roughness: 0.5, metalness: 0.28 }));
       const g = new THREE.Group();
       g.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
       g.rotation.y = cfg.rotY;
-      const bezel = new THREE.Mesh(bezelGeo, mats.darkIronMat);
-      bezel.position.z = -0.14;
-      const board = new THREE.Mesh(boardGeo, boardMat);
-      board.position.z = 0.02;
+      const bezel = new THREE.Mesh(bezelGeo, mats.darkIronMat); bezel.position.z = -0.14;
+      const board = new THREE.Mesh(boardGeo, boardMat); board.position.z = 0.02;
       g.add(bezel, board);
       this.root.add(g);
     }
   }
 
-  _buildGantriesAndRamps(mats, innerBound) {
+  _buildGantriesAndRamps(mats, halfX, halfZ) {
     const deckY = 4.2;
     const deckThick = 0.4;
-
-    const platformSpecs = [
-      { minX: -innerBound, maxX: innerBound, minZ: -innerBound, maxZ: -25.5, fasciaSide: 'south' },
-      { minX: -innerBound, maxX: innerBound, minZ: 25.5, maxZ: innerBound, fasciaSide: 'north' },
-      { minX: -innerBound, maxX: -25.5, minZ: -25.5, maxZ: 25.5, fasciaSide: 'east' },
-      { minX: 25.5, maxX: innerBound, minZ: -25.5, maxZ: 25.5, fasciaSide: 'west' },
-      { minX: -7.5, maxX: 7.5, minZ: -25.5, maxZ: -22.5, fasciaSide: 'south' },
-      { minX: -25.5, maxX: -22.5, minZ: -7.5, maxZ: 7.5, fasciaSide: 'east' },
-      { minX: 22.5, maxX: 25.5, minZ: -7.5, maxZ: 7.5, fasciaSide: 'west' },
-    ];
-
-    for (let i = 0; i < platformSpecs.length; i++) {
-      const p = platformSpecs[i];
-      const w = p.maxX - p.minX;
-      const d = p.maxZ - p.minZ;
-      const cx = (p.minX + p.maxX) * 0.5;
-      const cz = (p.minZ + p.maxZ) * 0.5;
-      const isZEdge = p.fasciaSide === 'south' || p.fasciaSide === 'north';
-
-      const hullGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w - 0.04, deckThick - 0.08, d - 0.04), w - 0.04, deckThick - 0.08, d - 0.04, 2.4, 2.4));
-      const hull = new THREE.Mesh(hullGeo, mats.darkIronMat);
-      hull.position.set(cx, deckY - deckThick * 0.5 - 0.02, cz);
-      hull.castShadow = true;
-      hull.receiveShadow = true;
-      this.root.add(hull);
-
-      const topGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w - 0.08, 0.06, d - 0.08), w - 0.08, 0.06, d - 0.08, 2.2, 2.2));
-      const topPlate = new THREE.Mesh(topGeo, mats.catwalkMat);
-      topPlate.position.set(cx, deckY - 0.03, cz);
-      topPlate.receiveShadow = true;
-      this.root.add(topPlate);
-
-      const fw = isZEdge ? w : 0.06;
-      const fd = isZEdge ? 0.06 : d;
-      const fasciaGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(fw, 0.24, fd), fw, 0.24, fd, 1.2, 0.24));
-      const trimGeo = this._trackGeo(new THREE.BoxGeometry(isZEdge ? w : 0.07, 0.05, isZEdge ? 0.07 : d));
-      const fascia = new THREE.Mesh(fasciaGeo, mats.hazardMat);
-      const trim = new THREE.Mesh(trimGeo, mats.tungstenAmberMat);
-
-      if (p.fasciaSide === 'south') {
-        fascia.position.set(cx, deckY - 0.19, p.maxZ - 0.03);
-        trim.position.set(cx, deckY - deckThick + 0.025, p.maxZ - 0.035);
-      } else if (p.fasciaSide === 'north') {
-        fascia.position.set(cx, deckY - 0.19, p.minZ + 0.03);
-        trim.position.set(cx, deckY - deckThick + 0.025, p.minZ + 0.035);
-      } else if (p.fasciaSide === 'east') {
-        fascia.position.set(p.maxX - 0.03, deckY - 0.19, cz);
-        trim.position.set(p.maxX - 0.035, deckY - deckThick + 0.025, cz);
-      } else {
-        fascia.position.set(p.minX + 0.03, deckY - 0.19, cz);
-        trim.position.set(p.minX + 0.035, deckY - deckThick + 0.025, cz);
-      }
-      this.root.add(fascia, trim);
-      this.collisionWorld.addBox(p.minX, deckY - deckThick, p.minZ, p.maxX, deckY, p.maxZ, 'platform');
-    }
-
-    // Gantry Support Piers
-    const pierCoords = [
-      [-25.8, -25.8], [-17.5, -25.8], [-7.5, -25.8], [7.5, -25.8], [17.5, -25.8], [25.8, -25.8],
-      [-25.8, 25.8], [-17.5, 25.8], [-7.5, 25.8], [7.5, 25.8], [17.5, 25.8], [25.8, 25.8],
-      [-25.8, -7.5], [-25.8, 7.5], [25.8, -7.5], [25.8, 7.5],
-    ];
-    const pierGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(0.6, deckY - deckThick, 0.6), 0.6, deckY - deckThick, 0.6, 1.8, 1.8));
-    const pierInst = new THREE.InstancedMesh(pierGeo, mats.darkIronMat, pierCoords.length);
-    pierInst.castShadow = true;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < pierCoords.length; i++) {
-      const [px, pz] = pierCoords[i];
-      dummy.position.set(px, (deckY - deckThick) * 0.5, pz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      pierInst.setMatrixAt(i, dummy.matrix);
-      this.collisionWorld.addBox(px - 0.3, 0, pz - 0.3, px + 0.3, deckY - deckThick, pz + 0.3, 'pillar');
-    }
-    pierInst.instanceMatrix.needsUpdate = true;
-    this.root.add(pierInst);
-
-    // Gantry Spur Half-Cover Shields (y = 4.20..5.26m)
-    const shieldH = 1.06;
-    const shieldThick = 0.38;
-    const shieldSpecs = [
-      { cx: -4.8, cz: -22.7, len: 3.8, rotY: 0 },
-      { cx: 4.8, cz: -22.7, len: 3.8, rotY: 0 },
-      { cx: -22.7, cz: -4.8, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: -22.7, cz: 4.8, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: 22.7, cz: -4.8, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: 22.7, cz: 4.8, len: 3.8, rotY: Math.PI * 0.5 },
-    ];
-    for (let i = 0; i < shieldSpecs.length; i++) {
-      const s = shieldSpecs[i];
-      const isZ = Math.abs(Math.sin(s.rotY)) > 0.5;
-      const bw = isZ ? shieldThick : s.len;
-      const bd = isZ ? s.len : shieldThick;
-      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(bw, shieldH, bd), bw, shieldH, bd, 1.8, 1.8));
-      const m = new THREE.Mesh(geo, mats.hullArmorMat);
-      m.position.set(s.cx, deckY + shieldH * 0.5, s.cz);
-      m.castShadow = true;
+    // Elevated Side Gantry Catwalk Wings (West [-27..-21.5] & East [21.5..27] along z in [-16..16])
+    for (const side of [
+      { minX: -27.0, maxX: -21.5, minZ: -16.0, maxZ: 16.0 },
+      { minX: 21.5, maxX: 27.0, minZ: -16.0, maxZ: 16.0 },
+    ]) {
+      const w = side.maxX - side.minX;
+      const d = side.maxZ - side.minZ;
+      const cx = (side.minX + side.maxX) * 0.5;
+      const cz = (side.minZ + side.maxZ) * 0.5;
+      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, deckThick, d), w, deckThick, d, 2.4, 2.4));
+      const m = new THREE.Mesh(geo, mats.catwalkMat);
+      m.position.set(cx, deckY - deckThick * 0.5, cz);
+      m.castShadow = true; m.receiveShadow = true;
       this.root.add(m);
-      this.collisionWorld.addBox(s.cx - bw * 0.5, deckY, s.cz - bd * 0.5, s.cx + bw * 0.5, deckY + shieldH, s.cz + bd * 0.5, 'cover');
+      this.collisionWorld.addBox(side.minX, deckY - deckThick, side.minZ, side.maxX, deckY, side.maxZ, 'platform');
     }
 
-    // 4 Wide Stepped Gantry Stairs (14 steps x 0.30m rise = 4.20m, stepDepth = 0.70m, runLen = 9.80m)
-    const stepCount = 14;
-    const stepRise = deckY / stepCount; // 0.30m
-    const stepDepth = 0.7;
-    const rampWidth = 3.6;
-    const runLen = stepCount * stepDepth; // 9.80m
-
-    const stepGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(rampWidth, 0.32, stepDepth), rampWidth, 0.32, stepDepth, 1.8, 1.8));
-    const stepLipGeo = this._trackGeo(new THREE.BoxGeometry(rampWidth - 0.24, 0.05, 0.08));
-    const totalSteps = stepCount * 4;
-    const stepInst = new THREE.InstancedMesh(stepGeo, mats.stepMat, totalSteps);
-    stepInst.castShadow = true;
-    stepInst.receiveShadow = true;
-    const stepLipInst = new THREE.InstancedMesh(stepLipGeo, mats.tungstenAmberMat, totalSteps);
-
-    const stringerShape = new THREE.Shape();
-    stringerShape.moveTo(0, 0);
-    stringerShape.lineTo(runLen, deckY - 0.36);
-    stringerShape.lineTo(runLen, deckY + 0.14);
-    stringerShape.lineTo(0, 0.4);
-    stringerShape.closePath();
-    const stringerGeo = this._trackGeo(scaleGeometryUVs(new THREE.ExtrudeGeometry(stringerShape, { depth: 0.22, bevelEnabled: false }), 0.25, 0.25));
-    stringerGeo.translate(0, 0, -0.11);
-
-    const plinthShape = new THREE.Shape();
-    plinthShape.moveTo(0, 0);
-    plinthShape.lineTo(stepDepth * 7, 0);
-    plinthShape.lineTo(stepDepth * 7, stepRise * 7 - 0.04);
-    plinthShape.lineTo(0, 0.08);
-    plinthShape.closePath();
-    const plinthGeo = this._trackGeo(scaleGeometryUVs(new THREE.ExtrudeGeometry(plinthShape, { depth: rampWidth - 0.08, bevelEnabled: false }), 0.8, 0.8));
-    plinthGeo.translate(0, 0, -(rampWidth - 0.08) * 0.5);
-
-    const rampConfigs = [
-      { cx: -23.7, zStart: -15.7, dirZ: -1 },
-      { cx: 23.7, zStart: -15.7, dirZ: -1 },
-      { cx: -23.7, zStart: 15.7, dirZ: 1 },
-      { cx: 23.7, zStart: 15.7, dirZ: 1 },
-    ];
-
-    let sIdx = 0;
-    for (let r = 0; r < rampConfigs.length; r++) {
-      const rc = rampConfigs[r];
-      const rotY = rc.dirZ < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-      for (const sideOff of [-rampWidth * 0.5 - 0.04, rampWidth * 0.5 + 0.04]) {
-        const str = new THREE.Mesh(stringerGeo, mats.darkIronMat);
-        str.position.set(rc.cx + sideOff, 0, rc.zStart);
-        str.rotation.y = rotY;
-        str.castShadow = true;
-        this.root.add(str);
-      }
-      const plinth = new THREE.Mesh(plinthGeo, mats.hazardMat);
-      plinth.position.set(rc.cx, 0, rc.zStart);
-      plinth.rotation.y = rotY;
-      plinth.receiveShadow = true;
-      this.root.add(plinth);
-
-      for (let i = 0; i < stepCount; i++) {
-        const topY = (i + 1) * stepRise;
-        const zCenter = rc.zStart + rc.dirZ * (i + 0.5) * stepDepth;
-        dummy.position.set(rc.cx, topY - 0.16, zCenter);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 1, 1);
-        dummy.updateMatrix();
-        stepInst.setMatrixAt(sIdx, dummy.matrix);
-
-        dummy.position.set(rc.cx, topY - 0.02, zCenter - rc.dirZ * (stepDepth * 0.5 - 0.04));
-        dummy.updateMatrix();
-        stepLipInst.setMatrixAt(sIdx, dummy.matrix);
-        sIdx++;
-
-        const colMinY = i < 7 ? 0.0 : topY - 0.42;
-        this.collisionWorld.addBox(rc.cx - rampWidth * 0.5, colMinY, zCenter - stepDepth * 0.5, rc.cx + rampWidth * 0.5, topY, zCenter + stepDepth * 0.5, 'ramp');
+    // 4 Wide Stepped Gantry Stairs climbing onto Port & Starboard Elevated Catwalks (14 steps x 0.30m)
+    const steps = 14;
+    const stepH = deckY / steps;
+    const stepD = 0.7;
+    const rW = 3.8;
+    const stepGeo = this._trackGeo(new THREE.BoxGeometry(rW, stepH + 0.04, stepD));
+    for (const rc of [
+      { cx: -24.25, zStart: -25.8, dirZ: 1 },
+      { cx: -24.25, zStart: 25.8, dirZ: -1 },
+      { cx: 24.25, zStart: -25.8, dirZ: 1 },
+      { cx: 24.25, zStart: 25.8, dirZ: -1 },
+    ]) {
+      for (let s = 0; s < steps; s++) {
+        const sy = (s + 1) * stepH;
+        const sz = rc.zStart + rc.dirZ * (s + 0.5) * stepD;
+        const sm = new THREE.Mesh(stepGeo, mats.stepMat);
+        sm.position.set(rc.cx, sy - stepH * 0.5, sz);
+        sm.castShadow = true; sm.receiveShadow = true;
+        this.root.add(sm);
+        this.collisionWorld.addBox(rc.cx - rW * 0.5, 0, sz - stepD * 0.5, rc.cx + rW * 0.5, sy, sz + stepD * 0.5, 'ramp');
       }
     }
-    stepInst.instanceMatrix.needsUpdate = true;
-    stepLipInst.instanceMatrix.needsUpdate = true;
-    this.root.add(stepInst, stepLipInst);
   }
 
   _buildKeelButtressesAndBulkheads(mats) {
-    // 4 Heavy Armored Keel Cradle Buttresses at (±11.5, ±11.5)
-    const butW = 2.2;
-    const butH = 4.4;
-    const butD = 1.4;
-    const butGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(butW, butH, butD), butW, butH, butD, 1.8, 1.8));
-    const colGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(butW + 0.12, 0.36, butD + 0.12), butW + 0.12, 0.36, butD + 0.12, 1.2, 0.36));
-    const trimGeo = this._trackGeo(new THREE.BoxGeometry(butW - 0.3, 0.1, butD + 0.04));
-
-    const coords = [
-      [-11.5, -11.5], [11.5, -11.5], [-11.5, 11.5], [11.5, 11.5],
-    ];
-    const butInst = new THREE.InstancedMesh(butGeo, mats.hullArmorMat, coords.length);
-    butInst.castShadow = true;
-    butInst.receiveShadow = true;
-    const colInst = new THREE.InstancedMesh(colGeo, mats.hazardMat, coords.length);
-    const trimInst = new THREE.InstancedMesh(trimGeo, mats.tungstenAmberMat, coords.length);
-
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < coords.length; i++) {
-      const [bx, bz] = coords[i];
-      dummy.position.set(bx, butH * 0.5, bz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      butInst.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(bx, 0.18, bz);
-      dummy.updateMatrix();
-      colInst.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(bx, butH - 0.35, bz);
-      dummy.updateMatrix();
-      trimInst.setMatrixAt(i, dummy.matrix);
-
-      this.collisionWorld.addBox(bx - butW * 0.5, 0, bz - butD * 0.5, bx + butW * 0.5, butH, bz + butD * 0.5, 'pillar');
+    const factory = MapPropFactory.getShared();
+    // Mount 4 Sculpted Drydock Gantry Arches spanning over Center Boss Spine & Side Bridges
+    for (const ga of [
+      { x: 0, z: -20.0, r: 0 }, { x: 0, z: 16.0, r: 0 },
+      { x: -20.5, z: 0, r: 0 }, { x: 20.5, z: 0, r: 0 },
+    ]) {
+      const pos = new THREE.Vector3(ga.x, 0, ga.z);
+      const m = factory.mountProp(this.root, 'drydock_gantry_arch', {
+        position: pos,
+        rotationY: ga.r,
+        scale: 1,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, pos, ga.r, 1, 'pillar');
+        },
+      });
+      this._propMounts.push(m);
     }
-    butInst.instanceMatrix.needsUpdate = true;
-    colInst.instanceMatrix.needsUpdate = true;
-    trimInst.instanceMatrix.needsUpdate = true;
-    this.root.add(butInst, colInst, trimInst);
 
-    // 4 Waist-High Armored Bulkhead Cargo Blocks
-    const bulkSpecs = [
-      { cx: -18.0, cz: 0.0, w: 1.0, d: 3.0 },
-      { cx: 18.0, cz: 0.0, w: 1.0, d: 3.0 },
-      { cx: -6.8, cz: -14.5, w: 3.0, d: 1.0 },
-      { cx: 6.8, cz: -14.5, w: 3.0, d: 1.0 },
-    ];
-    const bulkH = 1.25;
-    for (let i = 0; i < bulkSpecs.length; i++) {
-      const b = bulkSpecs[i];
-      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(b.w, bulkH, b.d), b.w, bulkH, b.d, 1.6, 1.2));
-      const mesh = new THREE.Mesh(geo, mats.darkIronMat);
-      mesh.position.set(b.cx, bulkH * 0.5, b.cz);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
-      this.collisionWorld.addBox(b.cx - b.w * 0.5, 0, b.cz - b.d * 0.5, b.cx + b.w * 0.5, bulkH, b.cz + b.d * 0.5, 'cover');
+    // Mount 6 Aegis Cover Crates cleanly on bridges
+    for (const cr of [
+      { x: -5.8, z: 10.0, r: 0 }, { x: 5.8, z: 10.0, r: 0 },
+      { x: -5.8, z: -22.0, r: 0 }, { x: 5.8, z: -22.0, r: 0 },
+      { x: -17.5, z: 12.0, r: Math.PI * 0.5 }, { x: 17.5, z: -12.0, r: Math.PI * 0.5 },
+    ]) {
+      const pos = new THREE.Vector3(cr.x, 0, cr.z);
+      const m = factory.mountProp(this.root, 'aegis_cover_crate', {
+        position: pos,
+        rotationY: cr.r,
+        scale: 1,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, pos, cr.r, 1, 'cover');
+        },
+      });
+      this._propMounts.push(m);
     }
   }
 
@@ -983,6 +769,18 @@ class Map6OrbitalDrydockBuilder {
     this._radarDish = null;
     this._radarRing = null;
     this._distantBeaconMat = null;
+    if (this._propMounts) {
+      for (let i = 0; i < this._propMounts.length; i++) {
+        const m = this._propMounts[i];
+        if (m) {
+          m.userData.disposed = true;
+          if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+            m.userData.propInstance.dispose();
+          }
+        }
+      }
+      this._propMounts.length = 0;
+    }
 
     if (this._ownsTexGen && this._texGen) {
       this._texGen.dispose();

@@ -2,6 +2,7 @@
 __define("src/world/ArenaBuilder.js", (__exports, __require) => {
 const { ARENA_CONFIG } = __require("src/config/constants.js");
 const { TextureGenerator } = __require("src/world/TextureGenerator.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 /**
  * Deterministic PRNG (Mulberry32) for procedural skyline and rubble placement.
@@ -119,6 +120,7 @@ class ArenaBuilder {
     this._podBeaconMat = null;
     this._amberTrimMat = null;
     this._beaconMat = null;
+    this._propMounts = [];
 
     this._built = false;
   }
@@ -136,7 +138,8 @@ class ArenaBuilder {
   }
 
   /**
-   * Construct Map 1 ("SECTOR-09 // DEAD METROPOLIS") and return structured arenaData.
+   * Construct Map 1 ("SECTOR-09 // DEAD METROPOLIS") asymmetric 68x56m S-Curve Viaduct arena
+   * and return structured arenaData.
    */
   build() {
     if (this._built) {
@@ -147,102 +150,105 @@ class ArenaBuilder {
     this.root.name = 'ArenaRoot_SECTOR09';
     this.scene.add(this.root);
 
-    const half = ARENA_CONFIG.halfSize; // 32
-    const innerBound = half - 0.5; // 31.5
+    const halfX = 33.5; // 67m internal width
+    const halfZ = 27.5; // 55m internal length (distinct rectangular proportion!)
     const wallH = ARENA_CONFIG.wallHeight; // 11
 
-    // Hard arena safety bounds matching inner perimeter wall faces 1:1
-    this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
+    // Hard arena safety bounds matching asymmetric inner perimeter wall faces 1:1
+    this.collisionWorld.setArenaBounds(-halfX, halfX, -halfZ, halfZ, 0, 28);
 
     // 1. Shared Post-Apocalyptic Canvas PBR Materials
     const mats = this._createMaterials();
 
-    // 2. Cracked Asphalt Floor, Leading Tarmac Guides, Ruined Concrete Perimeter & Military Signboards
-    this._buildFloorAndLeadingLines(mats, innerBound);
-    this._buildPerimeterWalls(mats, innerBound, wallH);
-    this._buildMilitarySignboards(mats, innerBound);
+    // 2. Asymmetric Highway Asphalt Floor, Perimeter Walls & Signboards
+    this._buildFloorAndLeadingLines(mats, halfX, halfZ);
+    this._buildPerimeterWalls(mats, halfX, halfZ, wallH);
+    this._buildMilitarySignboards(mats, halfX, halfZ);
 
-    // 3. Central Terra-Beacon Plaza, Overhead Uplink Tower & Crashed Orbital Drop Pod Wreckage
-    this._buildTerraBeaconPlaza(mats, innerBound);
-    this._buildCrashedDropPod(mats);
+    // 3. Signature S-Curve Broken Overpass Highway (y=4.0m), Overhead Beacon & Sculpted Viaduct Piers
+    this._buildOverpassArena(mats);
 
-    // 4. Elevated Collapsed Highway Catwalks (y=4.0m), 4 Stepped Ramps (<=0.333m/step) & Corner Overpasses
-    this._buildCatwalksAndRamps(mats);
-    this._buildCornerBalconies(mats, innerBound);
-
-    // 5. 3-Lane Concrete Jersey Barriers & Rusted Cargo Monoliths
-    this._buildTacticalCover(mats);
-
-    // 6. Tilted Ruined Skyscrapers & Golden-Ash Sunset Sky Dome (with AETHER-1 Orbital Carrier)
+    // 4. Tilted Ruined Skyscrapers & Golden-Ash Sunset Sky Dome (with AETHER-1 Orbital Carrier)
     this._buildSkylineAndSkyDome(mats);
 
-    // 7. Golden-Ash Dusk Lighting (at most 2 PointLights, zero neon)
+    // 5. Golden-Ash Dusk Lighting (at most 2 PointLights, zero neon)
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // 8. Structured Arena Data (verified 100% collision-clear)
+    // 6. Structured Arena Data (verified collision-clear + S-curve viaduct + cranes + barricades)
     const arenaData = {
       mapId: 'dead_metropolis',
       mapIndex: 0,
       mapCode: '제09구역',
       mapName: '제09구역 · 폐허 메트로폴리스',
-      mapSubtitle: '붕괴된 고가도로 및 테라비콘 광장',
+      mapSubtitle: '붕괴된 고가도로 및 테라비콘 교량',
       atmosphere: {
         bgColor: 0x5c4b3c,
         fogColor: 0x6e5a49,
         fogDensity: 0.012,
       },
       playerSpawn: {
-        pos: new THREE.Vector3(0, 0.05, 24),
+        pos: new THREE.Vector3(0, 0.05, 22.0),
         yaw: 0,
       },
       enemySpawns: [
-        // 8 Ground Spawns across North, Mid-Flank, and Outer Lanes
-        { pos: new THREE.Vector3(0, 0.05, -26.5), isElevated: false },
-        { pos: new THREE.Vector3(-16.5, 0.05, -26.5), isElevated: false },
-        { pos: new THREE.Vector3(16.5, 0.05, -26.5), isElevated: false },
-        { pos: new THREE.Vector3(-28.0, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(28.0, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(-11.0, 0.05, -15.5), isElevated: false },
-        { pos: new THREE.Vector3(11.0, 0.05, -15.5), isElevated: false },
-        { pos: new THREE.Vector3(0.0, 0.05, -19.0), isElevated: false },
-        // 4 Elevated Flank Catwalk Spawns (y = 4.0m)
-        { pos: new THREE.Vector3(-22.0, 4.05, -6.5), isElevated: true },
-        { pos: new THREE.Vector3(22.0, 4.05, -6.5), isElevated: true },
-        { pos: new THREE.Vector3(-22.0, 4.05, 6.5), isElevated: true },
-        { pos: new THREE.Vector3(22.0, 4.05, 6.5), isElevated: true },
+        // 8 Sunken Highway Spawns
+        { pos: new THREE.Vector3(0.0, 0.05, -22.5), isElevated: false },
+        { pos: new THREE.Vector3(-14.0, 0.05, -22.0), isElevated: false },
+        { pos: new THREE.Vector3(14.0, 0.05, -22.0), isElevated: false },
+        { pos: new THREE.Vector3(-29.0, 0.05, -14.0), isElevated: false },
+        { pos: new THREE.Vector3(29.0, 0.05, 14.0), isElevated: false },
+        { pos: new THREE.Vector3(-11.5, 0.05, -12.0), isElevated: false },
+        { pos: new THREE.Vector3(11.5, 0.05, 12.0), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.05, -14.0), isElevated: false },
+        // 4 Elevated S-Curve Overpass Spawns (y = 4.05m)
+        { pos: new THREE.Vector3(-22.0, 4.05, 9.0), isElevated: true },
+        { pos: new THREE.Vector3(22.0, 4.05, -9.0), isElevated: true },
+        { pos: new THREE.Vector3(-12.5, 4.05, -0.5), isElevated: true },
+        { pos: new THREE.Vector3(12.5, 4.05, -0.5), isElevated: true },
       ],
       pickupSpawns: [
-        { pos: new THREE.Vector3(-22.0, 4.0, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(22.0, 4.0, 0.0), type: 'health' },
-        { pos: new THREE.Vector3(-28.0, 4.6, -28.0), type: 'ammo' },
-        { pos: new THREE.Vector3(28.0, 4.6, -28.0), type: 'shield' },
-        { pos: new THREE.Vector3(-16.5, 0.0, 26.5), type: 'health' },
-        { pos: new THREE.Vector3(16.5, 0.0, 26.5), type: 'ammo' },
+        { pos: new THREE.Vector3(-22.0, 4.0, 5.5), type: 'shield' },
+        { pos: new THREE.Vector3(22.0, 4.0, -5.5), type: 'health' },
+        { pos: new THREE.Vector3(-28.0, 0.0, -21.0), type: 'ammo' },
+        { pos: new THREE.Vector3(28.0, 0.0, 21.0), type: 'shield' },
+        { pos: new THREE.Vector3(-14.0, 0.0, 22.5), type: 'health' },
+        { pos: new THREE.Vector3(14.0, 0.0, -22.5), type: 'ammo' },
       ],
       barrelSpawns: [
-        // 3 tactical twin-choke pairs spaced ~6.4m apart for rewarding chain reactions
-        new THREE.Vector3(-11.2, 0.0, -3.2),
-        new THREE.Vector3(-11.2, 0.0, 3.2),
-        new THREE.Vector3(11.2, 0.0, -3.2),
-        new THREE.Vector3(11.2, 0.0, 3.2),
-        new THREE.Vector3(-3.4, 0.0, -13.0),
-        new THREE.Vector3(3.4, 0.0, -13.0),
+        new THREE.Vector3(-11.5, 0.0, -6.8),
+        new THREE.Vector3(11.5, 0.0, 6.8),
+        new THREE.Vector3(-4.0, 0.0, -13.5),
+        new THREE.Vector3(4.0, 0.0, 12.5),
+        new THREE.Vector3(-14.5, 4.0, 0.0),
+        new THREE.Vector3(14.5, 4.0, 0.0),
       ],
       jumpPadSpawns: [
-        // Calibrated for g=26 m/s^2 -> clears 4.6m corner overpass deck lip cleanly
-        { pos: new THREE.Vector3(-27.8, 0.0, -17.0), launchVy: 18.2, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(27.8, 0.0, -17.0), launchVy: 18.2, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(-27.8, 0.0, 17.0), launchVy: 18.2, launchDirX: 0, launchDirZ: 1 },
-        { pos: new THREE.Vector3(27.8, 0.0, 17.0), launchVy: 18.2, launchDirX: 0, launchDirZ: 1 },
+        // Calibrated to vault onto center overpass deck (y=4.0m) from sunken road approaches
+        { pos: new THREE.Vector3(-7.0, 0.0, 14.5), launchVy: 17.6, launchDirX: 0, launchDirZ: -1 },
+        { pos: new THREE.Vector3(7.0, 0.0, -14.5), launchVy: 17.6, launchDirX: 0, launchDirZ: 1 },
+        { pos: new THREE.Vector3(-29.2, 0.0, -12.0), launchVy: 17.8, launchDirX: 0.35, launchDirZ: 0.94 },
+        { pos: new THREE.Vector3(29.2, 0.0, 12.0), launchVy: 17.8, launchDirX: -0.35, launchDirZ: -0.94 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 0.25, 0),
+      craneTraps: [
+        { x: -11.5, y: 0, z: -15.0, yaw: 0, dropCenter: { x: -11.5, y: 0, z: -12.0 }, radius: 6.8, damage: 280 },
+        { x: 11.5, y: 0, z: 15.0, yaw: Math.PI, dropCenter: { x: 11.5, y: 0, z: 12.0 }, radius: 6.8, damage: 280 },
+      ],
+      destructibleBarricades: [
+        { x: -5.5, y: 0, z: 11.5, yaw: 0 },
+        { x: 5.5, y: 0, z: 11.5, yaw: 0 },
+        { x: -6.5, y: 0, z: -14.5, yaw: 0 },
+        { x: 6.5, y: 0, z: -14.5, yaw: 0 },
+        { x: -9.5, y: 4.0, z: -0.5, yaw: Math.PI * 0.5 },
+        { x: 9.5, y: 4.0, z: -0.5, yaw: Math.PI * 0.5 },
+      ],
+      controlZoneCenter: new THREE.Vector3(0, 4.0, -0.5),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
-        minX: -innerBound,
-        maxX: innerBound,
-        minZ: -innerBound,
-        maxZ: innerBound,
+        minX: -halfX,
+        maxX: halfX,
+        minZ: -halfZ,
+        maxZ: halfZ,
       },
     };
 
@@ -471,30 +477,25 @@ class ArenaBuilder {
    * guiding sightlines cleanly toward Terra-Beacon Plaza, Ramps, and Jump Pads.
    * @private
    */
-  _buildFloorAndLeadingLines(mats, innerBound) {
-    const size = innerBound * 2;
-    const floorGeo = this._trackGeo(new THREE.PlaneGeometry(size + 2, size + 2));
+  _buildFloorAndLeadingLines(mats, halfX, halfZ) {
+    const floorGeo = this._trackGeo(new THREE.PlaneGeometry(halfX * 2 + 4, halfZ * 2 + 4));
     const floorMesh = new THREE.Mesh(floorGeo, mats.floorMat);
     floorMesh.rotation.x = -Math.PI * 0.5;
     floorMesh.position.y = 0;
     floorMesh.receiveShadow = true;
     this.root.add(floorMesh);
 
-    // Solid ground floor AABB below y=0
-    this.collisionWorld.addBox(-34, -1.0, -34, 34, 0.0, 34, 'floor');
+    // Solid ground floor AABB below y=0 covering exact 68m x 56m footprint
+    this.collisionWorld.addBox(-halfX - 2, -1.0, -halfZ - 2, halfX + 2, 0.0, halfZ + 2, 'floor');
 
-    // Recessed rusted steel cable trenches & faded ochre tarmac markings leading player eyes
+    // Highway lane markings along South/North sunken avenues and S-curve ramp approaches
     const ochreSpecs = [
-      // South Spawn corridor into Central Terra-Beacon Plaza
-      { x: 0, z: 19.2, w: 0.28, d: 21.0 },
-      // North Approach into Plaza
-      { x: 0, z: -19.2, w: 0.28, d: 21.0 },
-      // South Ramp approach guide lines (x=±22)
-      { x: -11.0, z: 24.4, w: 18.0, d: 0.16 },
-      { x: 11.0, z: 24.4, w: 18.0, d: 0.16 },
-      // Outer jump-pad runway guides along x = ±27.8
-      { x: -27.8, z: 0, w: 0.22, d: 30.0 },
-      { x: 27.8, z: 0, w: 0.22, d: 30.0 },
+      { x: 0, z: 16.5, w: 0.28, d: 18.0 },
+      { x: 0, z: -16.5, w: 0.28, d: 18.0 },
+      { x: -11.5, z: 22.8, w: 22.0, d: 0.22 },
+      { x: 11.5, z: -22.8, w: 22.0, d: 0.22 },
+      { x: -29.2, z: -4.0, w: 0.22, d: 24.0 },
+      { x: 29.2, z: 4.0, w: 0.22, d: 24.0 },
     ];
 
     const stripGeo = this._trackGeo(new THREE.BoxGeometry(1, 0.016, 1));
@@ -507,35 +508,11 @@ class ArenaBuilder {
       this.root.add(m);
     }
 
-    const trenchZGeo = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(0.12, 0.016, 14.0), 0.12, 0.016, 14.0, 2.0, 2.0)
-    );
-    for (const tx of [-1.6, 1.6]) {
-      const m = new THREE.Mesh(trenchZGeo, mats.darkSteelMat);
-      m.position.set(tx, 0.008, 22.8);
-      m.receiveShadow = true;
-      this.root.add(m);
-    }
-
-    const trenchXGeo = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(17.2, 0.016, 0.24), 17.2, 0.016, 0.24, 2.0, 2.0)
-    );
-    for (const tx of [-16.5, 16.5]) {
-      const m = new THREE.Mesh(trenchXGeo, mats.darkSteelMat);
-      m.position.set(tx, 0.008, 0);
-      m.receiveShadow = true;
-      this.root.add(m);
-    }
-
-    // Embedded amber runway marker studs along center spawn approach & jump-pad runways (1 InstancedMesh)
     const studCoords = [
-      [-1.6, 25.0], [1.6, 25.0],
-      [-1.6, 20.5], [1.6, 20.5],
-      [-1.6, 16.0], [1.6, 16.0],
-      [-27.8, -11.5], [27.8, -11.5],
-      [-27.8, 11.5], [27.8, 11.5],
+      [-1.8, 22.0], [1.8, 22.0], [-1.8, 17.0], [1.8, 17.0],
+      [-22.7, 22.8], [22.7, -22.8], [-11.5, -12.0], [11.5, 12.0],
     ];
-    const studGeo = this._trackGeo(new THREE.BoxGeometry(0.18, 0.03, 0.36));
+    const studGeo = this._trackGeo(new THREE.BoxGeometry(0.22, 0.03, 0.38));
     const studInst = new THREE.InstancedMesh(studGeo, mats.amberBeaconMat, studCoords.length);
     const dummy = new THREE.Object3D();
     for (let i = 0; i < studCoords.length; i++) {
@@ -550,259 +527,124 @@ class ArenaBuilder {
   }
 
   /**
-   * Build 11m tall weathered brutalist concrete perimeter walls, beveled concrete buttresses,
-   * shattered jagged parapet caps, and warm amber bulkhead markers.
+   * Build 11m tall concrete perimeter walls on asymmetric halfX/halfZ rectangle.
    * @private
    */
-  _buildPerimeterWalls(mats, innerBound, wallH) {
+  _buildPerimeterWalls(mats, halfX, halfZ, wallH) {
     const wallThick = 1.5;
-    const wallSpan = innerBound * 2 + wallThick * 2;
+    const wallSpanX = halfX * 2 + wallThick * 2;
+    const wallSpanZ = halfZ * 2 + wallThick * 2;
 
     const wallGeoX = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(wallSpan, wallH, wallThick), wallSpan, wallH, wallThick, 6.4, 5.5)
+      scaleBoxUVs(new THREE.BoxGeometry(wallSpanX, wallH, wallThick), wallSpanX, wallH, wallThick, 6.4, 5.5)
     );
     const wallGeoZ = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(wallThick, wallH, wallSpan), wallThick, wallH, wallSpan, 6.4, 5.5)
+      scaleBoxUVs(new THREE.BoxGeometry(wallThick, wallH, wallSpanZ), wallThick, wallH, wallSpanZ, 6.4, 5.5)
     );
 
-    // North (-Z) and South (+Z) walls
     const northWall = new THREE.Mesh(wallGeoX, mats.wallMat);
-    northWall.position.set(0, wallH * 0.5, -(innerBound + wallThick * 0.5));
+    northWall.position.set(0, wallH * 0.5, -(halfZ + wallThick * 0.5));
     northWall.receiveShadow = true;
     this.root.add(northWall);
-    this.collisionWorld.addBox(
-      -innerBound - wallThick, 0, -innerBound - wallThick,
-      innerBound + wallThick, wallH + 4, -innerBound,
-      'wall'
-    );
+    this.collisionWorld.addBox(-halfX - wallThick, 0, -halfZ - wallThick, halfX + wallThick, wallH + 4, -halfZ, 'wall');
 
     const southWall = new THREE.Mesh(wallGeoX, mats.wallMat);
-    southWall.position.set(0, wallH * 0.5, innerBound + wallThick * 0.5);
+    southWall.position.set(0, wallH * 0.5, halfZ + wallThick * 0.5);
     southWall.receiveShadow = true;
     this.root.add(southWall);
-    this.collisionWorld.addBox(
-      -innerBound - wallThick, 0, innerBound,
-      innerBound + wallThick, wallH + 4, innerBound + wallThick,
-      'wall'
-    );
+    this.collisionWorld.addBox(-halfX - wallThick, 0, halfZ, halfX + wallThick, wallH + 4, halfZ + wallThick, 'wall');
 
-    // West (-X) and East (+X) walls
     const westWall = new THREE.Mesh(wallGeoZ, mats.wallMat);
-    westWall.position.set(-(innerBound + wallThick * 0.5), wallH * 0.5, 0);
+    westWall.position.set(-(halfX + wallThick * 0.5), wallH * 0.5, 0);
     westWall.receiveShadow = true;
     this.root.add(westWall);
-    this.collisionWorld.addBox(
-      -innerBound - wallThick, 0, -innerBound,
-      -innerBound, wallH + 4, innerBound,
-      'wall'
-    );
+    this.collisionWorld.addBox(-halfX - wallThick, 0, -halfZ, -halfX, wallH + 4, halfZ, 'wall');
 
     const eastWall = new THREE.Mesh(wallGeoZ, mats.wallMat);
-    eastWall.position.set(innerBound + wallThick * 0.5, wallH * 0.5, 0);
+    eastWall.position.set(halfX + wallThick * 0.5, wallH * 0.5, 0);
     eastWall.receiveShadow = true;
     this.root.add(eastWall);
-    this.collisionWorld.addBox(
-      innerBound, 0, -innerBound,
-      innerBound + wallThick, wallH + 4, innerBound,
-      'wall'
-    );
+    this.collisionWorld.addBox(halfX, 0, -halfZ, halfX + wallThick, wallH + 4, halfZ, 'wall');
 
-    // Upper concrete overpass parapet cornice beam framing top rim of all 4 walls
-    const corniceShape = new THREE.Shape();
-    corniceShape.moveTo(0, 0);
-    corniceShape.lineTo(1.05, 0);
-    corniceShape.lineTo(1.3, 0.45);
-    corniceShape.lineTo(1.3, 1.0);
-    corniceShape.lineTo(0, 1.0);
-    corniceShape.closePath();
-
-    const corniceGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(corniceShape, {
-          depth: innerBound * 2,
-          bevelEnabled: true,
-          bevelThickness: 0.05,
-          bevelSize: 0.05,
-          bevelSegments: 1,
-        }),
-        0.18,
-        0.18
-      )
-    );
-    corniceGeo.translate(0, 0, -innerBound);
-
-    const corniceTransforms = [
-      { pos: [-innerBound, wallH - 0.52, 0], rotY: 0 },
-      { pos: [innerBound, wallH - 0.52, 0], rotY: Math.PI },
-      { pos: [0, wallH - 0.52, -innerBound], rotY: -Math.PI * 0.5 },
-      { pos: [0, wallH - 0.52, innerBound], rotY: Math.PI * 0.5 },
-    ];
-    for (let i = 0; i < corniceTransforms.length; i++) {
-      const t = corniceTransforms[i];
-      const m = new THREE.Mesh(corniceGeo, mats.concreteCoverMat);
-      m.position.set(t.pos[0], t.pos[1], t.pos[2]);
-      m.rotation.y = t.rotY;
+    // Upper cornice trim matching rectangular spans
+    const trimXGeo = this._trackGeo(new THREE.BoxGeometry(halfX * 2, 0.9, 1.1));
+    const trimZGeo = this._trackGeo(new THREE.BoxGeometry(1.1, 0.9, halfZ * 2));
+    for (const sz of [-halfZ + 0.35, halfZ - 0.35]) {
+      const m = new THREE.Mesh(trimXGeo, mats.concreteCoverMat);
+      m.position.set(0, wallH - 0.35, sz);
+      this.root.add(m);
+    }
+    for (const sx of [-halfX + 0.35, halfX - 0.35]) {
+      const m = new THREE.Mesh(trimZGeo, mats.concreteCoverMat);
+      m.position.set(sx, wallH - 0.35, 0);
       this.root.add(m);
     }
 
-    // Beveled Brutalist Concrete Buttress Ribs (InstancedMesh -> 1 draw call)
-    const ribShape = new THREE.Shape();
-    ribShape.moveTo(0, 0);
-    ribShape.lineTo(0.56, 0);
-    ribShape.lineTo(0.56, 1.4);
-    ribShape.lineTo(0.36, 2.2);
-    ribShape.lineTo(0.36, wallH - 1.4);
-    ribShape.lineTo(0.64, wallH - 0.3);
-    ribShape.lineTo(0.64, wallH + 0.35);
-    ribShape.lineTo(0, wallH + 0.35);
-    ribShape.closePath();
-
-    const ribGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(ribShape, {
-          depth: 0.72,
-          bevelEnabled: true,
-          bevelThickness: 0.06,
-          bevelSize: 0.06,
-          bevelSegments: 2,
-        }),
-        0.24,
-        0.24
-      )
-    );
-    ribGeo.translate(0, 0, -0.36);
-
-    const ribPositions = [-24, -17.5, -11, -4.5, 4.5, 11, 17.5, 24];
-    const totalRibs = ribPositions.length * 4;
-    const ribInst = new THREE.InstancedMesh(ribGeo, mats.concreteCoverMat, totalRibs);
-    ribInst.castShadow = true;
-    ribInst.receiveShadow = true;
-
-    // Rusted steel I-beam girder faces + sparse warm amber industrial bulkhead markers
-    const steelBracketGeo = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(0.12, wallH - 2.4, 0.24), 0.12, wallH - 2.4, 0.24, 2.0, 2.0)
-    );
-    const bracketInst = new THREE.InstancedMesh(steelBracketGeo, mats.rustMetalMat, totalRibs);
-
-    const lampGeo = this._trackGeo(new THREE.BoxGeometry(0.14, 0.36, 0.22));
-    const lampInst = new THREE.InstancedMesh(lampGeo, mats.amberBeaconMat, totalRibs);
-
+    // Wall buttress ribs + lamps around asymmetric perimeter
+    const ribGeo = this._trackGeo(new THREE.BoxGeometry(0.65, wallH, 0.72));
+    const lampGeo = this._trackGeo(new THREE.BoxGeometry(0.18, 0.38, 0.24));
     const dummy = new THREE.Object3D();
+    const xOffsets = [-24, -14, -4.5, 4.5, 14, 24];
+    const zOffsets = [-20, -10, 0, 10, 20];
+    const totalRibs = xOffsets.length * 2 + zOffsets.length * 2;
+    const ribInst = new THREE.InstancedMesh(ribGeo, mats.concreteCoverMat, totalRibs);
+    const lampInst = new THREE.InstancedMesh(lampGeo, mats.amberBeaconMat, totalRibs);
     let idx = 0;
-
-    for (let side = 0; side < 4; side++) {
-      for (let i = 0; i < ribPositions.length; i++) {
-        const offset = ribPositions[i];
-        let insetX = 0;
-        let insetZ = 0;
-        let rotY = 0;
-
-        if (side === 0) {
-          insetX = -innerBound;
-          insetZ = offset;
-          rotY = 0;
-        } else if (side === 1) {
-          insetX = innerBound;
-          insetZ = offset;
-          rotY = Math.PI;
-        } else if (side === 2) {
-          insetX = offset;
-          insetZ = -innerBound;
-          rotY = -Math.PI * 0.5;
-        } else {
-          insetX = offset;
-          insetZ = innerBound;
-          rotY = Math.PI * 0.5;
-        }
-
-        dummy.position.set(insetX, 0, insetZ);
-        dummy.rotation.set(0, rotY, 0);
-        dummy.scale.set(1, 1, 1);
-        dummy.updateMatrix();
+    for (const ox of xOffsets) {
+      for (const sz of [-halfZ + 0.3, halfZ - 0.3]) {
+        dummy.position.set(ox, wallH * 0.5, sz); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
         ribInst.setMatrixAt(idx, dummy.matrix);
-
-        const push = 0.42;
-        const bx = side === 0 ? insetX + push : side === 1 ? insetX - push : insetX;
-        const bz = side === 2 ? insetZ + push : side === 3 ? insetZ - push : insetZ;
-
-        dummy.position.set(bx, wallH * 0.5, bz);
-        dummy.rotation.set(0, rotY, 0);
-        dummy.updateMatrix();
-        bracketInst.setMatrixAt(idx, dummy.matrix);
-
-        dummy.position.set(bx, wallH - 1.5, bz);
-        dummy.rotation.set(0, rotY, 0);
-        dummy.updateMatrix();
+        dummy.position.set(ox, wallH - 1.5, sz + (sz < 0 ? 0.38 : -0.38)); dummy.updateMatrix();
         lampInst.setMatrixAt(idx, dummy.matrix);
-
         idx++;
       }
     }
-
-    ribInst.instanceMatrix.needsUpdate = true;
-    bracketInst.instanceMatrix.needsUpdate = true;
-    lampInst.instanceMatrix.needsUpdate = true;
-    this.root.add(ribInst, bracketInst, lampInst);
-
-    // Jagged shattered concrete parapet teeth & exposed rebar along upper wall skyline (1 InstancedMesh)
-    const rng = createRng(9093);
-    const toothCount = 24;
-    const toothGeo = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(2.6, 1.4, 0.9), 2.6, 1.4, 0.9, 3.2, 3.2)
-    );
-    const toothInst = new THREE.InstancedMesh(toothGeo, mats.concreteCoverMat, toothCount);
-    for (let i = 0; i < toothCount; i++) {
-      const side = i % 4;
-      const along = -26 + ((i / toothCount) * 52) + (rng() - 0.5) * 3;
-      const hScale = 0.45 + rng() * 1.05;
-      const tilt = (rng() - 0.5) * 0.18;
-      if (side < 2) {
-        dummy.position.set(side === 0 ? -innerBound - 0.25 : innerBound + 0.25, wallH + 0.45 * hScale, along);
-        dummy.rotation.set(tilt, Math.PI * 0.5, (rng() - 0.5) * 0.12);
-      } else {
-        dummy.position.set(along, wallH + 0.45 * hScale, side === 2 ? -innerBound - 0.25 : innerBound + 0.25);
-        dummy.rotation.set((rng() - 0.5) * 0.12, 0, tilt);
+    for (const oz of zOffsets) {
+      for (const sx of [-halfX + 0.3, halfX - 0.3]) {
+        dummy.position.set(sx, wallH * 0.5, oz); dummy.rotation.set(0, Math.PI * 0.5, 0); dummy.updateMatrix();
+        ribInst.setMatrixAt(idx, dummy.matrix);
+        dummy.position.set(sx + (sx < 0 ? 0.38 : -0.38), wallH - 1.5, oz); dummy.updateMatrix();
+        lampInst.setMatrixAt(idx, dummy.matrix);
+        idx++;
       }
-      dummy.scale.set(0.7 + rng() * 0.65, hScale, 1);
-      dummy.updateMatrix();
-      toothInst.setMatrixAt(i, dummy.matrix);
     }
-    toothInst.instanceMatrix.needsUpdate = true;
-    this.root.add(toothInst);
+    ribInst.instanceMatrix.needsUpdate = true;
+    lampInst.instanceMatrix.needsUpdate = true;
+    this.root.add(ribInst, lampInst);
   }
 
   /**
-   * Build 4 weathered bolted steel military stencil plates mounted on perimeter walls.
+   * Build 4 weathered bolted steel military stencil plates mounted on asymmetric perimeter walls.
    * @private
    */
-  _buildMilitarySignboards(mats, innerBound) {
+  _buildMilitarySignboards(mats, halfX, halfZ) {
     const configs = [
       {
-        title: 'TERRA-BEACON ACTIVE',
-        subtitle: 'SECTOR-09 // RECLAMATION UPLINK',
+        title: 'TERRA-BEACON VIADUCT',
+        subtitle: 'SECTOR-09 // OVERPASS UPLINK',
         accent: '#f59e0b',
-        pos: [0, 7.6, -(innerBound - 0.48)],
+        pos: [0, 7.6, -(halfZ - 0.48)],
         rotY: 0,
       },
       {
         title: 'DROP ZONE 09',
-        subtitle: 'VANGUARD INSERTION CORRIDOR',
+        subtitle: 'SUNKEN HIGHWAY CORRIDOR',
         accent: '#ea580c',
-        pos: [0, 7.6, innerBound - 0.48],
+        pos: [0, 7.6, halfZ - 0.48],
         rotY: Math.PI,
       },
       {
-        title: 'OVERPASS WEST // 01',
-        subtitle: 'ELEVATED FLANK ROUTE',
+        title: 'VIADUCT WEST RAMP',
+        subtitle: 'S-CURVE FLANK ROUTE',
         accent: '#d97706',
-        pos: [-(innerBound - 0.48), 7.6, 0],
+        pos: [-(halfX - 0.48), 7.6, 0],
         rotY: Math.PI * 0.5,
       },
       {
-        title: 'AETHER-1 UPLINK',
-        subtitle: 'ORBITAL TELEMETRY RELAY',
+        title: 'CRANE CARGO LANE',
+        subtitle: 'OVERHEAD DROP HAZARD',
         accent: '#eab308',
-        pos: [innerBound - 0.48, 7.6, 0],
+        pos: [halfX - 0.48, 7.6, 0],
         rotY: -Math.PI * 0.5,
       },
     ];
@@ -882,6 +724,126 @@ class ArenaBuilder {
    * - 4 sculpted steel truss pylons at (±9.5, ±9.5) with overhead steel guy-wires
    * - Overhead suspended LatheGeometry Terra-Beacon dish/heat-sink spire (y=7.5..11m)
    *   with rotating mechanical radar lattice & 4 cardinal steel suspension conduits
+   * @private
+   */
+  /**
+   * Build S-Curve Broken Highway Viaduct (y=4.0m), 2 wide stepped ramps (<=0.333m/step),
+   * sculpted Blender viaduct piers, waist-high concrete curbs, and overhead Terra-Beacon spire.
+   * @private
+   */
+  _buildOverpassArena(mats) {
+    const deckY = 4.0;
+    const deckThick = 0.42;
+    const decks = [
+      { minX: -16.5, maxX: 16.5, minZ: -5.5, maxZ: 4.5, name: 'CenterBridge' },
+      { minX: -27.0, maxX: -16.5, minZ: -4.5, maxZ: 13.5, name: 'WestWing' },
+      { minX: 16.5, maxX: 27.0, minZ: -13.5, maxZ: 4.5, name: 'EastWing' },
+    ];
+
+    for (let i = 0; i < decks.length; i++) {
+      const d = decks[i];
+      const w = d.maxX - d.minX;
+      const dep = d.maxZ - d.minZ;
+      const cx = (d.minX + d.maxX) * 0.5;
+      const cz = (d.minZ + d.maxZ) * 0.5;
+      const slabGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, deckThick, dep), w, deckThick, dep, 3.0, 3.0));
+      const slab = new THREE.Mesh(slabGeo, mats.daisMat);
+      slab.position.set(cx, deckY - deckThick * 0.5, cz);
+      slab.castShadow = true;
+      slab.receiveShadow = true;
+      this.root.add(slab);
+
+      const trimGeo = this._trackGeo(new THREE.BoxGeometry(w + 0.08, 0.14, dep + 0.08));
+      const trim = new THREE.Mesh(trimGeo, mats.hazardMat);
+      trim.position.set(cx, deckY - deckThick + 0.08, cz);
+      this.root.add(trim);
+
+      this.collisionWorld.addBox(d.minX, deckY - deckThick, d.minZ, d.maxX, deckY, d.maxZ, 'catwalk');
+    }
+
+    // Stepped Ramps connecting South WestWing & North EastWing smoothly down to highway floor (12 steps x 0.333m)
+    const steps = 12;
+    const stepRise = deckY / steps;
+    const stepDepth = 0.75;
+    const rampW = 5.5;
+    const stepGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(rampW, stepRise + 0.04, stepDepth), rampW, stepRise, stepDepth, 1.5, 1.5));
+    const rampDefs = [
+      { cx: -22.75, zStart: 22.5, zDir: -1 }, // Climbs North onto WestWing (z=13.5)
+      { cx: 22.75, zStart: -22.5, zDir: 1 },  // Climbs South onto EastWing (z=-13.5)
+    ];
+    for (let r = 0; r < rampDefs.length; r++) {
+      const rf = rampDefs[r];
+      for (let s = 0; s < steps; s++) {
+        const sy = (s + 1) * stepRise;
+        const sz = rf.zStart + rf.zDir * (s + 0.5) * stepDepth;
+        const sm = new THREE.Mesh(stepGeo, mats.catwalkMat);
+        sm.position.set(rf.cx, sy - stepRise * 0.5, sz);
+        sm.castShadow = true;
+        sm.receiveShadow = true;
+        this.root.add(sm);
+        this.collisionWorld.addBox(rf.cx - rampW * 0.5, 0, sz - stepDepth * 0.5, rf.cx + rampW * 0.5, sy, sz + stepDepth * 0.5, 'ramp');
+      }
+    }
+
+    // Overpass jersey curb rails along exposed North/South edges of Central Span
+    const railGeo = this._trackGeo(new THREE.BoxGeometry(10.0, 0.95, 0.42));
+    for (const rSpec of [
+      { x: -10.5, z: -5.25 }, { x: 10.5, z: -5.25 },
+      { x: -10.5, z: 4.25 },  { x: 10.5, z: 4.25 },
+    ]) {
+      const m = new THREE.Mesh(railGeo, mats.concreteCoverMat);
+      m.position.set(rSpec.x, deckY + 0.475, rSpec.z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.root.add(m);
+      this.collisionWorld.addBox(rSpec.x - 5.0, deckY, rSpec.z - 0.21, rSpec.x + 5.0, deckY + 0.95, rSpec.z + 0.21, 'cover');
+    }
+
+    // Mount 4 Sculpted Blender Ruined Viaduct Piers under bridge spans
+    const factory = MapPropFactory.getShared();
+    const pierSpecs = [
+      { x: -16.5, z: -0.5, rotY: 0 },
+      { x: 16.5, z: -0.5, rotY: Math.PI },
+      { x: -21.5, z: 8.5, rotY: Math.PI * 0.5 },
+      { x: 21.5, z: -8.5, rotY: -Math.PI * 0.5 },
+    ];
+    for (let i = 0; i < pierSpecs.length; i++) {
+      const ps = pierSpecs[i];
+      const pos = new THREE.Vector3(ps.x, 0, ps.z);
+      const mount = factory.mountProp(this.root, 'ruined_viaduct_pier', {
+        position: pos,
+        rotationY: ps.rotY,
+        scale: 0.85,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, pos, ps.rotY, 0.85, 'pillar');
+        },
+      });
+      this._propMounts.push(mount);
+    }
+
+    // Overhead Terra-Beacon Spire suspended high above Viaduct Control Zone (0, 12.2, -0.5)
+    const spireGeo = this._trackGeo(new THREE.CylinderGeometry(0.45, 1.35, 3.2, 8));
+    const spire = new THREE.Mesh(spireGeo, mats.darkSteelMat);
+    spire.position.set(0, 12.2, -0.5);
+    this.root.add(spire);
+    const coreGeo = this._trackGeo(new THREE.SphereGeometry(0.62, 14, 12));
+    this._terraCoreMesh = new THREE.Mesh(coreGeo, mats.terraCoreMat);
+    this._terraCoreMesh.position.set(0, 10.4, -0.5);
+    this.root.add(this._terraCoreMesh);
+    const ringGeo = this._trackGeo(new THREE.TorusGeometry(2.6, 0.14, 8, 28));
+    ringGeo.rotateX(Math.PI * 0.5);
+    this._beaconOuterRing = new THREE.Mesh(ringGeo, mats.amberBeaconMat);
+    this._beaconOuterRing.position.set(0, 11.4, -0.5);
+    this.root.add(this._beaconOuterRing);
+    const inRingGeo = this._trackGeo(new THREE.TorusGeometry(1.75, 0.11, 8, 24));
+    inRingGeo.rotateX(Math.PI * 0.5);
+    this._beaconInnerRing = new THREE.Mesh(inRingGeo, mats.rustMetalMat);
+    this._beaconInnerRing.position.set(0, 11.0, -0.5);
+    this.root.add(this._beaconInnerRing);
+  }
+
+  /**
+   * Build Octagonal Concrete Dais (deprecated on Viaduct redesign — kept no-op for clean diff).
    * @private
    */
   _buildTerraBeaconPlaza(mats, innerBound) {
@@ -2168,6 +2130,18 @@ class ArenaBuilder {
     this._podBeaconMat = null;
     this._amberTrimMat = null;
     this._beaconMat = null;
+    if (this._propMounts) {
+      for (let i = 0; i < this._propMounts.length; i++) {
+        const m = this._propMounts[i];
+        if (m) {
+          m.userData.disposed = true;
+          if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+            m.userData.propInstance.dispose();
+          }
+        }
+      }
+      this._propMounts.length = 0;
+    }
 
     if (this._ownsTexGen && this._texGen) {
       this._texGen.dispose();

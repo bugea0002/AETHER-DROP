@@ -2,6 +2,7 @@
 __define("src/world/Map4AegisFlightDeckBuilder.js", (__exports, __require) => {
 const { ARENA_CONFIG } = __require("src/config/constants.js");
 const { TextureGenerator } = __require("src/world/TextureGenerator.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 function createRng(seed) {
   let a = seed >>> 0;
@@ -81,6 +82,7 @@ class Map4AegisFlightDeckBuilder {
     this._distantBeaconMat = null;
     this._coreLight = null;
     this._northHangarLight = null;
+    this._propMounts = [];
 
     this._built = false;
   }
@@ -105,82 +107,90 @@ class Map4AegisFlightDeckBuilder {
     this.root.name = 'ArenaRoot_SECTOR61_AegisFlightDeck';
     this.scene.add(this.root);
 
-    const half = ARENA_CONFIG.halfSize; // 32
-    const innerBound = half - 0.5; // 31.5
+    const halfX = 22.5; // Narrow 45m carrier width
+    const halfZ = 41.5; // Long 83m runway length!
     const wallH = ARENA_CONFIG.wallHeight; // 11
 
-    this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
+    // Allow free fall off open stratosphere outer flank cliffs down past voidFallY = -14!
+    this.collisionWorld.setArenaBounds(-halfX - 8, halfX + 8, -halfZ, halfZ, -26, 28);
 
     const mats = this._createMaterials();
-    this._buildFlightDeckFloorAndPlinth(mats, innerBound);
-    this._buildPerimeterWalls(mats, innerBound, wallH);
-    this._buildSectorSignboards(mats, innerBound);
-    this._buildElevatedCatwalksAndRamps(mats, innerBound);
+    this._buildFlightDeckFloorAndPlinth(mats, halfX, halfZ);
+    this._buildPerimeterWalls(mats, halfX, halfZ, wallH);
+    this._buildSectorSignboards(mats, halfX, halfZ);
+    this._buildElevatedCatwalksAndRamps(mats, halfX, halfZ);
     this._buildCapacitorsAndBulkheads(mats);
-    this._buildHangarOverheadAndVista(mats, innerBound);
+    this._buildHangarOverheadAndVista(mats, halfZ);
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // Jump pad calibration: deckY = 3.9m, g = 26 m/s^2, Vh = 11.0 m/s, Vy = 17.2 m/s
-    // Peak y = 5.69m, descending landing at y = 3.9m occurs at t = 1.0325s -> d = 11.36m.
     return {
       mapId: 'aegis_flight_deck',
       mapIndex: 3,
       mapCode: '제61구역',
       mapName: '제61구역 · 이지스 비행갑판',
-      mapSubtitle: '궤도 격납고 및 공중 통로',
+      mapSubtitle: '가속 레일 & 외곽 개방 성층권 낭떠러지',
       atmosphere: {
         bgColor: 0x061020,
         fogColor: 0x0a1c36,
         fogDensity: 0.0080,
       },
       playerSpawn: {
-        pos: new THREE.Vector3(0, 0.05, 24.5),
+        pos: new THREE.Vector3(0, 0.05, 34.0),
         yaw: 0,
       },
       enemySpawns: [
-        { pos: new THREE.Vector3(0.0, 0.05, -19.0), isElevated: false },
-        { pos: new THREE.Vector3(-5.0, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(5.0, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(0.0, 0.05, -7.5), isElevated: false },
-        { pos: new THREE.Vector3(-17.5, 0.05, -11.5), isElevated: false },
-        { pos: new THREE.Vector3(17.5, 0.05, -11.5), isElevated: false },
-        { pos: new THREE.Vector3(-19.0, 0.05, 14.5), isElevated: false },
-        { pos: new THREE.Vector3(19.0, 0.05, 14.5), isElevated: false },
-        { pos: new THREE.Vector3(-27.8, 3.95, -10.5), isElevated: true },
-        { pos: new THREE.Vector3(27.8, 3.95, -10.5), isElevated: true },
-        { pos: new THREE.Vector3(-12.0, 3.95, -28.2), isElevated: true },
-        { pos: new THREE.Vector3(12.0, 3.95, -28.2), isElevated: true },
+        { pos: new THREE.Vector3(0.0, 0.05, -28.0), isElevated: false },
+        { pos: new THREE.Vector3(-8.5, 0.05, -28.5), isElevated: false },
+        { pos: new THREE.Vector3(8.5, 0.05, -28.5), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.05, -10.5), isElevated: false },
+        { pos: new THREE.Vector3(-12.5, 0.05, -14.5), isElevated: false },
+        { pos: new THREE.Vector3(12.5, 0.05, -14.5), isElevated: false },
+        { pos: new THREE.Vector3(-19.0, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(19.0, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(-19.0, 3.95, 0.0), isElevated: true },
+        { pos: new THREE.Vector3(19.0, 3.95, 0.0), isElevated: true },
+        { pos: new THREE.Vector3(-8.0, 3.95, -35.0), isElevated: true },
+        { pos: new THREE.Vector3(8.0, 3.95, -35.0), isElevated: true },
       ],
       pickupSpawns: [
-        { pos: new THREE.Vector3(-22.5, 3.90, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(22.5, 3.90, 0.0), type: 'health' },
-        { pos: new THREE.Vector3(0.0, 3.90, -28.2), type: 'ammo' },
-        { pos: new THREE.Vector3(-27.5, 0.0, 29.0), type: 'ammo' },
-        { pos: new THREE.Vector3(27.5, 0.0, 29.0), type: 'shield' },
-        { pos: new THREE.Vector3(0.0, 0.0, 17.5), type: 'health' },
+        { pos: new THREE.Vector3(-19.5, 3.90, 0.0), type: 'shield' },
+        { pos: new THREE.Vector3(19.5, 3.90, 0.0), type: 'health' },
+        { pos: new THREE.Vector3(0.0, 3.90, -35.0), type: 'ammo' },
+        { pos: new THREE.Vector3(-12.0, 0.0, 26.0), type: 'ammo' },
+        { pos: new THREE.Vector3(12.0, 0.0, 26.0), type: 'shield' },
+        { pos: new THREE.Vector3(0.0, 0.0, 12.0), type: 'health' },
       ],
       barrelSpawns: [
-        new THREE.Vector3(-7.0, 0.0, 0.0),
-        new THREE.Vector3(7.0, 0.0, 0.0),
-        new THREE.Vector3(-4.2, 0.0, -13.0),
-        new THREE.Vector3(4.2, 0.0, -13.0),
-        new THREE.Vector3(-14.5, 0.0, 14.0),
-        new THREE.Vector3(14.5, 0.0, 14.0),
+        new THREE.Vector3(-8.0, 0.0, 0.0),
+        new THREE.Vector3(8.0, 0.0, 0.0),
+        new THREE.Vector3(-5.0, 0.0, -23.0),
+        new THREE.Vector3(5.0, 0.0, -23.0),
+        new THREE.Vector3(-13.0, 0.0, 14.0),
+        new THREE.Vector3(13.0, 0.0, 14.0),
       ],
       jumpPadSpawns: [
-        { pos: new THREE.Vector3(-15.0, 0.0, -4.0), launchVy: 17.2, launchDirX: -1, launchDirZ: 0 },
-        { pos: new THREE.Vector3(15.0, 0.0, -4.0), launchVy: 17.2, launchDirX: 1, launchDirZ: 0 },
-        { pos: new THREE.Vector3(-8.0, 0.0, -16.9), launchVy: 17.2, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(8.0, 0.0, -16.9), launchVy: 17.2, launchDirX: 0, launchDirZ: -1 },
+        { pos: new THREE.Vector3(-13.5, 0.0, 4.0), launchVy: 17.4, launchDirX: -1, launchDirZ: 0 },
+        { pos: new THREE.Vector3(13.5, 0.0, 4.0), launchVy: 17.4, launchDirX: 1, launchDirZ: 0 },
+        { pos: new THREE.Vector3(-6.5, 0.0, -21.5), launchVy: 17.4, launchDirX: 0, launchDirZ: -1 },
+        { pos: new THREE.Vector3(6.5, 0.0, -21.5), launchVy: 17.4, launchDirX: 0, launchDirZ: -1 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 0.2, 0),
+      boostRails: [
+        { x: -5.0, y: 0, z: 12.0, minX: -6.8, maxX: -3.2, minZ: 4.5, maxZ: 19.5, width: 3.4, length: 14.0, dirX: 0, dirZ: -1, yaw: Math.PI, speed: 27.0 },
+        { x: 5.0, y: 0, z: -12.0, minX: 3.2, maxX: 6.8, minZ: -19.5, maxZ: -4.5, width: 3.4, length: 14.0, dirX: 0, dirZ: 1, yaw: 0, speed: 27.0 },
+      ],
+      barrierGates: [
+        { x: -11.5, y: 0, z: -2.0, yaw: 0, initialActive: true, width: 4.1, height: 3.2 },
+        { x: 11.5, y: 0, z: 2.0, yaw: 0, initialActive: false, width: 4.1, height: 3.2 },
+      ],
+      voidFallY: -14.0,
+      controlZoneCenter: new THREE.Vector3(0, 0.2, -19.5),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
-        minX: -innerBound,
-        maxX: innerBound,
-        minZ: -innerBound,
-        maxZ: innerBound,
+        minX: -halfX,
+        maxX: halfX,
+        minZ: -halfZ,
+        maxZ: halfZ,
       },
     };
   }
@@ -330,418 +340,174 @@ class Map4AegisFlightDeckBuilder {
     };
   }
 
-  _buildFlightDeckFloorAndPlinth(mats, innerBound) {
-    const floorSize = innerBound * 2 + 2;
-    const floorGeo = this._trackGeo(new THREE.PlaneGeometry(floorSize, floorSize));
-    const floorMesh = new THREE.Mesh(floorGeo, mats.deckFloorMat);
-    floorMesh.rotation.x = -Math.PI * 0.5;
-    floorMesh.receiveShadow = true;
-    this.root.add(floorMesh);
-
-    this.collisionWorld.addBox(-34, -1.0, -34, 34, 0.0, 34, 'floor');
-
-    // Low octagonal central Flight Deck Turntable (R=5.8m, y=0.20m)
-    const daisR = 5.8;
-    const daisShape = new THREE.Shape();
-    for (let i = 0; i < 8; i++) {
-      const a = (Math.PI / 4) * i + Math.PI / 8;
-      const x = Math.cos(a) * daisR;
-      const y = Math.sin(a) * daisR;
-      if (i === 0) daisShape.moveTo(x, y);
-      else daisShape.lineTo(x, y);
-    }
-    daisShape.closePath();
-
-    const daisGeo = this._trackGeo(
-      scaleGeometryUVs(
-        new THREE.ExtrudeGeometry(daisShape, {
-          depth: 0.14,
-          bevelEnabled: true,
-          bevelThickness: 0.06,
-          bevelSize: 0.12,
-          bevelSegments: 2,
-        }),
-        0.18,
-        0.18
-      )
-    );
-    daisGeo.rotateX(-Math.PI * 0.5);
-    const daisMesh = new THREE.Mesh(daisGeo, mats.hullArmorMat);
-    daisMesh.receiveShadow = true;
-    this.root.add(daisMesh);
-
-    this.collisionWorld.addBox(-4.1, 0, -4.1, 4.1, 0.2, 4.1, 'platform');
-    this.collisionWorld.addBox(-5.36, 0, -2.22, 5.36, 0.2, 2.22, 'platform');
-    this.collisionWorld.addBox(-2.22, 0, -5.36, 2.22, 0.2, 5.36, 'platform');
-
-    const collarGeo = this._trackGeo(new THREE.RingGeometry(4.1, 4.85, 8));
-    const collar = new THREE.Mesh(collarGeo, mats.darkIronMat);
-    collar.rotation.x = -Math.PI * 0.5;
-    collar.rotation.z = Math.PI / 8;
-    collar.position.y = 0.205;
-    this.root.add(collar);
-
-    const emberRingGeo = this._trackGeo(new THREE.RingGeometry(2.3, 2.65, 16));
-    const emberRing = new THREE.Mesh(emberRingGeo, mats.keelEmberMat);
-    emberRing.rotation.x = -Math.PI * 0.5;
-    emberRing.position.y = 0.207;
-    this.root.add(emberRing);
-
-    // Recessed tungsten-amber catapult guide rails leading out from central deck
-    const seamGeo = this._trackGeo(new THREE.BoxGeometry(1, 0.016, 1));
-    const seams = [
-      { x: 0, z: 11.5, w: 0.22, d: 11.0 },
-      { x: 0, z: -11.5, w: 0.22, d: 11.0 },
-      { x: -11.5, z: 0, w: 11.0, d: 0.22 },
-      { x: 11.5, z: 0, w: 11.0, d: 0.22 },
+  _buildFlightDeckFloorAndPlinth(mats, halfX, halfZ) {
+    // Central 32m x 83m Carrier Runway + North/Mid/South Hangar Spurs leaving OPEN Stratosphere Void Cliffs on flanks!
+    const deckPlates = [
+      { minX: -16.0, maxX: 16.0, minZ: -halfZ, maxZ: halfZ },
+      { minX: -halfX, maxX: -16.0, minZ: -halfZ, maxZ: -22.0 },
+      { minX: 16.0, maxX: halfX, minZ: -halfZ, maxZ: -22.0 },
+      { minX: -halfX, maxX: -16.0, minZ: -7.0, maxZ: 7.0 },
+      { minX: 16.0, maxX: halfX, minZ: -7.0, maxZ: 7.0 },
+      { minX: -halfX, maxX: -16.0, minZ: 22.0, maxZ: halfZ },
+      { minX: 16.0, maxX: halfX, minZ: 22.0, maxZ: halfZ },
     ];
-    for (let i = 0; i < seams.length; i++) {
-      const s = seams[i];
-      const m = new THREE.Mesh(seamGeo, mats.tungstenAmberMat);
-      m.position.set(s.x, 0.008, s.z);
-      m.scale.set(s.w, 1, s.d);
+    for (let i = 0; i < deckPlates.length; i++) {
+      const p = deckPlates[i];
+      const w = p.maxX - p.minX;
+      const d = p.maxZ - p.minZ;
+      const cx = (p.minX + p.maxX) * 0.5;
+      const cz = (p.minZ + p.maxZ) * 0.5;
+      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, 0.8, d), w, 0.8, d, 3.0, 3.0));
+      const m = new THREE.Mesh(geo, mats.deckFloorMat);
+      m.position.set(cx, -0.4, cz);
+      m.receiveShadow = true;
       this.root.add(m);
-    }
-  }
-
-  _buildPerimeterWalls(mats, innerBound, wallH) {
-    const wallThick = 1.5;
-    const wallSpan = innerBound * 2 + wallThick * 2;
-    const wallGeoX = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(wallSpan, wallH, wallThick), wallSpan, wallH, wallThick, 6.4, 5.5)
-    );
-    const wallGeoZ = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(wallThick, wallH, wallSpan), wallThick, wallH, wallSpan, 6.4, 5.5)
-    );
-
-    const defs = [
-      { geo: wallGeoX, pos: [0, wallH * 0.5, -(innerBound + wallThick * 0.5)], box: [-innerBound - wallThick, 0, -innerBound - wallThick, innerBound + wallThick, wallH + 4, -innerBound] },
-      { geo: wallGeoX, pos: [0, wallH * 0.5, innerBound + wallThick * 0.5], box: [-innerBound - wallThick, 0, innerBound, innerBound + wallThick, wallH + 4, innerBound + wallThick] },
-      { geo: wallGeoZ, pos: [-(innerBound + wallThick * 0.5), wallH * 0.5, 0], box: [-innerBound - wallThick, 0, -innerBound, -innerBound, wallH + 4, innerBound] },
-      { geo: wallGeoZ, pos: [innerBound + wallThick * 0.5, wallH * 0.5, 0], box: [innerBound, 0, -innerBound, innerBound + wallThick, wallH + 4, innerBound] },
-    ];
-    for (let i = 0; i < defs.length; i++) {
-      const w = new THREE.Mesh(defs[i].geo, mats.bulkheadWallMat);
-      w.position.set(defs[i].pos[0], defs[i].pos[1], defs[i].pos[2]);
-      w.receiveShadow = true;
-      this.root.add(w);
-      const b = defs[i].box;
-      this.collisionWorld.addBox(b[0], b[1], b[2], b[3], b[4], b[5], 'wall');
+      this.collisionWorld.addBox(p.minX, -0.9, p.minZ, p.maxX, 0.0, p.maxZ, 'floor');
     }
 
-    const upperRibGeo = this._trackGeo(
-      scaleBoxUVs(new THREE.BoxGeometry(0.6, 5.0, 0.78), 0.6, 5.0, 0.78, 1.8, 1.8)
-    );
-    const offsets = [-24, -16, -8, 8, 16, 24];
-    const ribInst = new THREE.InstancedMesh(upperRibGeo, mats.darkIronMat, offsets.length * 4);
-    ribInst.castShadow = true;
-    const dummy = new THREE.Object3D();
-    let idx = 0;
-    for (let side = 0; side < 4; side++) {
-      for (let i = 0; i < offsets.length; i++) {
-        const off = offsets[i];
-        if (side === 0) {
-          dummy.position.set(-innerBound + 0.25, 8.6, off);
-          dummy.rotation.set(0, 0, 0);
-        } else if (side === 1) {
-          dummy.position.set(innerBound - 0.25, 8.6, off);
-          dummy.rotation.set(0, Math.PI, 0);
-        } else if (side === 2) {
-          dummy.position.set(off, 8.6, -innerBound + 0.25);
-          dummy.rotation.set(0, -Math.PI * 0.5, 0);
-        } else {
-          dummy.position.set(off, 8.6, innerBound - 0.25);
-          dummy.rotation.set(0, Math.PI * 0.5, 0);
-        }
-        dummy.updateMatrix();
-        ribInst.setMatrixAt(idx++, dummy.matrix);
+    // Bright hazard warning curbs framing the 4 Open Stratosphere Cliff Drop-Offs (|x|=15.85 along [-22..-7] and [7..22])
+    const edgeStripGeo = this._trackGeo(new THREE.BoxGeometry(0.32, 0.08, 15.0));
+    for (const sx of [-15.84, 15.84]) {
+      for (const sz of [-14.5, 14.5]) {
+        const edge = new THREE.Mesh(edgeStripGeo, mats.hazardMat);
+        edge.position.set(sx, 0.04, sz);
+        this.root.add(edge);
       }
     }
-    ribInst.instanceMatrix.needsUpdate = true;
-    this.root.add(ribInst);
+
+    // Center Tactical Turntable Dais
+    const daisGeo = this._trackGeo(new THREE.CylinderGeometry(5.6, 6.2, 0.2, 8));
+    const dais = new THREE.Mesh(daisGeo, mats.hullArmorMat);
+    dais.position.y = 0.1;
+    dais.receiveShadow = true;
+    this.root.add(dais);
+    this.collisionWorld.addBox(-4.0, 0, -4.0, 4.0, 0.2, 4.0, 'platform');
+    this.collisionWorld.addBox(-5.3, 0, -2.2, 5.3, 0.2, 2.2, 'platform');
+    this.collisionWorld.addBox(-2.2, 0, -5.3, 2.2, 0.2, 5.3, 'platform');
   }
 
-  _buildSectorSignboards(mats, innerBound) {
+  _buildPerimeterWalls(mats, halfX, halfZ, wallH) {
+    const wallThick = 1.5;
+    const wallSpanX = halfX * 2 + wallThick * 2;
+    const wallGeoX = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(wallSpanX, wallH, wallThick), wallSpanX, wallH, wallThick, 6.4, 5.5));
+    // Solid Bow & Stern hangar walls (side flank bays stay UNWALLED over open stratosphere cliffs!)
+    const endDefs = [
+      { pos: [0, wallH * 0.5, -(halfZ + wallThick * 0.5)], box: [-halfX - wallThick, 0, -halfZ - wallThick, halfX + wallThick, wallH + 4, -halfZ] },
+      { pos: [0, wallH * 0.5, halfZ + wallThick * 0.5], box: [-halfX - wallThick, 0, halfZ, halfX + wallThick, wallH + 4, halfZ + wallThick] },
+    ];
+    for (const d of endDefs) {
+      const w = new THREE.Mesh(wallGeoX, mats.bulkheadWallMat);
+      w.position.set(d.pos[0], d.pos[1], d.pos[2]);
+      w.receiveShadow = true;
+      this.root.add(w);
+      this.collisionWorld.addBox(d.box[0], d.box[1], d.box[2], d.box[3], d.box[4], d.box[5], 'wall');
+    }
+
+    // Side Spur Tip Wall Segments ONLY on docked bay segments (leaving [-22..-7] and [7..22] open to sky drop!)
+    const spurSegments = [
+      { minZ: -halfZ, maxZ: -22.0 },
+      { minZ: -7.0, maxZ: 7.0 },
+      { minZ: 22.0, maxZ: halfZ },
+    ];
+    for (const seg of spurSegments) {
+      const len = seg.maxZ - seg.minZ;
+      const cz = (seg.minZ + seg.maxZ) * 0.5;
+      const wGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(wallThick, wallH, len), wallThick, wallH, len, 4.0, 5.0));
+      for (const sx of [-(halfX + wallThick * 0.5), halfX + wallThick * 0.5]) {
+        const w = new THREE.Mesh(wGeo, mats.bulkheadWallMat);
+        w.position.set(sx, wallH * 0.5, cz);
+        w.receiveShadow = true;
+        this.root.add(w);
+      }
+      this.collisionWorld.addBox(-halfX - wallThick, 0, seg.minZ, -halfX, wallH + 4, seg.maxZ, 'wall');
+      this.collisionWorld.addBox(halfX, 0, seg.minZ, halfX + wallThick, wallH + 4, seg.maxZ, 'wall');
+    }
+  }
+
+  _buildSectorSignboards(mats, halfX, halfZ) {
     const configs = [
-      { title: 'FLIGHT DECK', subtitle: 'HANGAR APRON // SECTOR-61', accent: '#f09d38', pos: [0, 8.3, -(innerBound - 0.36)], rotY: 0 },
-      { title: 'LAUNCH BAY', subtitle: 'DOCKING GATE // SOUTH', accent: '#e05814', pos: [0, 8.3, innerBound - 0.36], rotY: Math.PI },
-      { title: 'PORT CATWALK', subtitle: 'OVERPASS LEVEL +3.9M', accent: '#f09d38', pos: [-(innerBound - 0.36), 8.3, 0], rotY: Math.PI * 0.5 },
-      { title: 'STARBOARD CATWALK', subtitle: 'OVERPASS LEVEL +3.9M', accent: '#f09d38', pos: [innerBound - 0.36, 8.3, 0], rotY: -Math.PI * 0.5 },
+      { title: 'FLIGHT RUNWAY', subtitle: 'CATAPULT // SECTOR-61', accent: '#f09d38', pos: [0, 8.3, -(halfZ - 0.36)], rotY: 0 },
+      { title: 'LAUNCH BAY', subtitle: 'STERN APPROACH // SOUTH', accent: '#e05814', pos: [0, 8.3, halfZ - 0.36], rotY: Math.PI },
+      { title: 'PORT OVERLOOK', subtitle: 'SPUR DECK +3.9M', accent: '#f09d38', pos: [-(halfX - 0.36), 8.3, 0], rotY: Math.PI * 0.5 },
+      { title: 'STARBOARD OVERLOOK', subtitle: 'SPUR DECK +3.9M', accent: '#f09d38', pos: [halfX - 0.36, 8.3, 0], rotY: -Math.PI * 0.5 },
     ];
     const screenW = 5.6;
     const screenH = 3.2;
     const bezelGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(screenW + 0.5, screenH + 0.5, 0.24), screenW + 0.5, screenH + 0.5, 0.24, 2.0, 2.0));
     const boardGeo = this._trackGeo(new THREE.PlaneGeometry(screenW, screenH));
-
     for (let i = 0; i < configs.length; i++) {
       const cfg = configs[i];
       const tex = this._texGen.getSignboardTexture(cfg.title, cfg.subtitle, cfg.accent);
-      const boardMat = this._trackMat(
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          emissive: new THREE.Color(0xffffff),
-          emissiveMap: tex,
-          emissiveIntensity: 0.65,
-          roughness: 0.5,
-          metalness: 0.28,
-        })
-      );
+      const boardMat = this._trackMat(new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(0xffffff), emissiveMap: tex, emissiveIntensity: 0.65, roughness: 0.5, metalness: 0.28 }));
       const g = new THREE.Group();
       g.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
       g.rotation.y = cfg.rotY;
-      const bezel = new THREE.Mesh(bezelGeo, mats.darkIronMat);
-      bezel.position.z = -0.14;
-      const board = new THREE.Mesh(boardGeo, boardMat);
-      board.position.z = 0.02;
+      const bezel = new THREE.Mesh(bezelGeo, mats.darkIronMat); bezel.position.z = -0.14;
+      const board = new THREE.Mesh(boardGeo, boardMat); board.position.z = 0.02;
       g.add(bezel, board);
       this.root.add(g);
     }
   }
 
-  _buildElevatedCatwalksAndRamps(mats, innerBound) {
+  _buildElevatedCatwalksAndRamps(mats, halfX, halfZ) {
     const deckY = 3.9;
     const deckThick = 0.4;
-
     const platformSpecs = [
-      { minX: -innerBound, maxX: -24.0, minZ: -25.0, maxZ: 18.0, fasciaSide: 'east' },
-      { minX: 24.0, maxX: innerBound, minZ: -25.0, maxZ: 18.0, fasciaSide: 'west' },
-      { minX: -innerBound, maxX: innerBound, minZ: -innerBound, maxZ: -25.0, fasciaSide: 'south' },
-      { minX: -24.0, maxX: -21.0, minZ: -6.0, maxZ: 6.0, fasciaSide: 'east' },
-      { minX: 21.0, maxX: 24.0, minZ: -6.0, maxZ: 6.0, fasciaSide: 'west' },
+      { minX: -halfX, maxX: -16.0, minZ: -6.5, maxZ: 6.5 },
+      { minX: 16.0, maxX: halfX, minZ: -6.5, maxZ: 6.5 },
+      { minX: -16.0, maxX: 16.0, minZ: -halfZ, maxZ: -31.0 },
     ];
-
-    for (let i = 0; i < platformSpecs.length; i++) {
-      const p = platformSpecs[i];
+    for (const p of platformSpecs) {
       const w = p.maxX - p.minX;
       const d = p.maxZ - p.minZ;
       const cx = (p.minX + p.maxX) * 0.5;
       const cz = (p.minZ + p.maxZ) * 0.5;
-      const isZEdge = p.fasciaSide === 'south' || p.fasciaSide === 'north';
-
-      const hullGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w - 0.04, deckThick - 0.08, d - 0.04), w - 0.04, deckThick - 0.08, d - 0.04, 2.4, 2.4));
-      const hull = new THREE.Mesh(hullGeo, mats.darkIronMat);
-      hull.position.set(cx, deckY - deckThick * 0.5 - 0.02, cz);
-      hull.castShadow = true;
-      hull.receiveShadow = true;
-      this.root.add(hull);
-
-      const topGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w - 0.08, 0.06, d - 0.08), w - 0.08, 0.06, d - 0.08, 2.2, 2.2));
-      const topPlate = new THREE.Mesh(topGeo, mats.catwalkMat);
-      topPlate.position.set(cx, deckY - 0.03, cz);
-      topPlate.receiveShadow = true;
-      this.root.add(topPlate);
-
-      const fw = isZEdge ? w : 0.06;
-      const fd = isZEdge ? 0.06 : d;
-      const fasciaGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(fw, 0.24, fd), fw, 0.24, fd, 1.2, 0.24));
-      const trimGeo = this._trackGeo(new THREE.BoxGeometry(isZEdge ? w : 0.07, 0.05, isZEdge ? 0.07 : d));
-      const fascia = new THREE.Mesh(fasciaGeo, mats.hazardMat);
-      const trim = new THREE.Mesh(trimGeo, mats.tungstenAmberMat);
-
-      if (p.fasciaSide === 'south') {
-        fascia.position.set(cx, deckY - 0.19, p.maxZ - 0.03);
-        trim.position.set(cx, deckY - deckThick + 0.025, p.maxZ - 0.035);
-      } else if (p.fasciaSide === 'east') {
-        fascia.position.set(p.maxX - 0.03, deckY - 0.19, cz);
-        trim.position.set(p.maxX - 0.035, deckY - deckThick + 0.025, cz);
-      } else {
-        fascia.position.set(p.minX + 0.03, deckY - 0.19, cz);
-        trim.position.set(p.minX + 0.035, deckY - deckThick + 0.025, cz);
-      }
-      this.root.add(fascia, trim);
-
+      const hullGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, deckThick, d), w, deckThick, d, 2.4, 2.4));
+      const m = new THREE.Mesh(hullGeo, mats.catwalkMat);
+      m.position.set(cx, deckY - deckThick * 0.5, cz);
+      m.castShadow = true; m.receiveShadow = true;
+      this.root.add(m);
       this.collisionWorld.addBox(p.minX, deckY - deckThick, p.minZ, p.maxX, deckY, p.maxZ, 'platform');
     }
 
-    // Support piers under elevated catwalks
-    const pierCoords = [
-      [-24.3, -24.5], [-24.3, -12.0], [-24.3, 12.0], [-24.3, 17.5],
-      [24.3, -24.5], [24.3, -12.0], [24.3, 12.0], [24.3, 17.5],
-      [-18.0, -25.3], [-4.5, -25.3], [4.5, -25.3], [18.0, -25.3],
-    ];
-    const pierGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(0.62, deckY - deckThick, 0.62), 0.62, deckY - deckThick, 0.62, 1.8, 1.8));
-    const pierInst = new THREE.InstancedMesh(pierGeo, mats.darkIronMat, pierCoords.length);
-    pierInst.castShadow = true;
-    pierInst.receiveShadow = true;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < pierCoords.length; i++) {
-      const [px, pz] = pierCoords[i];
-      dummy.position.set(px, (deckY - deckThick) * 0.5, pz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      pierInst.setMatrixAt(i, dummy.matrix);
-      this.collisionWorld.addBox(px - 0.31, 0, pz - 0.31, px + 0.31, deckY - deckThick, pz + 0.31, 'pillar');
-    }
-    pierInst.instanceMatrix.needsUpdate = true;
-    this.root.add(pierInst);
-
-    // Elevated Deck Tactical Half-Cover Shields (y = 3.90..4.95m)
-    const shieldH = 1.05;
-    const shieldThick = 0.38;
-    const shieldSpecs = [
-      { cx: -21.2, cz: 0.0, len: 4.8, rotY: Math.PI * 0.5 },
-      { cx: 21.2, cz: 0.0, len: 4.8, rotY: Math.PI * 0.5 },
-      { cx: -4.2, cz: -25.2, len: 3.6, rotY: 0 },
-      { cx: 4.2, cz: -25.2, len: 3.6, rotY: 0 },
-      { cx: -24.2, cz: -14.0, len: 3.6, rotY: Math.PI * 0.5 },
-      { cx: 24.2, cz: -14.0, len: 3.6, rotY: Math.PI * 0.5 },
-    ];
-    for (let i = 0; i < shieldSpecs.length; i++) {
-      const s = shieldSpecs[i];
-      const isZ = Math.abs(Math.sin(s.rotY)) > 0.5;
-      const bw = isZ ? shieldThick : s.len;
-      const bd = isZ ? s.len : shieldThick;
-      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(bw, shieldH, bd), bw, shieldH, bd, 1.8, 1.8));
-      const m = new THREE.Mesh(geo, mats.hullArmorMat);
-      m.position.set(s.cx, deckY + shieldH * 0.5, s.cz);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.root.add(m);
-      this.collisionWorld.addBox(s.cx - bw * 0.5, deckY, s.cz - bd * 0.5, s.cx + bw * 0.5, deckY + shieldH, s.cz + bd * 0.5, 'cover');
-    }
-
-    // 4 Wide Stepped Flight Deck Ramps (13 steps x 0.30m rise = 3.90m, stepDepth = 0.70m, runLen = 9.10m)
-    const stepCount = 13;
-    const stepRise = deckY / stepCount;
-    const stepDepth = 0.7;
-    const rampWidth = 3.6;
-    const runLen = stepCount * stepDepth;
-
-    const stepGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(rampWidth, 0.32, stepDepth), rampWidth, 0.32, stepDepth, 1.8, 1.8));
-    const stepLipGeo = this._trackGeo(new THREE.BoxGeometry(rampWidth - 0.24, 0.05, 0.08));
-    const totalSteps = stepCount * 4;
-    const stepInst = new THREE.InstancedMesh(stepGeo, mats.stepMat, totalSteps);
-    stepInst.castShadow = true;
-    stepInst.receiveShadow = true;
-    const stepLipInst = new THREE.InstancedMesh(stepLipGeo, mats.tungstenAmberMat, totalSteps);
-
-    const stringerShape = new THREE.Shape();
-    stringerShape.moveTo(0, 0);
-    stringerShape.lineTo(runLen, deckY - 0.36);
-    stringerShape.lineTo(runLen, deckY + 0.12);
-    stringerShape.lineTo(0, 0.38);
-    stringerShape.closePath();
-    const stringerGeo = this._trackGeo(
-      scaleGeometryUVs(new THREE.ExtrudeGeometry(stringerShape, { depth: 0.22, bevelEnabled: false }), 0.25, 0.25)
-    );
-    stringerGeo.translate(0, 0, -0.11);
-
-    const plinthShape = new THREE.Shape();
-    plinthShape.moveTo(0, 0);
-    plinthShape.lineTo(stepDepth * 7, 0);
-    plinthShape.lineTo(stepDepth * 7, stepRise * 7 - 0.04);
-    plinthShape.lineTo(0, 0.08);
-    plinthShape.closePath();
-    const plinthGeo = this._trackGeo(scaleGeometryUVs(new THREE.ExtrudeGeometry(plinthShape, { depth: rampWidth - 0.08, bevelEnabled: false }), 0.8, 0.8));
-    plinthGeo.translate(0, 0, -(rampWidth - 0.08) * 0.5);
-
-    const rampConfigs = [
-      { cx: -27.5, zStart: 27.1, dirZ: -1 },
-      { cx: 27.5, zStart: 27.1, dirZ: -1 },
-      { cx: -14.0, zStart: -15.9, dirZ: -1 },
-      { cx: 14.0, zStart: -15.9, dirZ: -1 },
-    ];
-
-    let sIdx = 0;
-    for (let r = 0; r < rampConfigs.length; r++) {
-      const rc = rampConfigs[r];
-      const rotY = rc.dirZ < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-      for (const sideOff of [-rampWidth * 0.5 - 0.04, rampWidth * 0.5 + 0.04]) {
-        const str = new THREE.Mesh(stringerGeo, mats.darkIronMat);
-        str.position.set(rc.cx + sideOff, 0, rc.zStart);
-        str.rotation.y = rotY;
-        str.castShadow = true;
-        this.root.add(str);
-      }
-      const plinth = new THREE.Mesh(plinthGeo, mats.hazardMat);
-      plinth.position.set(rc.cx, 0, rc.zStart);
-      plinth.rotation.y = rotY;
-      plinth.receiveShadow = true;
-      this.root.add(plinth);
-
-      for (let i = 0; i < stepCount; i++) {
-        const topY = (i + 1) * stepRise;
-        const zCenter = rc.zStart + rc.dirZ * (i + 0.5) * stepDepth;
-        dummy.position.set(rc.cx, topY - 0.16, zCenter);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 1, 1);
-        dummy.updateMatrix();
-        stepInst.setMatrixAt(sIdx, dummy.matrix);
-
-        dummy.position.set(rc.cx, topY - 0.02, zCenter - rc.dirZ * (stepDepth * 0.5 - 0.04));
-        dummy.updateMatrix();
-        stepLipInst.setMatrixAt(sIdx, dummy.matrix);
-        sIdx++;
-
-        const colMinY = i < 7 ? 0.0 : topY - 0.42;
-        this.collisionWorld.addBox(rc.cx - rampWidth * 0.5, colMinY, zCenter - stepDepth * 0.5, rc.cx + rampWidth * 0.5, topY, zCenter + stepDepth * 0.5, 'ramp');
+    // 2 Wide Stepped Ramps climbing up onto North Control Bridge (z=-21.9..-31.0, 13 steps x 0.30m)
+    const steps = 13;
+    const stepH = deckY / steps;
+    const stepD = 0.7;
+    const rW = 4.2;
+    const stepGeo = this._trackGeo(new THREE.BoxGeometry(rW, stepH + 0.04, stepD));
+    for (const rx of [-11.5, 11.5]) {
+      for (let s = 0; s < steps; s++) {
+        const sy = (s + 1) * stepH;
+        const sz = -21.9 - (s + 0.5) * stepD;
+        const sm = new THREE.Mesh(stepGeo, mats.stepMat);
+        sm.position.set(rx, sy - stepH * 0.5, sz);
+        sm.castShadow = true; sm.receiveShadow = true;
+        this.root.add(sm);
+        this.collisionWorld.addBox(rx - rW * 0.5, 0, sz - stepD * 0.5, rx + rW * 0.5, sy, sz + stepD * 0.5, 'ramp');
       }
     }
-    stepInst.instanceMatrix.needsUpdate = true;
-    stepLipInst.instanceMatrix.needsUpdate = true;
-    this.root.add(stepInst, stepLipInst);
   }
 
   _buildCapacitorsAndBulkheads(mats) {
-    // 4 Armored Orbital Capacitor Pylons at (±10.2, ±10.2)
-    const capW = 2.4;
-    const capH = 3.8;
-    const capD = 1.4;
-    const capGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(capW, capH, capD), capW, capH, capD, 1.8, 1.8));
-    const capCollarGeo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(capW + 0.12, 0.34, capD + 0.12), capW + 0.12, 0.34, capD + 0.12, 1.2, 0.34));
-    const capCoreGeo = this._trackGeo(new THREE.BoxGeometry(capW - 0.5, 0.12, capD + 0.04));
-
-    const capPositions = [
-      [-10.2, -10.2], [10.2, -10.2], [-10.2, 10.2], [10.2, 10.2],
+    const factory = MapPropFactory.getShared();
+    const crateCoords = [
+      { x: -7.5, z: 18.0, r: 0 }, { x: 7.5, z: 18.0, r: 0 },
+      { x: -7.5, z: -8.0, r: 0 }, { x: 7.5, z: -8.0, r: 0 },
+      { x: -13.0, z: 0.0, r: Math.PI * 0.5 }, { x: 13.0, z: 0.0, r: Math.PI * 0.5 },
+      { x: -7.5, z: -26.0, r: 0 }, { x: 7.5, z: -26.0, r: 0 },
     ];
-    const capInst = new THREE.InstancedMesh(capGeo, mats.hullArmorMat, capPositions.length);
-    capInst.castShadow = true;
-    capInst.receiveShadow = true;
-    const colInst = new THREE.InstancedMesh(capCollarGeo, mats.hazardMat, capPositions.length);
-    const coreInst = new THREE.InstancedMesh(capCoreGeo, mats.tungstenAmberMat, capPositions.length);
-
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < capPositions.length; i++) {
-      const [cx, cz] = capPositions[i];
-      dummy.position.set(cx, capH * 0.5, cz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      capInst.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(cx, 0.17, cz);
-      dummy.updateMatrix();
-      colInst.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(cx, capH * 0.72, cz);
-      dummy.updateMatrix();
-      coreInst.setMatrixAt(i, dummy.matrix);
-
-      this.collisionWorld.addBox(cx - capW * 0.5, 0, cz - capD * 0.5, cx + capW * 0.5, capH, cz + capD * 0.5, 'pillar');
-    }
-    capInst.instanceMatrix.needsUpdate = true;
-    colInst.instanceMatrix.needsUpdate = true;
-    coreInst.instanceMatrix.needsUpdate = true;
-    this.root.add(capInst, colInst, coreInst);
-
-    // 4 Waist-High Armored Hangar Bulkhead Cargo Blocks
-    const barSpecs = [
-      { cx: 0, cz: -13.0, w: 3.2, d: 0.85 },
-      { cx: 0, cz: 14.5, w: 3.2, d: 0.85 },
-      { cx: -16.5, cz: 8.5, w: 0.85, d: 3.2 },
-      { cx: 16.5, cz: 8.5, w: 0.85, d: 3.2 },
-    ];
-    const barH = 1.25;
-    for (let i = 0; i < barSpecs.length; i++) {
-      const b = barSpecs[i];
-      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(b.w, barH, b.d), b.w, barH, b.d, 1.6, 1.2));
-      const mesh = new THREE.Mesh(geo, mats.darkIronMat);
-      mesh.position.set(b.cx, barH * 0.5, b.cz);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
-      this.collisionWorld.addBox(b.cx - b.w * 0.5, 0, b.cz - b.d * 0.5, b.cx + b.w * 0.5, barH, b.cz + b.d * 0.5, 'cover');
+    for (const c of crateCoords) {
+      const pos = new THREE.Vector3(c.x, 0, c.z);
+      const mount = factory.mountProp(this.root, 'aegis_cover_crate', {
+        position: pos,
+        rotationY: c.r,
+        scale: 1,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, pos, c.r, 1, 'cover');
+        },
+      });
+      this._propMounts.push(mount);
     }
   }
 
@@ -1045,6 +811,18 @@ class Map4AegisFlightDeckBuilder {
     this._radarRingOuter = null;
     this._radarRingInner = null;
     this._distantBeaconMat = null;
+    if (this._propMounts) {
+      for (let i = 0; i < this._propMounts.length; i++) {
+        const m = this._propMounts[i];
+        if (m) {
+          m.userData.disposed = true;
+          if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+            m.userData.propInstance.dispose();
+          }
+        }
+      }
+      this._propMounts.length = 0;
+    }
 
     if (this._ownsTexGen && this._texGen) {
       this._texGen.dispose();

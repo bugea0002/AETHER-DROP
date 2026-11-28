@@ -3,6 +3,7 @@ __define("src/world/Interactables.js", (__exports, __require) => {
 const { ARENA_CONFIG, EVENTS } = __require("src/config/constants.js");
 const { WEAPONS } = __require("src/config/weapons.js");
 const { WeaponModelFactory } = __require("src/weapons/WeaponModelFactory.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 const PICKUP_RESPAWN_TIME = 18.0;
 const PICKUP_COLLECT_RADIUS = 1.8;
@@ -227,6 +228,17 @@ class Interactables {
       nextMapCode: '',
     };
 
+    // Modular Map Prop Gimmicks (Phase 0..3 Redesigned Arenas)
+    this._propMounts = [];
+    this._craneTraps = [];
+    this._steamValves = [];
+    this._barricades = [];
+    this._barrierGates = [];
+    this._boostRailVisuals = [];
+    this._portalVisuals = [];
+    this._singularityNodes = [];
+    this._reactorFloodState = null;
+
     // Shared hazard texture for barrels & jump pad collars
     this._hazardCollarTex = this._trackTex(createBarrelHazardTexture());
 
@@ -274,6 +286,7 @@ class Interactables {
     this._buildControlZone();
     this._buildTransferGate();
     this._buildDynamicPools();
+    this._buildArenaPropGimmicks();
   }
 
   /** @private */
@@ -2010,6 +2023,7 @@ class Interactables {
     this._updateControlZone(safeDt, t, playerController, enemies);
     this._updateTransferGate(safeDt, t, playerController);
     this._updateDynamicPools(safeDt, t, playerController, weaponSystem);
+    this._updateArenaPropGimmicks(safeDt, t, playerController, enemies);
     if (playerController) {
       playerController.inZoneBuff = Boolean(this._zone.active && this._zone.playerInside);
     }
@@ -3750,7 +3764,861 @@ class Interactables {
         this._activeBarrels.push(tr);
       }
     }
+    for (let i = 0; i < this._craneTraps.length; i++) {
+      const c = this._craneTraps[i];
+      if (c.isAlive) this._activeBarrels.push(c);
+    }
+    for (let i = 0; i < this._steamValves.length; i++) {
+      const v = this._steamValves[i];
+      if (v.isAlive) this._activeBarrels.push(v);
+    }
+    for (let i = 0; i < this._barricades.length; i++) {
+      const br = this._barricades[i];
+      if (br.isAlive) this._activeBarrels.push(br);
+    }
+    for (let i = 0; i < this._barrierGates.length; i++) {
+      const bg = this._barrierGates[i];
+      if (bg.isAlive) this._activeBarrels.push(bg);
+    }
+    for (let i = 0; i < this._singularityNodes.length; i++) {
+      const sn = this._singularityNodes[i];
+      if (sn.isAlive) this._activeBarrels.push(sn);
+    }
     return this._activeBarrels;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Modular Map Prop Gimmicks: Cranes, Steam Valves, Barricades, Barrier Gates,
+  // Boost Rails, Reactor Flood, Dimensional Portals, Singularity Crystals
+  // ---------------------------------------------------------------------------
+
+  /** @private */
+  _makePropTargetDescriptor(id, pos, hitPos, hitRadius, maxHp, onHit, onTrigger) {
+    const sphere = { center: hitPos.clone(), radius: hitRadius, isHead: false };
+    const spheres = [sphere];
+    const center = sphere.center;
+    const desc = {
+      id,
+      isAlive: true,
+      isEnemy: false,
+      hp: maxHp,
+      maxHp,
+      position: pos.clone(),
+      center,
+      aimPoint: center,
+      _hitSphere: sphere,
+      _hitSpheres: spheres,
+      getCenterPosition(outVec = new THREE.Vector3()) {
+        return outVec.copy(center);
+      },
+      getHeadPosition(outVec = new THREE.Vector3()) {
+        return outVec.copy(center);
+      },
+      getHitSpheres() {
+        return spheres;
+      },
+      applyDamage(amount) {
+        if (!desc.isAlive || !Number.isFinite(amount) || amount <= 0) {
+          return { dealt: 0, killed: false, blockedByShield: false };
+        }
+        const dealt = Math.min(desc.hp, amount);
+        desc.hp -= dealt;
+        if (onHit) onHit(desc, dealt);
+        if (desc.hp <= 0) {
+          desc.hp = 0;
+          desc.isAlive = false;
+          if (onTrigger) onTrigger(desc);
+          return { dealt, killed: true, blockedByShield: false };
+        }
+        return { dealt, killed: false, blockedByShield: false };
+      },
+    };
+    return desc;
+  }
+
+  /** @private */
+  _pushRadialEnemyImpulse(center, radius, horizontalForce, verticalForce, damage, enemies) {
+    if (!enemies) return;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (!e || !e.isAlive) continue;
+      this._getEntityCenter(e, this._tmpVecA);
+      const dx = this._tmpVecA.x - center.x;
+      const dz = this._tmpVecA.z - center.z;
+      const d = Math.hypot(dx, dz);
+      if (d > radius) continue;
+      const falloff = Math.max(0.3, 1 - d / (radius + 0.1));
+      const inv = d > 0.05 ? 1 / d : 0;
+      const nx = d > 0.05 ? dx * inv : 0;
+      const nz = d > 0.05 ? dz * inv : 1;
+      if (typeof e.applyImpulse === 'function') {
+        e.applyImpulse(nx * horizontalForce * falloff, verticalForce * falloff, nz * horizontalForce * falloff, 2.8);
+      }
+      if (damage > 0 && typeof e.applyDamage === 'function') {
+        this._tmpKnockback.set(nx, 0.25, nz).normalize();
+        e.applyDamage(Math.round(damage * falloff), this._tmpVecA, false, this._tmpKnockback, {
+          isExplosion: true,
+          knockback: horizontalForce,
+        });
+      }
+    }
+  }
+
+  /** @private */
+  _buildArenaPropGimmicks() {
+    const ad = this.arenaData || {};
+    const factory = MapPropFactory.getShared();
+
+    // Register 2-tier hazards + boost rails + portals inside CollisionWorld
+    if (this.collisionWorld && typeof this.collisionWorld.setHazards === 'function') {
+      this.collisionWorld.setHazards({
+        pitZones: ad.pitZones || null,
+        voidFallY: Number.isFinite(ad.voidFallY) ? ad.voidFallY : -999,
+        boostRails: ad.boostRails || null,
+        portals: ad.portals || null,
+      });
+    }
+
+    // 1. Shoot-Triggered Overhead Cargo Cranes (Act 1 Viaduct & Crater)
+    const cranes = Array.isArray(ad.craneTraps) ? ad.craneTraps : [];
+    for (let i = 0; i < cranes.length; i++) {
+      const cfg = cranes[i];
+      const basePos = new THREE.Vector3(cfg.x || 0, cfg.y || 0, cfg.z || 0);
+      const yaw = cfg.yaw || 0;
+      const dropPos = cfg.dropCenter
+        ? new THREE.Vector3(cfg.dropCenter.x, cfg.dropCenter.y || basePos.y, cfg.dropCenter.z)
+        : basePos.clone().add(new THREE.Vector3(Math.sin(yaw) * 2.5, 0, Math.cos(yaw) * 2.5));
+      const trigPos = cfg.triggerPos
+        ? new THREE.Vector3(cfg.triggerPos.x, cfg.triggerPos.y, cfg.triggerPos.z)
+        : new THREE.Vector3(basePos.x + Math.sin(yaw) * 2.4, basePos.y + 4.35, basePos.z - Math.cos(yaw) * 2.4);
+
+      const orbGeo = this._trackGeo(new THREE.OctahedronGeometry(0.45, 1));
+      const orbMat = this._trackMat(
+        new THREE.MeshBasicMaterial({ color: 0xff5500, wireframe: false, transparent: true, opacity: 0.72 })
+      );
+      const orbMesh = new THREE.Mesh(orbGeo, orbMat);
+      orbMesh.position.copy(trigPos);
+      this.root.add(orbMesh);
+
+      const zoneRingGeo = this._trackGeo(new THREE.RingGeometry(1.2, cfg.radius || 6.5, 32));
+      zoneRingGeo.rotateX(-Math.PI * 0.5);
+      const zoneRingMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.24,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+      );
+      const zoneRing = new THREE.Mesh(zoneRingGeo, zoneRingMat);
+      zoneRing.position.set(dropPos.x, (cfg.y || 0) + 0.05, dropPos.z);
+      this.root.add(zoneRing);
+
+      const trapState = {
+        state: 'ready', // ready -> falling -> landed -> raising
+        timer: 0,
+        cargoPivot: null,
+        cargoBaseY: 0,
+        dropDist: cfg.dropDist || 3.4,
+        radius: cfg.radius || 6.8,
+        damage: cfg.damage || 280,
+        cooldown: cfg.cooldown || 13.5,
+        dropPos,
+        orbMesh,
+        orbMat,
+        zoneRingMat,
+        hitFlashTimer: 0,
+        desc: null,
+      };
+
+      const desc = this._makePropTargetDescriptor(
+        `crane_trap_${i}`,
+        basePos,
+        trigPos,
+        1.1,
+        35,
+        () => {
+          trapState.hitFlashTimer = 0.14;
+        },
+        () => {
+          if (trapState.state !== 'ready') return;
+          trapState.state = 'falling';
+          trapState.timer = 0;
+          trapState.orbMesh.visible = false;
+        }
+      );
+      trapState.desc = desc;
+      desc._state = trapState;
+      this._craneTraps.push(desc);
+
+      const mount = factory.mountProp(this.root, 'crane_cargo_rig', {
+        position: basePos,
+        rotationY: yaw,
+        scale: cfg.scale || 1,
+        cloneMaterials: true,
+        onMounted: (inst) => {
+          trapState.cargoPivot = inst.root.getObjectByName('CraneCargo') || null;
+          if (trapState.cargoPivot) trapState.cargoBaseY = trapState.cargoPivot.position.y;
+          const trigChild = inst.root.getObjectByName('CraneTrigger');
+          if (trigChild) {
+            inst.root.updateMatrixWorld(true);
+            trigChild.getWorldPosition(trapState.desc.center);
+            trapState.orbMesh.position.copy(trapState.desc.center);
+          }
+          if (cfg.registerColliders !== false && this.collisionWorld) {
+            MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, basePos, yaw, cfg.scale || 1, 'cover');
+          }
+        },
+      });
+      this._propMounts.push(mount);
+    }
+
+    // 2. Cyclic & Shoot-Triggered High-Pressure Steam Valves (Knockback Trap)
+    const valves = Array.isArray(ad.steamValves) ? ad.steamValves : [];
+    for (let i = 0; i < valves.length; i++) {
+      const cfg = valves[i];
+      const basePos = new THREE.Vector3(cfg.x || 0, cfg.y || 0, cfg.z || 0);
+      const yaw = cfg.yaw || 0;
+      const plumeGeo = this._trackGeo(new THREE.CylinderGeometry(1.15, 0.38, 4.6, 14, 1, true));
+      const plumeMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xfb923c,
+          transparent: true,
+          opacity: 0.0,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const plumeMesh = new THREE.Mesh(plumeGeo, plumeMat);
+      plumeMesh.position.set(basePos.x, basePos.y + 3.0, basePos.z);
+      plumeMesh.visible = false;
+      this.root.add(plumeMesh);
+
+      const vRadius = cfg.radius || 7.2;
+      const warnGeo = this._trackGeo(new THREE.RingGeometry(0.9, vRadius, 28));
+      warnGeo.rotateX(-Math.PI * 0.5);
+      const warnMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.16,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+      );
+      const warnMesh = new THREE.Mesh(warnGeo, warnMat);
+      warnMesh.position.set(basePos.x, basePos.y + 0.06, basePos.z);
+      this.root.add(warnMesh);
+
+      const vState = {
+        phase: 'idle', // idle -> warn -> active
+        cycleTimer: (cfg.offset || i * 3.2) % (cfg.interval || 10.5),
+        interval: cfg.interval || 10.5,
+        phaseTimer: 0,
+        radius: vRadius,
+        force: cfg.force || 20,
+        enemyDamage: cfg.enemyDamage || 75,
+        playerDamage: cfg.playerDamage || 18,
+        basePos,
+        plumeMesh,
+        plumeMat,
+        warnMesh,
+        warnMat,
+        pulsedThisCycle: false,
+        desc: null,
+      };
+
+      const mount = factory.mountProp(this.root, 'steam_valve_tower', {
+        position: basePos,
+        rotationY: yaw,
+        scale: cfg.scale || 1,
+        cloneMaterials: false,
+      });
+      this._propMounts.push(mount);
+
+      const desc = this._makePropTargetDescriptor(
+        `steam_valve_${i}`,
+        basePos,
+        new THREE.Vector3(basePos.x, basePos.y + 1.95, basePos.z),
+        1.0,
+        30,
+        null,
+        () => {
+          vState.phase = 'active';
+          vState.phaseTimer = 1.65;
+          vState.pulsedThisCycle = false;
+          desc.isAlive = false;
+        }
+      );
+      vState.desc = desc;
+      desc._state = vState;
+      this._steamValves.push(desc);
+    }
+
+    // 3. Destructible Military Concrete Barricades
+    const bars = Array.isArray(ad.destructibleBarricades) ? ad.destructibleBarricades : [];
+    for (let i = 0; i < bars.length; i++) {
+      const cfg = bars[i];
+      const basePos = new THREE.Vector3(cfg.x || 0, cfg.y || 0, cfg.z || 0);
+      const yaw = cfg.yaw || 0;
+      const cosY = Math.cos(yaw);
+      const sinY = Math.sin(yaw);
+      const halfW = (1.58 * Math.abs(cosY) + 0.56 * Math.abs(sinY));
+      const halfD = (1.58 * Math.abs(sinY) + 0.56 * Math.abs(cosY));
+      const box = this.collisionWorld
+        ? this.collisionWorld.addBox(basePos.x - halfW, basePos.y, basePos.z - halfD, basePos.x + halfW, basePos.y + 1.48, basePos.z + halfD, 'cover')
+        : null;
+
+      const mount = factory.mountProp(this.root, 'destructible_barricade', {
+        position: basePos,
+        rotationY: yaw,
+        scale: 1,
+        cloneMaterials: true,
+      });
+      this._propMounts.push(mount);
+
+      const bState = {
+        mount,
+        colliderId: box ? box.id : null,
+        basePos,
+        respawnTimer: 0,
+      };
+      const desc = this._makePropTargetDescriptor(
+        `barricade_${i}`,
+        basePos,
+        new THREE.Vector3(basePos.x, basePos.y + 0.78, basePos.z),
+        1.25,
+        cfg.hp || 135,
+        null,
+        () => {
+          if (mount) mount.visible = false;
+          if (bState.colliderId !== null && this.collisionWorld) {
+            this.collisionWorld.setBoxEnabled(bState.colliderId, false);
+          }
+          this._spawnShockwave(desc.center);
+          bState.respawnTimer = 28.0;
+        }
+      );
+      desc._state = bState;
+      this._barricades.push(desc);
+    }
+
+    // 4. Shoot-Toggled Aegis Energy Barrier Gates (Act 2 Flight Deck)
+    const gates = Array.isArray(ad.barrierGates) ? ad.barrierGates : [];
+    for (let i = 0; i < gates.length; i++) {
+      const cfg = gates[i];
+      const basePos = new THREE.Vector3(cfg.x || 0, cfg.y || 0, cfg.z || 0);
+      const yaw = cfg.yaw || 0;
+      const initialActive = cfg.initialActive !== false;
+      const gateWidth = cfg.width || 4.1;
+      const gateHeight = cfg.height || 3.2;
+
+      const wallGeo = this._trackGeo(new THREE.BoxGeometry(gateWidth, gateHeight, 0.22));
+      const wallMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x0ea5e9,
+          transparent: true,
+          opacity: 0.42,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+      wallMesh.position.set(basePos.x, basePos.y + gateHeight * 0.5, basePos.z);
+      wallMesh.rotation.y = yaw;
+      wallMesh.visible = initialActive;
+      this.root.add(wallMesh);
+
+      const cosY = Math.cos(yaw);
+      const sinY = Math.sin(yaw);
+      const halfW = (gateWidth * 0.5 * Math.abs(cosY) + 0.25 * Math.abs(sinY));
+      const halfD = (gateWidth * 0.5 * Math.abs(sinY) + 0.25 * Math.abs(cosY));
+      const wallCollider = this.collisionWorld
+        ? this.collisionWorld.addBox(basePos.x - halfW, basePos.y, basePos.z - halfD, basePos.x + halfW, basePos.y + gateHeight, basePos.z + halfD, 'barrier')
+        : null;
+      if (wallCollider && this.collisionWorld) {
+        this.collisionWorld.setBoxEnabled(wallCollider.id, initialActive);
+      }
+
+      const mount = factory.mountProp(this.root, 'aegis_barrier_gate', {
+        position: basePos,
+        rotationY: yaw,
+        scale: cfg.scale || 1,
+        cloneMaterials: false,
+        onMounted: (inst) => {
+          if (this.collisionWorld) {
+            MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, basePos, yaw, cfg.scale || 1, 'cover');
+          }
+        },
+      });
+      this._propMounts.push(mount);
+
+      const swOrbGeo = this._trackGeo(new THREE.OctahedronGeometry(0.42, 0));
+      const swOrbMat = this._trackMat(
+        new THREE.MeshBasicMaterial({ color: initialActive ? 0x38bdf8 : 0xf59e0b, transparent: true, opacity: 0.85 })
+      );
+      const swOrb = new THREE.Mesh(swOrbGeo, swOrbMat);
+      swOrb.position.set(basePos.x, basePos.y + 3.68, basePos.z);
+      this.root.add(swOrb);
+
+      const gState = {
+        active: initialActive,
+        initialActive,
+        cooldown: 0,
+        wallMesh,
+        wallMat,
+        swOrb,
+        swOrbMat,
+        colliderId: wallCollider ? wallCollider.id : null,
+      };
+      const desc = this._makePropTargetDescriptor(
+        `barrier_gate_${i}`,
+        basePos,
+        new THREE.Vector3(basePos.x, basePos.y + 3.68, basePos.z),
+        1.05,
+        24,
+        null,
+        () => {
+          gState.active = !gState.active;
+          wallMesh.visible = gState.active;
+          swOrbMat.color.setHex(gState.active ? 0x38bdf8 : 0xf59e0b);
+          if (gState.colliderId !== null && this.collisionWorld) {
+            this.collisionWorld.setBoxEnabled(gState.colliderId, gState.active);
+          }
+          gState.cooldown = 0.45;
+          desc.hp = desc.maxHp;
+          desc.isAlive = true;
+          this._spawnShockwave(desc.center);
+        }
+      );
+      desc._state = gState;
+      this._barrierGates.push(desc);
+    }
+
+    // 5. Electromagnetic Boost Rail Strips (Visuals + GLB mount)
+    const rails = Array.isArray(ad.boostRails) ? ad.boostRails : [];
+    for (let i = 0; i < rails.length; i++) {
+      const r = rails[i];
+      const rPos = new THREE.Vector3(r.x || 0, (r.y || 0) + 0.02, r.z || 0);
+      const yaw = r.yaw !== undefined ? r.yaw : Math.atan2(r.dirX || 0, r.dirZ || -1);
+      const mount = factory.mountProp(this.root, 'emp_boost_rail', {
+        position: rPos,
+        rotationY: yaw,
+        scale: r.scale || 1,
+        cloneMaterials: false,
+      });
+      this._propMounts.push(mount);
+
+      const stripGeo = this._trackGeo(new THREE.PlaneGeometry(Math.max(2.0, r.width || 3.2), Math.max(4.0, r.length || 9.0)));
+      stripGeo.rotateX(-Math.PI * 0.5);
+      const stripMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.28,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const strip = new THREE.Mesh(stripGeo, stripMat);
+      strip.position.set(rPos.x, rPos.y + 0.05, rPos.z);
+      strip.rotation.y = yaw;
+      this.root.add(strip);
+      this._boostRailVisuals.push({ mat: stripMat, phase: i * 1.1 });
+    }
+
+    // 6. Bidirectional Void Warp Portals (Act 3 Floating Islands)
+    const portals = Array.isArray(ad.portals) ? ad.portals : [];
+    for (let i = 0; i < portals.length; i++) {
+      const p = portals[i];
+      const pPos = new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0);
+      const yaw = p.yaw || 0;
+      const mount = factory.mountProp(this.root, 'void_portal_arch', {
+        position: pPos,
+        rotationY: yaw,
+        scale: p.scale || 1,
+        cloneMaterials: false,
+      });
+      this._propMounts.push(mount);
+
+      const discGeo = this._trackGeo(new THREE.CircleGeometry(1.45, 24));
+      const discMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xc084fc,
+          transparent: true,
+          opacity: 0.56,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const disc = new THREE.Mesh(discGeo, discMat);
+      disc.position.set(pPos.x, pPos.y + 1.85, pPos.z);
+      disc.rotation.y = yaw;
+      this.root.add(disc);
+      this._portalVisuals.push({ disc, mat: discMat, phase: i * 0.8 });
+    }
+
+    // 7. Act 2 Reactor High-Voltage Flood Cycle
+    if (ad.reactorFlood) {
+      const rf = ad.reactorFlood;
+      const floodGeo = this._trackGeo(new THREE.RingGeometry(rf.excludeCenterRadius || 6.5, rf.maxRadius || 33, 40));
+      floodGeo.rotateX(-Math.PI * 0.5);
+      const floodMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.0,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const floodMesh = new THREE.Mesh(floodGeo, floodMat);
+      floodMesh.position.set(0, 0.08, 0);
+      floodMesh.visible = false;
+      this.root.add(floodMesh);
+
+      this._reactorFloodState = {
+        cfg: rf,
+        phase: 'safe', // safe -> warn -> active
+        timer: 6.5,
+        tickTimer: 0,
+        mesh: floodMesh,
+        mat: floodMat,
+      };
+    }
+
+    // 8. Act 3 Unstable Singularity Vortex Crystal Nodes
+    const sings = Array.isArray(ad.singularityNodes) ? ad.singularityNodes : [];
+    for (let i = 0; i < sings.length; i++) {
+      const cfg = sings[i];
+      const basePos = new THREE.Vector3(cfg.x || 0, cfg.y || 0, cfg.z || 0);
+      const mount = factory.mountProp(this.root, 'singularity_crystal_node', {
+        position: basePos,
+        rotationY: cfg.yaw || 0,
+        scale: cfg.scale || 1,
+        cloneMaterials: true,
+      });
+      this._propMounts.push(mount);
+
+      const pullR = cfg.pullRadius || 14.0;
+      const vGeo = this._trackGeo(new THREE.RingGeometry(0.8, pullR, 36));
+      vGeo.rotateX(-Math.PI * 0.5);
+      const vMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xd946ef,
+          transparent: true,
+          opacity: 0.0,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const vRing = new THREE.Mesh(vGeo, vMat);
+      vRing.position.set(basePos.x, basePos.y + 0.1, basePos.z);
+      vRing.visible = false;
+      this.root.add(vRing);
+
+      const sState = {
+        active: false,
+        timer: 0,
+        cooldownTimer: 0,
+        duration: cfg.duration || 2.8,
+        cooldown: cfg.cooldown || 10.5,
+        pullRadius: pullR,
+        force: cfg.force || 15.0,
+        basePos,
+        vRing,
+        vMat,
+      };
+      const desc = this._makePropTargetDescriptor(
+        `singularity_node_${i}`,
+        basePos,
+        new THREE.Vector3(basePos.x, basePos.y + 1.55, basePos.z),
+        1.15,
+        30,
+        null,
+        () => {
+          sState.active = true;
+          sState.timer = sState.duration;
+          sState.vRing.visible = true;
+          this._spawnShockwave(desc.center);
+          if (this.eventBus) {
+            this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+              kicker: '특이점 결정 폭주',
+              title: '중력 소용돌이 발동!',
+              subtitle: '주변 적 유닛을 심연 가장자리로 강제 견인합니다',
+              duration: 1.9,
+            });
+          }
+        }
+      );
+      desc._state = sState;
+      this._singularityNodes.push(desc);
+    }
+  }
+
+  /** @private */
+  _updateArenaPropGimmicks(dt, t, playerController, enemies) {
+    // 1. Cranes
+    for (let i = 0; i < this._craneTraps.length; i++) {
+      const desc = this._craneTraps[i];
+      const st = desc._state;
+      st.orbMesh.rotation.y += dt * 2.2;
+      if (st.state === 'ready') {
+        st.orbMesh.visible = true;
+        st.zoneRingMat.opacity = 0.22 + 0.1 * Math.sin(t * 4);
+      } else if (st.state === 'falling') {
+        st.timer += dt;
+        const dropFrac = Math.min(1, st.timer / 0.24);
+        if (st.cargoPivot) {
+          st.cargoPivot.position.y = st.cargoBaseY - dropFrac * st.dropDist;
+        }
+        if (dropFrac >= 1) {
+          st.state = 'landed';
+          st.timer = 2.4;
+          this._spawnShockwave(st.dropPos);
+          this._pushRadialEnemyImpulse(st.dropPos, st.radius, 18.0, 6.0, st.damage, enemies);
+          if (playerController && playerController.isAlive) {
+            const pd = Math.hypot(playerController.position.x - st.dropPos.x, playerController.position.z - st.dropPos.z);
+            if (pd < 2.6) playerController.applyDamage(28, st.dropPos);
+          }
+          if (this.eventBus) {
+            this.eventBus.emit(EVENTS.BARREL_EXPLODED, {
+              position: st.dropPos,
+              radius: st.radius,
+              damage: st.damage,
+              barrelId: desc.id,
+              gimmickType: 'crane_drop',
+            });
+          }
+        }
+      } else if (st.state === 'landed') {
+        st.timer -= dt;
+        if (st.timer <= 0) {
+          st.state = 'raising';
+          st.timer = st.cooldown;
+        }
+      } else if (st.state === 'raising') {
+        st.timer -= dt;
+        const raiseFrac = Math.max(0, Math.min(1, st.timer / st.cooldown));
+        if (st.cargoPivot) {
+          st.cargoPivot.position.y = st.cargoBaseY - raiseFrac * st.dropDist;
+        }
+        if (st.timer <= 0) {
+          st.state = 'ready';
+          desc.hp = desc.maxHp;
+          desc.isAlive = true;
+        }
+      }
+    }
+
+    // 2. Steam / Lava Pressure Valves
+    for (let i = 0; i < this._steamValves.length; i++) {
+      const desc = this._steamValves[i];
+      const st = desc._state;
+      if (st.phase === 'idle') {
+        st.plumeMesh.visible = false;
+        st.warnMat.color.setHex(0xf59e0b);
+        st.warnMat.opacity = 0.14;
+        st.cycleTimer += dt;
+        if (st.cycleTimer >= st.interval) {
+          st.cycleTimer = 0;
+          st.phase = 'warn';
+          st.phaseTimer = 2.0;
+        }
+      } else if (st.phase === 'warn') {
+        st.phaseTimer -= dt;
+        st.warnMat.color.setHex(0xf97316);
+        st.warnMat.opacity = 0.35 + 0.35 * Math.abs(Math.sin(t * 14));
+        if (st.phaseTimer <= 0) {
+          st.phase = 'active';
+          st.phaseTimer = 1.65;
+          st.pulsedThisCycle = false;
+        }
+      } else if (st.phase === 'active') {
+        st.phaseTimer -= dt;
+        st.plumeMesh.visible = true;
+        st.plumeMesh.rotation.y += dt * 7;
+        st.plumeMat.opacity = 0.65;
+        st.warnMat.color.setHex(0xef4444);
+        st.warnMat.opacity = 0.55;
+        if (!st.pulsedThisCycle) {
+          st.pulsedThisCycle = true;
+          this._spawnShockwave(st.basePos);
+          this._pushRadialEnemyImpulse(st.basePos, st.radius, st.force, 6.2, st.enemyDamage, enemies);
+          if (playerController && playerController.isAlive) {
+            const dx = playerController.position.x - st.basePos.x;
+            const dz = playerController.position.z - st.basePos.z;
+            const pd = Math.hypot(dx, dz);
+            if (pd < st.radius * 0.68 && Math.abs(playerController.position.y - st.basePos.y) < 3.0) {
+              const inv = pd > 0.05 ? 1 / pd : 0;
+              playerController.velocity.x += (pd > 0.05 ? dx * inv : 0) * 14;
+              playerController.velocity.z += (pd > 0.05 ? dz * inv : 1) * 14;
+              playerController.velocity.y = Math.max(playerController.velocity.y, 7.2);
+              playerController.applyDamage(st.playerDamage, st.basePos);
+            }
+          }
+          if (this.eventBus) {
+            this.eventBus.emit(EVENTS.BARREL_EXPLODED, {
+              position: st.basePos,
+              radius: st.radius,
+              damage: st.enemyDamage,
+              barrelId: desc.id,
+              gimmickType: 'steam_valve',
+            });
+          }
+        }
+        if (st.phaseTimer <= 0) {
+          st.phase = 'idle';
+          st.cycleTimer = 0;
+          st.plumeMesh.visible = false;
+          desc.hp = desc.maxHp;
+          desc.isAlive = true;
+        }
+      }
+    }
+
+    // 3. Destructible Barricades cooldown respawn
+    for (let i = 0; i < this._barricades.length; i++) {
+      const desc = this._barricades[i];
+      const st = desc._state;
+      if (!desc.isAlive) {
+        st.respawnTimer -= dt;
+        if (st.respawnTimer <= 0) {
+          desc.hp = desc.maxHp;
+          desc.isAlive = true;
+          if (st.mount) st.mount.visible = true;
+          if (st.colliderId !== null && this.collisionWorld) {
+            this.collisionWorld.setBoxEnabled(st.colliderId, true);
+          }
+        }
+      }
+    }
+
+    // 4. Barrier Gates crystal bob
+    for (let i = 0; i < this._barrierGates.length; i++) {
+      const st = this._barrierGates[i]._state;
+      st.swOrb.rotation.y += dt * 1.8;
+      if (st.cooldown > 0) st.cooldown = Math.max(0, st.cooldown - dt);
+    }
+
+    // 5. Boost rail pulse & Portals shimmer
+    for (let i = 0; i < this._boostRailVisuals.length; i++) {
+      const bv = this._boostRailVisuals[i];
+      bv.mat.opacity = 0.22 + 0.16 * Math.sin(t * 7 + bv.phase);
+    }
+    for (let i = 0; i < this._portalVisuals.length; i++) {
+      const pv = this._portalVisuals[i];
+      pv.disc.rotation.z += dt * 2.4;
+      pv.mat.opacity = 0.45 + 0.22 * Math.sin(t * 4.5 + pv.phase);
+    }
+
+    // 6. Reactor Lower-Floor High-Voltage Flood Cycle
+    if (this._reactorFloodState) {
+      const rf = this._reactorFloodState;
+      const cfg = rf.cfg;
+      rf.timer -= dt;
+      if (rf.phase === 'safe') {
+        rf.mesh.visible = false;
+        if (rf.timer <= 0) {
+          rf.phase = 'warn';
+          rf.timer = cfg.warnDuration || 4.0;
+          rf.mesh.visible = true;
+          rf.mat.color.setHex(0xf59e0b);
+          if (this.eventBus) {
+            this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+              kicker: '원자로 과전류 경고',
+              title: '하층 갑판 고전압 방전 임박!',
+              subtitle: '점프 패드로 2층 발코니 또는 원자로 외곽 교량으로 대피하세요',
+              duration: 3.4,
+            });
+          }
+        }
+      } else if (rf.phase === 'warn') {
+        rf.mat.opacity = 0.16 + 0.22 * Math.abs(Math.sin(t * 8));
+        if (rf.timer <= 0) {
+          rf.phase = 'active';
+          rf.timer = cfg.activeDuration || 3.4;
+          rf.tickTimer = 0;
+          rf.mat.color.setHex(0x38bdf8);
+        }
+      } else if (rf.phase === 'active') {
+        rf.mat.opacity = 0.36 + 0.28 * Math.abs(Math.sin(t * 18));
+        rf.tickTimer -= dt;
+        if (rf.tickTimer <= 0) {
+          rf.tickTimer = 0.45;
+          if (playerController && playerController.isAlive) {
+            const distXZ = Math.hypot(playerController.position.x, playerController.position.z);
+            if (
+              playerController.position.y < (cfg.floorMaxY || 1.4) &&
+              distXZ >= (cfg.excludeCenterRadius || 6.2)
+            ) {
+              playerController.applyDamage(Math.round((cfg.dps || 24) * 0.45), null, {
+                isHazard: true,
+                hazardType: 'reactor_flood',
+              });
+            }
+          }
+          if (enemies) {
+            for (let ei = 0; ei < enemies.length; ei++) {
+              const e = enemies[ei];
+              if (!e || !e.isAlive || e.archetype.isFlying) continue;
+              const ed = Math.hypot(e.position.x, e.position.z);
+              if (e.position.y < (cfg.floorMaxY || 1.4) && ed >= (cfg.excludeCenterRadius || 6.2)) {
+                e.applyDamage(20, e.center || e.position, false, null, { isExplosion: false });
+              }
+            }
+          }
+        }
+        if (rf.timer <= 0) {
+          rf.phase = 'safe';
+          rf.timer = cfg.cooldown || 8.5;
+          rf.mesh.visible = false;
+        }
+      }
+    }
+
+    // 7. Singularity Vortex Crystals
+    for (let i = 0; i < this._singularityNodes.length; i++) {
+      const desc = this._singularityNodes[i];
+      const st = desc._state;
+      if (st.active) {
+        st.timer -= dt;
+        st.vRing.rotation.z -= dt * 3.5;
+        st.vMat.opacity = 0.42 + 0.2 * Math.sin(t * 14);
+        if (enemies) {
+          for (let ei = 0; ei < enemies.length; ei++) {
+            const e = enemies[ei];
+            if (!e || !e.isAlive || e.archetype.isBoss) continue;
+            this._getEntityCenter(e, this._tmpVecA);
+            const dx = st.basePos.x - this._tmpVecA.x;
+            const dz = st.basePos.z - this._tmpVecA.z;
+            const d = Math.hypot(dx, dz);
+            if (d > 0.6 && d <= st.pullRadius) {
+              const inv = 1 / d;
+              if (typeof e.applyImpulse === 'function') {
+                e.applyImpulse(dx * inv * st.force * dt, 0.8 * dt, dz * inv * st.force * dt, 3.0);
+              }
+            }
+          }
+        }
+        if (st.timer <= 0) {
+          st.active = false;
+          st.vRing.visible = false;
+          st.cooldownTimer = st.cooldown;
+        }
+      } else if (!desc.isAlive) {
+        st.cooldownTimer -= dt;
+        if (st.cooldownTimer <= 0) {
+          desc.hp = desc.maxHp;
+          desc.isAlive = true;
+        }
+      }
+    }
   }
 
   /**
@@ -3908,6 +4776,56 @@ class Interactables {
     this.clearBossTurrets();
     this.setTransferGateActive(false);
 
+    for (let i = 0; i < this._craneTraps.length; i++) {
+      const c = this._craneTraps[i];
+      c.isAlive = true;
+      c.hp = c.maxHp;
+      c._state.state = 'ready';
+      c._state.timer = 0;
+      c._state.orbMesh.visible = true;
+      if (c._state.cargoPivot) c._state.cargoPivot.position.y = c._state.cargoBaseY;
+    }
+    for (let i = 0; i < this._steamValves.length; i++) {
+      const v = this._steamValves[i];
+      v.isAlive = true;
+      v.hp = v.maxHp;
+      v._state.phase = 'idle';
+      v._state.cycleTimer = (i * 3.2) % v._state.interval;
+      v._state.plumeMesh.visible = false;
+    }
+    for (let i = 0; i < this._barricades.length; i++) {
+      const b = this._barricades[i];
+      b.isAlive = true;
+      b.hp = b.maxHp;
+      if (b._state.mount) b._state.mount.visible = true;
+      if (b._state.colliderId !== null && this.collisionWorld) {
+        this.collisionWorld.setBoxEnabled(b._state.colliderId, true);
+      }
+    }
+    for (let i = 0; i < this._barrierGates.length; i++) {
+      const g = this._barrierGates[i];
+      g.isAlive = true;
+      g.hp = g.maxHp;
+      g._state.active = g._state.initialActive;
+      g._state.wallMesh.visible = g._state.active;
+      g._state.swOrbMat.color.setHex(g._state.active ? 0x38bdf8 : 0xf59e0b);
+      if (g._state.colliderId !== null && this.collisionWorld) {
+        this.collisionWorld.setBoxEnabled(g._state.colliderId, g._state.active);
+      }
+    }
+    for (let i = 0; i < this._singularityNodes.length; i++) {
+      const sn = this._singularityNodes[i];
+      sn.isAlive = true;
+      sn.hp = sn.maxHp;
+      sn._state.active = false;
+      sn._state.vRing.visible = false;
+    }
+    if (this._reactorFloodState) {
+      this._reactorFloodState.phase = 'safe';
+      this._reactorFloodState.timer = 6.5;
+      this._reactorFloodState.mesh.visible = false;
+    }
+
     for (let i = 0; i < this._pickups.length; i++) {
       const p = this._pickups[i];
       p.active = true;
@@ -3970,6 +4888,24 @@ class Interactables {
     this._shockwaves.length = 0;
     this._pickups.length = 0;
     this._detonationQueue.length = 0;
+    for (let i = 0; i < this._propMounts.length; i++) {
+      const m = this._propMounts[i];
+      if (m) {
+        m.userData.disposed = true;
+        if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+          m.userData.propInstance.dispose();
+        }
+      }
+    }
+    this._propMounts.length = 0;
+    this._craneTraps.length = 0;
+    this._steamValves.length = 0;
+    this._barricades.length = 0;
+    this._barrierGates.length = 0;
+    this._boostRailVisuals.length = 0;
+    this._portalVisuals.length = 0;
+    this._singularityNodes.length = 0;
+    this._reactorFloodState = null;
 
     this._zoneGroup = null;
     this._zoneCylinder = null;

@@ -110,6 +110,14 @@ class HudManager {
     this._sectorArrName = byId('sector-arr-name');
     this._sectorArrSub = byId('sector-arr-sub');
     this._sectorArrTimer = 0;
+    this._queuedAnnouncement = {
+      active: false,
+      kicker: '',
+      title: '',
+      subtitle: '',
+      themeClass: '',
+      duration: 1.8,
+    };
 
     // Step 1: 3D Beacon Waypoint, Sniper Lock Warning & Micro-Onboarding Tip
     this._beaconWaypoint = byId('beacon-waypoint');
@@ -476,6 +484,21 @@ class HudManager {
     }
   }
 
+  _updateMinimapScale() {
+    const pad = 6;
+    const drawSpan = MINIMAP_SIZE - pad * 2;
+    const spanX = Math.max(1, this._bounds.maxX - this._bounds.minX);
+    const spanZ = Math.max(1, this._bounds.maxZ - this._bounds.minZ);
+    const maxSpan = Math.max(spanX, spanZ);
+    const scale = drawSpan / maxSpan;
+    this._mapScale = scale;
+    this._mapSpanX = spanX;
+    this._mapSpanZ = spanZ;
+    this._mapDrawSpan = drawSpan;
+    this._mapOffX = pad + (drawSpan - spanX * scale) * 0.5;
+    this._mapOffY = pad + (drawSpan - spanZ * scale) * 0.5;
+  }
+
   /**
    * Update dynamic minimap sector tag (#minimap-tag) and re-bake static arena
    * architecture onto an offscreen canvas cleanly on every map load/transition.
@@ -484,17 +507,27 @@ class HudManager {
    */
   setArenaData(arenaData, collisionWorld) {
     this._arenaData = arenaData || null;
+    const cwBounds =
+      collisionWorld && typeof collisionWorld.getBounds === 'function'
+        ? collisionWorld.getBounds()
+        : null;
     if (arenaData && arenaData.arenaBounds) {
       this._bounds.minX = arenaData.arenaBounds.minX;
       this._bounds.maxX = arenaData.arenaBounds.maxX;
       this._bounds.minZ = arenaData.arenaBounds.minZ;
       this._bounds.maxZ = arenaData.arenaBounds.maxZ;
+    } else if (cwBounds) {
+      this._bounds.minX = cwBounds.minX;
+      this._bounds.maxX = cwBounds.maxX;
+      this._bounds.minZ = cwBounds.minZ;
+      this._bounds.maxZ = cwBounds.maxZ;
     } else {
       this._bounds.minX = -32;
       this._bounds.maxX = 32;
       this._bounds.minZ = -32;
       this._bounds.maxZ = 32;
     }
+    this._updateMinimapScale();
 
     if (this._minimapTag) {
       this._minimapTag.textContent = (arenaData && arenaData.mapCode) || '제09구역';
@@ -511,11 +544,11 @@ class HudManager {
     const ctx = off.getContext('2d');
     if (!ctx) return;
 
-    // 1. Grounded Post-Apocalyptic Military Radar Base & Range Grid
-    ctx.fillStyle = '#141210';
+    // 1. Deep void radar backdrop (lets non-walkable chasms stand out against walkable floor plates!)
+    ctx.fillStyle = '#0c0b0e';
     ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
-    ctx.strokeStyle = 'rgba(245, 158, 11, 0.10)';
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.08)';
     ctx.lineWidth = 1;
     const step = MINIMAP_SIZE / 4;
     for (let i = 1; i < 4; i++) {
@@ -530,7 +563,7 @@ class HudManager {
     }
 
     // Concentric range circles
-    ctx.strokeStyle = 'rgba(245, 158, 11, 0.14)';
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.12)';
     ctx.beginPath();
     ctx.arc(MINIMAP_SIZE * 0.5, MINIMAP_SIZE * 0.5, 28, 0, Math.PI * 2);
     ctx.stroke();
@@ -538,21 +571,52 @@ class HudManager {
     ctx.arc(MINIMAP_SIZE * 0.5, MINIMAP_SIZE * 0.5, 52, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 2. Render CollisionWorld static architecture (platforms/catwalks first, then walls/cover)
+    // 2. Render CollisionWorld static architecture using aspect-preserving uniform scale
     const boxes =
       collisionWorld && typeof collisionWorld.getBoxes === 'function'
         ? collisionWorld.getBoxes()
         : [];
 
-    const pad = 6;
-    const spanX = Math.max(1, this._bounds.maxX - this._bounds.minX);
-    const spanZ = Math.max(1, this._bounds.maxZ - this._bounds.minZ);
-    const drawSpan = MINIMAP_SIZE - pad * 2;
+    const sc = this._mapScale;
+    const ox = this._mapOffX;
+    const oy = this._mapOffY;
+    const toMapX = (wx) => ox + (wx - this._bounds.minX) * sc;
+    const toMapY = (wz) => oy + (wz - this._bounds.minZ) * sc;
 
-    const toMapX = (wx) => pad + ((wx - this._bounds.minX) / spanX) * drawSpan;
-    const toMapY = (wz) => pad + ((wz - this._bounds.minZ) / spanZ) * drawSpan;
+    // Pass 0: Walkable deck floors (so open void gaps/islands visibly read!)
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b.tag === 'floor') {
+        const x1 = toMapX(b.minX);
+        const y1 = toMapY(b.minZ);
+        const w = Math.max(2, toMapX(b.maxX) - x1);
+        const h = Math.max(2, toMapY(b.maxZ) - y1);
+        ctx.fillStyle = 'rgba(56, 52, 48, 0.42)';
+        ctx.fillRect(x1, y1, w, h);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+        ctx.lineWidth = 0.7;
+        ctx.strokeRect(x1, y1, w, h);
+      }
+    }
 
-    // Pass A: Elevated platforms, ramps, dais
+    // Pass 0.5: Pit/Lava Hazard Zones (amber hazard warning areas)
+    const pitZones = arenaData && Array.isArray(arenaData.pitZones) ? arenaData.pitZones : null;
+    if (pitZones) {
+      for (let i = 0; i < pitZones.length; i++) {
+        const p = pitZones[i];
+        const x1 = toMapX(p.minX);
+        const y1 = toMapY(p.minZ);
+        const w = Math.max(3, toMapX(p.maxX) - x1);
+        const h = Math.max(3, toMapY(p.maxZ) - y1);
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.28)';
+        ctx.fillRect(x1, y1, w, h);
+        ctx.strokeStyle = 'rgba(249, 115, 22, 0.68)';
+        ctx.lineWidth = 0.9;
+        ctx.strokeRect(x1, y1, w, h);
+      }
+    }
+
+    // Pass A: Elevated platforms, catwalks, ramps, rails
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
       if (b.tag === 'floor' || b.maxY <= 0.05) continue;
@@ -561,9 +625,9 @@ class HudManager {
         const y1 = toMapY(b.minZ);
         const w = Math.max(2, toMapX(b.maxX) - x1);
         const h = Math.max(2, toMapY(b.maxZ) - y1);
-        ctx.fillStyle = b.maxY > 2.5 ? 'rgba(186, 148, 96, 0.25)' : 'rgba(156, 126, 86, 0.16)';
+        ctx.fillStyle = b.maxY > 2.5 ? 'rgba(186, 148, 96, 0.28)' : 'rgba(156, 126, 86, 0.18)';
         ctx.fillRect(x1, y1, w, h);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.34)';
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.36)';
         ctx.lineWidth = 0.75;
         ctx.strokeRect(x1, y1, w, h);
       }
@@ -580,6 +644,31 @@ class HudManager {
       const h = Math.max(2.5, toMapY(b.maxZ) - y1);
       ctx.fillStyle = b.tag === 'wall' ? 'rgba(122, 108, 92, 0.62)' : 'rgba(174, 150, 122, 0.68)';
       ctx.fillRect(x1, y1, w, h);
+    }
+
+    // Pass C: Electromagnetic Boost Rails & Portals
+    const rails = arenaData && Array.isArray(arenaData.boostRails) ? arenaData.boostRails : null;
+    if (rails) {
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.45)';
+      for (let i = 0; i < rails.length; i++) {
+        const r = rails[i];
+        const x1 = toMapX(r.minX);
+        const y1 = toMapY(r.minZ);
+        ctx.fillRect(x1, y1, Math.max(2, toMapX(r.maxX) - x1), Math.max(2, toMapY(r.maxZ) - y1));
+      }
+    }
+    const portals = arenaData && Array.isArray(arenaData.portals) ? arenaData.portals : null;
+    if (portals) {
+      for (let i = 0; i < portals.length; i++) {
+        const pt = portals[i];
+        ctx.beginPath();
+        ctx.arc(toMapX(pt.x), toMapY(pt.z), 3.4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(192, 132, 252, 0.72)';
+        ctx.fill();
+        ctx.strokeStyle = '#f0abfc';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
     }
 
     // Pneumatic jump-pad thruster rings on static map
@@ -667,8 +756,9 @@ class HudManager {
     const name = payload.name || '적기';
     const pts = payload.score ? ` +${payload.score}` : '';
     const prefix = payload.isBoss ? '[보스 격파] ' : payload.isHeadshot ? '[헤드샷] ' : '';
-    const cls = payload.isBoss ? 'boss' : payload.isHeadshot ? 'headshot' : '';
-    this._pushKillfeed(`${prefix}${name}${pts}`, cls);
+    const prefixStr = payload.isEnvKill ? '추락 처치 // ' : prefix;
+    const cls = payload.isBoss ? 'boss' : (payload.isHeadshot || payload.isEnvKill) ? 'headshot' : '';
+    this._pushKillfeed(`${prefixStr}${name}${pts}`, cls);
     if (payload.isBoss) {
       this._clearEmpBlackout();
     }
@@ -852,8 +942,14 @@ class HudManager {
     this._dropIntroOverlay.classList.remove('impact-state', 'unseal-state');
   }
 
-  showSectorArrivalCard(mapMeta, metaTag = '', duration = 2.6) {
+  showSectorArrivalCard(mapMeta, metaTag = '', duration = 1.9) {
     if (!this._sectorArrCard || !mapMeta) return;
+    // Mutual exclusion: immediately clear center announcement banner so two cards never overlap!
+    this._bannerVisible = false;
+    this._bannerTimer = 0;
+    if (this._banner) {
+      this._banner.classList.remove('visible', 'boss-alert', 'clear-alert', 'gate-alert');
+    }
     if (this._sectorArrCode) {
       const tagPart = metaTag ? ` // ${metaTag}` : ' // SECTOR DEPLOYED';
       this._sectorArrCode.textContent = `${mapMeta.code || 'SECTOR'}${tagPart}`;
@@ -910,10 +1006,24 @@ class HudManager {
 
   showAnnouncement(kicker, title, subtitle = '', themeClass = '', duration = 1.8) {
     if (!this._banner) return;
+    // Defer regular/wave banners while Sector Arrival Card is still active so they play sequentially without overlap!
+    if (this._sectorArrTimer > 0 && themeClass !== 'boss-alert') {
+      const q = this._queuedAnnouncement;
+      q.active = true;
+      q.kicker = kicker;
+      q.title = title;
+      q.subtitle = subtitle;
+      q.themeClass = themeClass;
+      q.duration = duration;
+      return;
+    }
     if (this._sectorArrCard) {
       this._sectorArrTimer = 0;
       this._sectorArrCard.classList.remove('visible');
       this._sectorArrCard.classList.add('hidden');
+    }
+    if (themeClass === 'boss-alert' && this._queuedAnnouncement) {
+      this._queuedAnnouncement.active = false;
     }
     if (this._bannerKicker) this._bannerKicker.textContent = kicker;
     if (this._bannerTitle) this._bannerTitle.textContent = title;
@@ -1370,12 +1480,18 @@ class HudManager {
       }
     }
 
-    // 10. Announcement Banner & Sector Arrival Card Timers
+    // 10. Announcement Banner & Sector Arrival Card Timers (Sequential Queue)
     if (this._sectorArrTimer > 0) {
       this._sectorArrTimer -= clampedDt;
       if (this._sectorArrTimer <= 0 && this._sectorArrCard) {
+        this._sectorArrTimer = 0;
         this._sectorArrCard.classList.remove('visible');
         this._sectorArrCard.classList.add('hidden');
+        if (this._queuedAnnouncement && this._queuedAnnouncement.active) {
+          const q = this._queuedAnnouncement;
+          q.active = false;
+          this.showAnnouncement(q.kicker, q.title, q.subtitle, q.themeClass, q.duration);
+        }
       }
     }
     if (this._bannerVisible) {
@@ -1865,12 +1981,14 @@ class HudManager {
       ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
     }
 
-    const pad = 6;
-    const spanX = Math.max(1, this._bounds.maxX - this._bounds.minX);
-    const spanZ = Math.max(1, this._bounds.maxZ - this._bounds.minZ);
-    const drawSpan = MINIMAP_SIZE - pad * 2;
-    const toMapX = (wx) => pad + ((wx - this._bounds.minX) / spanX) * drawSpan;
-    const toMapY = (wz) => pad + ((wz - this._bounds.minZ) / spanZ) * drawSpan;
+    if (!this._mapScale) this._updateMinimapScale();
+    const sc = this._mapScale || 1;
+    const ox = this._mapOffX || 6;
+    const oy = this._mapOffY || 6;
+    const spanX = this._mapSpanX || Math.max(1, this._bounds.maxX - this._bounds.minX);
+    const drawSpan = this._mapDrawSpan || MINIMAP_SIZE - 12;
+    const toMapX = (wx) => ox + (wx - this._bounds.minX) * sc;
+    const toMapY = (wz) => oy + (wz - this._bounds.minZ) * sc;
 
     // 1.5. Act 3 Low-Gravity Zones (cyan rings) & Dimensional Void Gates (magenta diamonds)
     if (Array.isArray(lowGravityZones)) {
@@ -2225,6 +2343,7 @@ class HudManager {
       this._sectorArrCard.classList.add('hidden');
     }
     this._sectorArrTimer = 0;
+    if (this._queuedAnnouncement) this._queuedAnnouncement.active = false;
     if (this._railgunScope) this._railgunScope.classList.remove('active');
     if (this._beaconWaypoint) {
       this._beaconWaypoint.classList.remove('gate-active');

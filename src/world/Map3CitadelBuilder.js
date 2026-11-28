@@ -2,6 +2,7 @@
 __define("src/world/Map3CitadelBuilder.js", (__exports, __require) => {
 const { ARENA_CONFIG } = __require("src/config/constants.js");
 const { TextureGenerator } = __require("src/world/TextureGenerator.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 /**
  * Deterministic PRNG (Mulberry32) for consistent procedural ruined-vista placement.
@@ -118,6 +119,7 @@ class Map3CitadelBuilder {
     this._distantBeaconMat = null;
     this._craterGlowLight = null;
     this._tetherBeaconLight = null;
+    this._propMounts = [];
 
     this._built = false;
   }
@@ -148,14 +150,14 @@ class Map3CitadelBuilder {
     this.root.name = 'ArenaRoot_SECTOR00_CraterCitadel';
     this.scene.add(this.root);
 
-    const half = ARENA_CONFIG.halfSize; // 32
-    const innerBound = half - 0.5; // 31.5
+    const half = 36; // Expanded 72m x 72m 3-Tier Concentric Boss Crater
+    const innerBound = half - 0.5; // 35.5
     const wallH = ARENA_CONFIG.wallHeight; // 11
 
-    // Register exact inner arena boundary clamp (63m x 63m interior, maxY = 28m)
+    // Register exact inner arena boundary clamp (71m x 71m interior, maxY = 28m)
     this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
 
-    // 1. Shared Procedural PBR Materials (strictly MeshStandardMaterial / MeshBasicMaterial)
+    // 1. Shared Procedural PBR Materials
     const mats = this._createMaterials();
 
     // 2. Scorched Basalt Impact Crater Floor & Low Central Orbital Anchor Plinth (y=0.20m)
@@ -165,81 +167,84 @@ class Map3CitadelBuilder {
     this._buildPerimeterWalls(mats, innerBound, wallH);
     this._buildSectorSignboards(mats, innerBound);
 
-    // 4. 8 Radial Blast-Shield Concrete Monoliths (r=13.5m) & 8 Leaning Orbital-Tether Pylon Ribs (r=18.8m)
+    // 4. Radial Monoliths + Tier 2 Mid Crater Trench Deck (y=1.6m) w/ Sculpted Bunker Arches
     this._buildMonolithRingAndTetherRibs(mats);
+    this._buildMidCraterTrenchAndBunkers(mats);
 
-    // 5. Wrap-Around Elevated Ring-Catwalk (y=4.2m) & 4 Wide Stepped Ramps (0.30m/step <= 0.35m)
+    // 5. Outer Bastion Ring-Catwalk (y=4.2m) & Wide Stepped Ramps
     this._buildElevatedRingCatwalkAndRamps(mats, innerBound);
 
-    // 6. Outer Corridor Waist-High Crashed Orbital Elevator Slabs
+    // 6. Outer Corridor Slabs
     this._buildCrashedElevatorSlabs(mats);
 
     // 7. Shattered Orbital Elevator North Spire, Rotating Warning Rings & Ruined Dusk Skyline
     this._buildOrbitalElevatorVistaAndSkyDome(mats);
 
-    // 8. Crimson-Ochre Dusk Sun + Ash Bounce + <=2 PointLights + Volcanic Ash Fog
+    // 8. Crimson-Ochre Dusk Sun + Ash Bounce + <=2 PointLights
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // 9. Collision-verified spawns & metadata
-    // All ground spawns verified >= 2.75m clear (Boss radius = 1.55m, height = 4.20m).
-    // Jump pads ballistically calibrated for g=26 m/s^2, Vh=11.0 m/s, Vy=17.6 m/s:
-    //   peak y = 5.96m at t=0.677s (+1.76m above 4.2m deck), lands at y=4.2m at t=1.0445s (d=11.49m).
     const arenaData = {
       mapId: 'crater_citadel',
       mapIndex: 2,
       mapCode: '제00구역',
       mapName: '제00구역 · 분화구 요새',
-      mapSubtitle: '파괴된 궤도 승강기 — 보스 결전 구역',
+      mapSubtitle: '3단 동심원 참호 & 보스 결전 구역',
       atmosphere: {
         bgColor: 0x36221e,
         fogColor: 0x452d26,
         fogDensity: 0.0115,
       },
       playerSpawn: {
-        pos: new THREE.Vector3(0, 0.05, 23.5),
+        pos: new THREE.Vector3(0, 0.05, 29.0),
         yaw: 0,
       },
       enemySpawns: [
-        // 8 Wide-Open Ground Crater & Outer Ring Spawns (>= 2.75m clearance for 4.2m Boss)
-        { pos: new THREE.Vector3(0.0, 0.05, -18.5), isElevated: false },
-        { pos: new THREE.Vector3(-4.0, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(4.0, 0.05, -19.5), isElevated: false },
+        // Wide-Open Inner Boss Crater & Outer Tier 2 Trench Spawns (>= 2.75m clear for 4.2m Boss)
+        { pos: new THREE.Vector3(0.0, 0.05, -13.5), isElevated: false },
+        { pos: new THREE.Vector3(-4.5, 0.05, -14.0), isElevated: false },
+        { pos: new THREE.Vector3(4.5, 0.05, -14.0), isElevated: false },
         { pos: new THREE.Vector3(0.0, 0.05, -8.5), isElevated: false },
-        { pos: new THREE.Vector3(-19.5, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(19.5, 0.05, 0.0), isElevated: false },
-        { pos: new THREE.Vector3(-9.5, 0.05, -9.5), isElevated: false },
-        { pos: new THREE.Vector3(9.5, 0.05, -9.5), isElevated: false },
-        // 4 Elevated Ring-Catwalk Overwatch Spawns (y = 4.20m deck)
-        { pos: new THREE.Vector3(-28.2, 4.25, -13.0), isElevated: true },
-        { pos: new THREE.Vector3(28.2, 4.25, -13.0), isElevated: true },
-        { pos: new THREE.Vector3(-28.2, 4.25, 13.0), isElevated: true },
-        { pos: new THREE.Vector3(28.2, 4.25, 13.0), isElevated: true },
+        { pos: new THREE.Vector3(-12.5, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(12.5, 0.05, 0.0), isElevated: false },
+        { pos: new THREE.Vector3(-21.0, 1.65, -21.0), isElevated: true },
+        { pos: new THREE.Vector3(21.0, 1.65, -21.0), isElevated: true },
+        // 4 Elevated Outer Bastion Overwatch Spawns
+        { pos: new THREE.Vector3(-31.5, 4.25, -13.0), isElevated: true },
+        { pos: new THREE.Vector3(31.5, 4.25, -13.0), isElevated: true },
+        { pos: new THREE.Vector3(-31.5, 4.25, 13.0), isElevated: true },
+        { pos: new THREE.Vector3(31.5, 4.25, 13.0), isElevated: true },
       ],
       pickupSpawns: [
-        { pos: new THREE.Vector3(-24.5, 4.20, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(24.5, 4.20, 0.0), type: 'health' },
-        { pos: new THREE.Vector3(0.0, 4.20, -24.8), type: 'ammo' },
-        { pos: new THREE.Vector3(-28.5, 0.0, 0.0), type: 'ammo' },
-        { pos: new THREE.Vector3(28.5, 0.0, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(0.0, 0.0, 16.5), type: 'health' },
+        { pos: new THREE.Vector3(-24.5, 1.65, 0.0), type: 'shield' },
+        { pos: new THREE.Vector3(24.5, 1.65, 0.0), type: 'health' },
+        { pos: new THREE.Vector3(0.0, 4.20, -30.5), type: 'ammo' },
+        { pos: new THREE.Vector3(-31.5, 4.20, 0.0), type: 'ammo' },
+        { pos: new THREE.Vector3(31.5, 4.20, 0.0), type: 'shield' },
+        { pos: new THREE.Vector3(5.5, 1.65, 21.0), type: 'health' },
       ],
       barrelSpawns: [
         new THREE.Vector3(-9.5, 0.0, 0.0),
         new THREE.Vector3(9.5, 0.0, 0.0),
-        new THREE.Vector3(-2.6, 0.0, -13.0),
-        new THREE.Vector3(2.6, 0.0, -13.0),
-        new THREE.Vector3(-14.5, 0.0, 11.5),
-        new THREE.Vector3(14.5, 0.0, 11.5),
+        new THREE.Vector3(-3.0, 0.0, -12.5),
+        new THREE.Vector3(3.0, 0.0, -12.5),
+        new THREE.Vector3(-18.0, 1.6, 12.0),
+        new THREE.Vector3(18.0, 1.6, -12.0),
       ],
       jumpPadSpawns: [
-        // Launches cleanly from open rim (z=±17.3, x=±15.0) onto center of North/South Ring (z=±28.79)
-        { pos: new THREE.Vector3(-15.0, 0.0, -17.3), launchVy: 17.6, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(15.0, 0.0, -17.3), launchVy: 17.6, launchDirX: 0, launchDirZ: -1 },
-        { pos: new THREE.Vector3(-15.0, 0.0, 17.3), launchVy: 17.6, launchDirX: 0, launchDirZ: 1 },
-        { pos: new THREE.Vector3(15.0, 0.0, 17.3), launchVy: 17.6, launchDirX: 0, launchDirZ: 1 },
+        { pos: new THREE.Vector3(-11.0, 1.6, -22.5), launchVy: 15.2, launchDirX: 0, launchDirZ: -1 },
+        { pos: new THREE.Vector3(11.0, 1.6, -22.5), launchVy: 15.2, launchDirX: 0, launchDirZ: -1 },
+        { pos: new THREE.Vector3(-11.0, 1.6, 22.5), launchVy: 15.2, launchDirX: 0, launchDirZ: 1 },
+        { pos: new THREE.Vector3(11.0, 1.6, 22.5), launchVy: 15.2, launchDirX: 0, launchDirZ: 1 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 0.2, 0),
+      craneTraps: [
+        { x: -12.0, y: 0, z: -12.5, yaw: 0.78, dropCenter: { x: -10.0, y: 0, z: -10.5 }, radius: 7.4, damage: 320 },
+      ],
+      steamValves: [
+        { x: -13.5, y: 0, z: 10.5, interval: 11.0, offset: 2.0, radius: 7.0, force: 19 },
+        { x: 13.5, y: 0, z: -10.5, interval: 11.0, offset: 7.5, radius: 7.0, force: 19 },
+      ],
+      controlZoneCenter: new THREE.Vector3(0, 0.2, -4.5),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
         minX: -innerBound,
@@ -250,6 +255,83 @@ class Map3CitadelBuilder {
     };
 
     return arenaData;
+  }
+
+  /**
+   * Tier 2 Mid Crater Blast Trench Deck (y=1.6m, ±16.5..±25.8) + 4 Wide Stepped Ramps +
+   * 4 Sculpted Blender Crater Bunker Arches with full walkthrough L/R/Roof colliders.
+   * @private
+   */
+  _buildMidCraterTrenchAndBunkers(mats) {
+    const midY = 1.6;
+    const trenchSlabs = [
+      { minX: -30.0, maxX: 30.0, minZ: -30.0, maxZ: -16.5 },
+      { minX: -30.0, maxX: 30.0, minZ: 16.5, maxZ: 30.0 },
+      { minX: -30.0, maxX: -16.5, minZ: -16.5, maxZ: 16.5 },
+      { minX: 16.5, maxX: 30.0, minZ: -16.5, maxZ: 16.5 },
+    ];
+    for (let i = 0; i < trenchSlabs.length; i++) {
+      const s = trenchSlabs[i];
+      const w = s.maxX - s.minX;
+      const d = s.maxZ - s.minZ;
+      const cx = (s.minX + s.maxX) * 0.5;
+      const cz = (s.minZ + s.maxZ) * 0.5;
+      const geo = this._trackGeo(scaleBoxUVs(new THREE.BoxGeometry(w, midY, d), w, midY, d, 3.0, 3.0));
+      const mesh = new THREE.Mesh(geo, mats.plinthConcreteMat);
+      mesh.position.set(cx, midY * 0.5, cz);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
+      this.collisionWorld.addBox(s.minX, 0, s.minZ, s.maxX, midY, s.maxZ, 'platform');
+    }
+
+    // 4 Wide 5-step Ramps (step 0.32m) leading down into Inner Boss Crater (±16.5 -> ±13.0)
+    const steps = 5;
+    const stepH = midY / steps; // 0.32m
+    const stepD = 0.7;
+    const rW = 6.0;
+    const stepGeoX = this._trackGeo(new THREE.BoxGeometry(rW, stepH + 0.04, stepD));
+    const stepGeoZ = this._trackGeo(new THREE.BoxGeometry(stepD, stepH + 0.04, rW));
+    for (let s = 0; s < steps; s++) {
+      const sy = (s + 1) * stepH;
+      const d = 13.0 + (s + 0.5) * stepD;
+      for (const dirZ of [-1, 1]) {
+        const m = new THREE.Mesh(stepGeoX, mats.stepMat);
+        m.position.set(0, sy - stepH * 0.5, dirZ * d);
+        m.receiveShadow = true;
+        this.root.add(m);
+        this.collisionWorld.addBox(-rW * 0.5, 0, dirZ * d - stepD * 0.5, rW * 0.5, sy, dirZ * d + stepD * 0.5, 'ramp');
+      }
+      for (const dirX of [-1, 1]) {
+        const m = new THREE.Mesh(stepGeoZ, mats.stepMat);
+        m.position.set(dirX * d, sy - stepH * 0.5, 0);
+        m.receiveShadow = true;
+        this.root.add(m);
+        this.collisionWorld.addBox(dirX * d - stepD * 0.5, 0, -rW * 0.5, dirX * d + stepD * 0.5, sy, rW * 0.5, 'ramp');
+      }
+    }
+
+    // 4 Sculpted Crater Bunker Arches along Tier 2 cardinal approaches
+    const factory = MapPropFactory.getShared();
+    const bunkerSpecs = [
+      { x: 0, z: -21.2, rotY: 0 },
+      { x: 0, z: 21.2, rotY: Math.PI },
+      { x: -21.2, z: 0, rotY: Math.PI * 0.5 },
+      { x: 21.2, z: 0, rotY: -Math.PI * 0.5 },
+    ];
+    for (let i = 0; i < bunkerSpecs.length; i++) {
+      const bs = bunkerSpecs[i];
+      const pos = new THREE.Vector3(bs.x, midY, bs.z);
+      const mount = factory.mountProp(this.root, 'crater_bunker_arch', {
+        position: pos,
+        rotationY: bs.rotY,
+        scale: 1,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, pos, bs.rotY, 1, 'cover');
+        },
+      });
+      this._propMounts.push(mount);
+    }
   }
 
   /**
@@ -469,8 +551,8 @@ class Map3CitadelBuilder {
     floorMesh.receiveShadow = true;
     this.root.add(floorMesh);
 
-    // Solid ground floor AABB below y=0
-    this.collisionWorld.addBox(-34, -1.0, -34, 34, 0.0, 34, 'floor');
+    // Solid ground floor AABB below y=0 covering 72x72m expanded crater
+    this.collisionWorld.addBox(-innerBound - 2, -1.0, -innerBound - 2, innerBound + 2, 0.0, innerBound + 2, 'floor');
 
     // Low octagonal Shattered Orbital Elevator Anchor Plinth (R = 6.2m, y = 0.20m <= 0.55m stepHeight)
     const daisR = 6.2;
@@ -1039,18 +1121,11 @@ class Map3CitadelBuilder {
 
     // 1. Wrap-Around Ring Sections & Bastion Overlooks (1:1 collision + world-metric UV-calibrated visual meshes)
     const platformSpecs = [
-      // 4 Continuous Outer Perimeter Ring Wings (5.5m wide, hugging innerBound=31.5m)
-      { minX: -innerBound, maxX: innerBound, minZ: -innerBound, maxZ: -26.0, fasciaSide: 'south' },
-      { minX: -innerBound, maxX: innerBound, minZ: 26.0, maxZ: innerBound, fasciaSide: 'north' },
-      { minX: -innerBound, maxX: -26.0, minZ: -26.0, maxZ: 26.0, fasciaSide: 'east' },
-      { minX: 26.0, maxX: innerBound, minZ: -26.0, maxZ: 26.0, fasciaSide: 'west' },
-      // 3 Cardinal Overlook Bastions projecting inward (North, West, East)
-      { minX: -8.5, maxX: 8.5, minZ: -26.0, maxZ: -23.0, fasciaSide: 'south' },
-      { minX: -26.0, maxX: -23.0, minZ: -8.5, maxZ: 8.5, fasciaSide: 'east' },
-      { minX: 23.0, maxX: 26.0, minZ: -8.5, maxZ: 8.5, fasciaSide: 'west' },
-      // 2 Flanking South Overlook Bastions framing open playerSpawn (0, 0.05, 23.5)
-      { minX: -12.5, maxX: -4.5, minZ: 23.0, maxZ: 26.0, fasciaSide: 'north' },
-      { minX: 4.5, maxX: 12.5, minZ: 23.0, maxZ: 26.0, fasciaSide: 'north' },
+      // 4 Continuous Outer Perimeter Ring Wings (5.5m wide, hugging expanded innerBound=35.5m -> inner edge at ±30.0)
+      { minX: -innerBound, maxX: innerBound, minZ: -innerBound, maxZ: -30.0, fasciaSide: 'south' },
+      { minX: -innerBound, maxX: innerBound, minZ: 30.0, maxZ: innerBound, fasciaSide: 'north' },
+      { minX: -innerBound, maxX: -30.0, minZ: -30.0, maxZ: 30.0, fasciaSide: 'east' },
+      { minX: 30.0, maxX: innerBound, minZ: -30.0, maxZ: 30.0, fasciaSide: 'west' },
     ];
 
     const deckGeoCache = new Map();
@@ -1134,11 +1209,9 @@ class Map3CitadelBuilder {
 
     // 2. Elevated Ring-Catwalk Inner Support Piers & Diagonal Knee Braces (InstancedMesh)
     const pierCoords = [
-      // North & South inner edge piers (keep x=[-8,8] clear of playerSpawn & x=±15 clear of jump pads)
-      [-26.3, -26.3], [-18.5, -26.3], [-8.2, -26.3], [8.2, -26.3], [18.5, -26.3], [26.3, -26.3],
-      [-26.3, 26.3], [-18.5, 26.3], [-8.2, 26.3], [8.2, 26.3], [18.5, 26.3], [26.3, 26.3],
-      // West & East mid-span piers
-      [-26.3, -8.2], [-26.3, 8.2], [26.3, -8.2], [26.3, 8.2],
+      [-30.2, -30.2], [-18.5, -30.2], [-8.2, -30.2], [8.2, -30.2], [18.5, -30.2], [30.2, -30.2],
+      [-30.2, 30.2],  [-18.5, 30.2],  [-8.2, 30.2],  [8.2, 30.2],  [18.5, 30.2],  [30.2, 30.2],
+      [-30.2, -8.2],  [-30.2, 8.2],   [30.2, -8.2],  [30.2, 8.2],
     ];
 
     const pierGeo = this._trackGeo(
@@ -1193,22 +1266,10 @@ class Map3CitadelBuilder {
     const shieldH = 1.06;
     const shieldThick = 0.38;
     const shieldSpecs = [
-      // North Overlook twin shields (open 8m center & side notches)
-      { cx: -5.9, cz: -23.2, len: 3.8, rotY: 0 },
-      { cx: 5.9, cz: -23.2, len: 3.8, rotY: 0 },
-      // South Overlook twin shields
-      { cx: -8.5, cz: 23.2, len: 5.2, rotY: 0 },
-      { cx: 8.5, cz: 23.2, len: 5.2, rotY: 0 },
-      // West & East Overlook twin shields
-      { cx: -23.2, cz: -5.9, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: -23.2, cz: 5.9, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: 23.2, cz: -5.9, len: 3.8, rotY: Math.PI * 0.5 },
-      { cx: 23.2, cz: 5.9, len: 3.8, rotY: Math.PI * 0.5 },
-      // Outer Ring perimeter flanking shields (clear of x=±15 jump-pad landings & x=±24.2 ramp exits)
-      { cx: -19.2, cz: -26.2, len: 3.2, rotY: 0 },
-      { cx: 19.2, cz: -26.2, len: 3.2, rotY: 0 },
-      { cx: -19.2, cz: 26.2, len: 3.2, rotY: 0 },
-      { cx: 19.2, cz: 26.2, len: 3.2, rotY: 0 },
+      { cx: -19.2, cz: -30.2, len: 3.2, rotY: 0 },
+      { cx: 19.2, cz: -30.2, len: 3.2, rotY: 0 },
+      { cx: -19.2, cz: 30.2, len: 3.2, rotY: 0 },
+      { cx: 19.2, cz: 30.2, len: 3.2, rotY: 0 },
     ];
 
     const shieldProfile = new THREE.Shape();
@@ -1291,12 +1352,12 @@ class Map3CitadelBuilder {
       this.root.add(bodyInst, capInst);
     });
 
-    // 4. 4 Wide Sloped Rubble/Steel Stair Ramps (14 steps x 0.30m rise = 4.20m, <= 0.35m/step)
-    const stepCount = 14;
-    const stepRise = deckY / stepCount; // 0.30m
-    const stepDepth = 0.7;
-    const rampWidth = 3.6; // x ∈ [±22.4, ±26.0]
-    const runLen = stepCount * stepDepth; // 9.80m -> climbs z=±16.2 to z=±26.0
+    // 4. 4 Wide Stair Ramps climbing Tier 2 (y=1.6m at z=±21.6) up onto Tier 3 Outer Bastion (y=4.2m at z=±30.0)
+    const stepCount = 9;
+    const stepRise = (deckY - 1.6) / stepCount; // ~0.289m <= 0.35m!
+    const stepDepth = 0.933;
+    const rampWidth = 4.2;
+    const runLen = stepCount * stepDepth; // 8.40m
 
     const stepGeo = this._trackGeo(
       scaleBoxUVs(new THREE.BoxGeometry(rampWidth, 0.32, stepDepth), rampWidth, 0.32, stepDepth, 1.8, 1.8)
@@ -1310,10 +1371,10 @@ class Map3CitadelBuilder {
     const stepLipInst = new THREE.InstancedMesh(stepLipGeo, mats.tungstenAmberMat, totalSteps);
 
     const stringerShape = new THREE.Shape();
-    stringerShape.moveTo(0, 0);
+    stringerShape.moveTo(0, 1.6);
     stringerShape.lineTo(runLen, deckY - 0.36);
     stringerShape.lineTo(runLen, deckY + 0.14);
-    stringerShape.lineTo(0, 0.4);
+    stringerShape.lineTo(0, 2.0);
     stringerShape.closePath();
 
     const stringerGeo = this._trackGeo(
@@ -1332,10 +1393,10 @@ class Map3CitadelBuilder {
     stringerGeo.translate(0, 0, -0.11);
 
     const plinthShape = new THREE.Shape();
-    plinthShape.moveTo(0, 0);
-    plinthShape.lineTo(stepDepth * 7, 0);
-    plinthShape.lineTo(stepDepth * 7, stepRise * 7 - 0.04);
-    plinthShape.lineTo(0, 0.08);
+    plinthShape.moveTo(0, 1.6);
+    plinthShape.lineTo(stepDepth * 5, 1.6);
+    plinthShape.lineTo(stepDepth * 5, 1.6 + stepRise * 5 - 0.04);
+    plinthShape.lineTo(0, 1.72);
     plinthShape.closePath();
     const plinthGeo = this._trackGeo(
       scaleGeometryUVs(
@@ -1350,10 +1411,10 @@ class Map3CitadelBuilder {
     plinthGeo.translate(0, 0, -(rampWidth - 0.08) * 0.5);
 
     const rampConfigs = [
-      { cx: -24.2, zStart: -16.2, dirZ: -1 }, // West-North climbs North (-Z) to z=-26.0
-      { cx: 24.2, zStart: -16.2, dirZ: -1 },  // East-North climbs North (-Z) to z=-26.0
-      { cx: -24.2, zStart: 16.2, dirZ: 1 },   // West-South climbs South (+Z) to z=+26.0
-      { cx: 24.2, zStart: 16.2, dirZ: 1 },    // East-South climbs South (+Z) to z=+26.0
+      { cx: -21.0, zStart: -21.6, dirZ: -1 },
+      { cx: 21.0, zStart: -21.6, dirZ: -1 },
+      { cx: -21.0, zStart: 21.6, dirZ: 1 },
+      { cx: 21.0, zStart: 21.6, dirZ: 1 },
     ];
 
     let stepIdx = 0;
@@ -1370,7 +1431,6 @@ class Map3CitadelBuilder {
         this.root.add(strMesh);
       }
 
-      // Solid rubble-concrete lower foundation matching steps 0..6 (zero crawl trap)
       const plinthMesh = new THREE.Mesh(plinthGeo, mats.hazardMat);
       plinthMesh.position.set(rc.cx, 0, rc.zStart);
       plinthMesh.rotation.y = rotY;
@@ -1378,7 +1438,7 @@ class Map3CitadelBuilder {
       this.root.add(plinthMesh);
 
       for (let i = 0; i < stepCount; i++) {
-        const topY = (i + 1) * stepRise;
+        const topY = 1.6 + (i + 1) * stepRise;
         const zCenter = rc.zStart + rc.dirZ * (i + 0.5) * stepDepth;
         const zMin = zCenter - stepDepth * 0.5;
         const zMax = zCenter + stepDepth * 0.5;
@@ -1395,11 +1455,9 @@ class Map3CitadelBuilder {
         stepLipInst.setMatrixAt(stepIdx, dummy.matrix);
         stepIdx++;
 
-        // Solid foundation under steps 0..6 (<= 2.1m); full-headroom arch (>= 1.98m) under steps 7..13
-        const colMinY = i < 7 ? 0.0 : topY - 0.42;
         this.collisionWorld.addBox(
           rc.cx - rampWidth * 0.5,
-          colMinY,
+          1.6,
           zMin,
           rc.cx + rampWidth * 0.5,
           topY,
@@ -1473,10 +1531,10 @@ class Map3CitadelBuilder {
     );
 
     const coords = [
-      [-20.5, -11.5],
-      [20.5, -11.5],
-      [-20.5, 11.5],
-      [20.5, 11.5],
+      [-23.5, -11.5],
+      [23.5, -11.5],
+      [-23.5, 11.5],
+      [23.5, 11.5],
     ];
 
     const bodyInst = new THREE.InstancedMesh(slabGeo, mats.rustSteelMat, coords.length);
@@ -1492,29 +1550,30 @@ class Map3CitadelBuilder {
     let ribIdx = 0;
     for (let i = 0; i < coords.length; i++) {
       const [sx, sz] = coords[i];
+      const baseY = 1.6;
 
-      dummy.position.set(sx, 0, sz);
+      dummy.position.set(sx, baseY, sz);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       bodyInst.setMatrixAt(i, dummy.matrix);
 
-      dummy.position.set(sx, 0.12, sz);
+      dummy.position.set(sx, baseY + 0.12, sz);
       dummy.updateMatrix();
       baseInst.setMatrixAt(i, dummy.matrix);
 
       for (const off of [-slabW * 0.34, slabW * 0.34]) {
-        dummy.position.set(sx + off, slabH * 0.48, sz);
+        dummy.position.set(sx + off, baseY + slabH * 0.48, sz);
         dummy.updateMatrix();
         ribInst.setMatrixAt(ribIdx++, dummy.matrix);
       }
 
       this.collisionWorld.addBox(
         sx - slabW * 0.5,
-        0,
+        baseY,
         sz - slabD * 0.5,
         sx + slabW * 0.5,
-        slabH,
+        baseY + slabH,
         sz + slabD * 0.5,
         'cover'
       );
@@ -1816,6 +1875,18 @@ class Map3CitadelBuilder {
     this._tetherRingOuter = null;
     this._tetherRingInner = null;
     this._distantBeaconMat = null;
+    if (this._propMounts) {
+      for (let i = 0; i < this._propMounts.length; i++) {
+        const m = this._propMounts[i];
+        if (m) {
+          m.userData.disposed = true;
+          if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+            m.userData.propInstance.dispose();
+          }
+        }
+      }
+      this._propMounts.length = 0;
+    }
 
     if (this._ownsTexGen && this._texGen) {
       this._texGen.dispose();

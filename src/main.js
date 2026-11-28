@@ -2,6 +2,7 @@
 __define("src/main.js", (__exports, __require) => {
 const {
   EVENTS,
+  PLAYER_CONFIG,
   QUALITY_PRESETS,
   MAPS,
   META_UPGRADES,
@@ -34,6 +35,7 @@ const { InputManager } = __require("src/core/InputManager.js");
 const { CollisionWorld } = __require("src/physics/CollisionWorld.js");
 const { PlayerController } = __require("src/player/PlayerController.js");
 const { MapManager } = __require("src/world/MapManager.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 const { Interactables } = __require("src/world/Interactables.js");
 const { VfxManager } = __require("src/vfx/VfxManager.js");
 const { WeaponSystem } = __require("src/weapons/WeaponSystem.js");
@@ -2018,7 +2020,7 @@ function bootstrap() {
       moveSpeedMult: (1.0 + (lv.thruster || 0) * 0.025) * (frame.speedMult || 1.0),
       dashCooldownMult: Math.max(0.42, (1.0 - (lv.thruster || 0) * 0.045) * (frame.dashCdMult || 1.0)),
       shieldRegenMult: 1.0 + (lv.shield || 0) * 0.08,
-      passiveShieldRegenRate: (lv.shield || 0) * 1.4,
+      passiveShieldRegenRate: (PLAYER_CONFIG.shieldRegenRate || 0) + (lv.shield || 0) * 1.4,
       killShieldBonus: (lv.siphon || 0) * 3,
       maxHealthBonus: (lv.hull || 0) * 12 + (frame.hpBonus || 0),
       maxShieldBonus: (lv.shield || 0) * 12 + (frame.shieldBonus || 0),
@@ -3752,6 +3754,7 @@ function bootstrap() {
 
   // Orbital Drop Pod Cockpit Intro State (Option B)
   let dropPodRig = null;
+  let dropPodColliderIds = [];
   const dropPodIntro = {
     active: false,
     elapsed: 0,
@@ -3766,12 +3769,75 @@ function bootstrap() {
     opsMeta: '',
   };
 
+  function clearLandedDropPod() {
+    if (collisionWorld && dropPodColliderIds.length > 0) {
+      for (let i = 0; i < dropPodColliderIds.length; i++) {
+        collisionWorld.removeBox(dropPodColliderIds[i]);
+      }
+    }
+    dropPodColliderIds.length = 0;
+    if (dropPodRig && dropPodRig.group) {
+      dropPodRig.group.visible = false;
+      if (dropPodRig.reentryGroup) dropPodRig.reentryGroup.visible = false;
+    }
+  }
+
+  function parkLandedDropPodAt(podPos, yaw, openHatches = true) {
+    const rig = ensureDropPodRig();
+    if (!rig || !podPos) return;
+    clearLandedDropPod();
+
+    rig.group.position.copy(podPos);
+    rig.group.rotation.y = yaw || 0;
+    rig.group.visible = true;
+    if (rig.reentryGroup) rig.reentryGroup.visible = false;
+    if (rig.lockClamp) rig.lockClamp.visible = false;
+    if (rig.strobeMat) {
+      rig.strobeMat.color.setHex(0x22c55e);
+      rig.strobeMat.emissive.setHex(0x22c55e);
+      rig.strobeMat.emissiveIntensity = 2.0;
+    }
+    if (rig.cabinLight) {
+      rig.cabinLight.color.setHex(0xfbbf24);
+      rig.cabinLight.intensity = 2.4;
+    }
+    const baseDoorZ = rig.glbDoorZ || -0.88;
+    const baseDoorX = rig.glbDoorX || 0.36;
+    if (openHatches) {
+      rig.leftDoor.position.set(-baseDoorX - 0.72, 0, baseDoorZ - 0.24);
+      rig.leftDoor.rotation.y = 0.85;
+      rig.rightDoor.position.set(baseDoorX + 0.72, 0, baseDoorZ - 0.24);
+      rig.rightDoor.rotation.y = -0.85;
+    } else {
+      rig.leftDoor.position.set(-baseDoorX, 0, baseDoorZ);
+      rig.leftDoor.rotation.y = 0;
+      rig.rightDoor.position.set(baseDoorX, 0, baseDoorZ);
+      rig.rightDoor.rotation.y = 0;
+    }
+    if (collisionWorld) {
+      const podBox = collisionWorld.addBox(
+        podPos.x - 1.15,
+        podPos.y,
+        podPos.z - 1.15,
+        podPos.x + 1.15,
+        podPos.y + 2.8,
+        podPos.z + 1.15,
+        'cover'
+      );
+      if (podBox) dropPodColliderIds.push(podBox.id);
+    }
+  }
+
   function ensureDropPodRig() {
     if (dropPodRig || !engine || !engine.scene) return dropPodRig;
 
     const group = new THREE.Group();
     group.name = 'orbital_drop_pod_cockpit';
     group.visible = false;
+
+    const fallbackGroup = new THREE.Group();
+    fallbackGroup.name = 'drop_pod_fallback_shell';
+    group.add(fallbackGroup);
 
     const hullMat = new THREE.MeshStandardMaterial({
       color: 0x1d1a18,
@@ -3806,105 +3872,56 @@ function bootstrap() {
       depthWrite: false,
     });
 
-    // Armored Deck Floor + Overhead Octagonal Canopy + Back/Side Bulkheads (facing -Z)
+    // Minimal fallback shell while sculpted Blender GLB loads/resolves
     const floorPlate = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.14, 8), hullMat);
     floorPlate.position.set(0, 0.05, 0);
-    group.add(floorPlate);
-
+    fallbackGroup.add(floorPlate);
     const roofPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.15, 0.22, 8), hullMat);
     roofPlate.position.set(0, 2.24, 0);
-    group.add(roofPlate);
-
+    fallbackGroup.add(roofPlate);
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(1.72, 2.15, 0.18), hullMat);
     backWall.position.set(0, 1.15, 0.88);
-    group.add(backWall);
+    fallbackGroup.add(backWall);
 
-    for (let side = -1; side <= 1; side += 2) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.15, 1.72), ribMat);
-      sideWall.position.set(side * 0.88, 1.15, 0.04);
-      sideWall.rotation.y = side * 0.08;
-      group.add(sideWall);
+    const leftDoor = new THREE.Group();
+    leftDoor.position.set(-0.36, 0, -0.88);
+    const lPanel = new THREE.Mesh(new THREE.BoxGeometry(0.68, 2.0, 0.14), hullMat);
+    lPanel.position.set(0, 1.15, 0);
+    leftDoor.add(lPanel);
+    fallbackGroup.add(leftDoor);
 
-      const frontPillar = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.18, 0.22), ribMat);
-      frontPillar.position.set(side * 0.72, 1.15, -0.78);
-      group.add(frontPillar);
+    const rightDoor = new THREE.Group();
+    rightDoor.position.set(0.36, 0, -0.88);
+    const rPanel = new THREE.Mesh(new THREE.BoxGeometry(0.68, 2.0, 0.14), hullMat);
+    rPanel.position.set(0, 1.15, 0);
+    rightDoor.add(rPanel);
+    fallbackGroup.add(rightDoor);
 
-      // Cockpit Emergency Strobe Light Strips (top-left & top-right framing camera FOV!)
-      const strobeBar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.09), strobeMat);
-      strobeBar.position.set(side * 0.58, 1.78, -0.58);
-      strobeBar.rotation.z = side * 0.22;
-      group.add(strobeBar);
-
-      // Hydraulic side struts
-      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.45, 8), amberMat);
-      piston.position.set(side * 0.66, 0.92, -0.34);
-      piston.rotation.x = 0.25;
-      group.add(piston);
-    }
-
-    // Forward Cockpit Telemetry Console Lip below Slit
-    const consoleDash = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.26, 0.34), hullMat);
-    consoleDash.position.set(0, 1.02, -0.56);
-    consoleDash.rotation.x = -0.38;
-    group.add(consoleDash);
-
-    const dashGlowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.045, 0.04), amberMat);
-    dashGlowStrip.position.set(0, 1.13, -0.44);
-    group.add(dashGlowStrip);
-
-    // Twin Slotted Armored Front Blast Doors leaving a 0.22m eye-level viewport slit at y=1.55!
-    const createDoorLeaf = (side) => {
-      const dGroup = new THREE.Group();
-      dGroup.position.set(side * 0.34, 0, -0.82);
-
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.68, 1.42, 0.14), hullMat);
-      lower.position.set(0, 0.72, 0);
-      dGroup.add(lower);
-
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.58, 0.14), ribMat);
-      upper.position.set(0, 1.92, 0);
-      dGroup.add(upper);
-
-      // Slit vertical armor mullion bar
-      const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.24, 0.10), ribMat);
-      mullion.position.set(side * 0.18, 1.54, 0);
-      dGroup.add(mullion);
-
-      // Thin subtle glowing hatch-seam strip
-      const seam = new THREE.Mesh(new THREE.BoxGeometry(0.016, 1.95, 0.03), amberMat);
-      seam.position.set(-side * 0.32, 1.14, 0.065);
-      dGroup.add(seam);
-
-      group.add(dGroup);
-      return dGroup;
-    };
-
-    const leftDoor = createDoorLeaf(-1);
-    const rightDoor = createDoorLeaf(1);
-
-    const lockClamp = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.11, 0.14), ribMat);
-    lockClamp.position.set(0, 1.38, -0.75);
-    group.add(lockClamp);
+    const lockClamp = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.14), ribMat);
+    lockClamp.position.set(0, 1.38, -0.78);
+    fallbackGroup.add(lockClamp);
 
     // Atmospheric Re-entry Flame/Plasma Streaks rushing past front slit during descent
     const reentryGroup = new THREE.Group();
     const streakGeo = new THREE.CylinderGeometry(0.025, 0.06, 2.4, 6);
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2;
-      const r = 1.35 + (i % 3) * 0.25;
+      const r = 1.38 + (i % 3) * 0.28;
       const streak = new THREE.Mesh(streakGeo, reentryMat);
       streak.position.set(Math.cos(a) * r, 0.9 + (i % 4) * 0.45, Math.sin(a) * r - 0.35);
       reentryGroup.add(streak);
     }
     group.add(reentryGroup);
 
-    const cabinLight = new THREE.PointLight(0xef4444, 4.5, 4.5, 1.5);
+    const cabinLight = new THREE.PointLight(0xef4444, 4.5, 5.2, 1.4);
     cabinLight.position.set(0, 1.78, -0.15);
     group.add(cabinLight);
 
     engine.scene.add(group);
     dropPodRig = {
       group,
+      fallbackGroup,
+      glbMounted: false,
       leftDoor,
       rightDoor,
       lockClamp,
@@ -3912,7 +3929,38 @@ function bootstrap() {
       strobeMat,
       amberMat,
       cabinLight,
+      glbDoorX: 0.36,
+      glbDoorZ: -0.88,
     };
+
+    // Upgrade seamlessly to AAA sculpted Blender Orbital Drop Pod GLB
+    MapPropFactory.getShared().mountProp(group, 'orbital_drop_pod', {
+      cloneMaterials: true,
+      castShadow: true,
+      receiveShadow: true,
+      onMounted: (inst) => {
+        if (!dropPodRig || !inst || !inst.root) return;
+        const gRoot = inst.root;
+        const glbLeft = gRoot.getObjectByName('LeftDoor');
+        const glbRight = gRoot.getObjectByName('RightDoor');
+        const glbClamp = gRoot.getObjectByName('LockClamp');
+        fallbackGroup.visible = false;
+        dropPodRig.glbMounted = true;
+        if (glbLeft) {
+          dropPodRig.leftDoor = glbLeft;
+          dropPodRig.glbDoorX = Math.abs(glbLeft.position.x) || 0.36;
+          dropPodRig.glbDoorZ = glbLeft.position.z || -0.88;
+        }
+        if (glbRight) dropPodRig.rightDoor = glbRight;
+        if (glbClamp) dropPodRig.lockClamp = glbClamp;
+        gRoot.traverse((node) => {
+          if (node.isMesh && node.material && /AmberBeacon/i.test(node.material.name || '')) {
+            dropPodRig.strobeMat = node.material;
+          }
+        });
+      },
+    });
+
     return dropPodRig;
   }
 
@@ -3929,6 +3977,7 @@ function bootstrap() {
   function beginDropPodIntro(spawnPos, yaw, mapIndex = 0) {
     const rig = ensureDropPodRig();
     if (!rig || !spawnPos) return false;
+    clearLandedDropPod();
 
     const mapMeta = MAPS[mapIndex] || MAPS[0] || { code: '제09구역', name: '제09구역 · 폐허 메트로폴리스', subtitle: '' };
     dropPodIntro.active = true;
@@ -3943,15 +3992,19 @@ function bootstrap() {
     dropPodIntro.sectorMeta = mapMeta;
     dropPodIntro.opsMeta = buildDropOpsMetaText();
 
+    const doorX = rig.glbDoorX || 0.36;
+    const doorZ = rig.glbDoorZ || -0.88;
     rig.group.position.set(spawnPos.x, spawnPos.y + 22.0, spawnPos.z);
     rig.group.rotation.y = dropPodIntro.yaw;
     rig.group.visible = true;
-    rig.leftDoor.position.set(-0.34, 0, -0.82);
+    rig.leftDoor.position.set(-doorX, 0, doorZ);
     rig.leftDoor.rotation.y = 0;
-    rig.rightDoor.position.set(0.34, 0, -0.82);
+    rig.rightDoor.position.set(doorX, 0, doorZ);
     rig.rightDoor.rotation.y = 0;
-    rig.lockClamp.position.set(0, 1.44, -0.74);
-    rig.lockClamp.visible = true;
+    if (rig.lockClamp) {
+      rig.lockClamp.position.set(0, 1.38, -0.78);
+      rig.lockClamp.visible = true;
+    }
     rig.reentryGroup.visible = true;
     rig.strobeMat.color.setHex(0xef4444);
     rig.strobeMat.emissive.setHex(0xef4444);
@@ -3982,34 +4035,49 @@ function bootstrap() {
     dropPodIntro.active = false;
     dropPodIntro.phase = 'idle';
 
-    if (dropPodRig && dropPodRig.group) {
-      dropPodRig.group.visible = false;
-      dropPodRig.reentryGroup.visible = false;
-    }
     const hudRootEl = document.getElementById('hud-root');
     if (hudRootEl) hudRootEl.classList.remove('drop-intro-active');
     hudManager.hideDropIntroUI();
 
-    if (dropPodIntro.spawnPos && playerController) {
-      playerController.reset(dropPodIntro.spawnPos, dropPodIntro.yaw);
+    const sp = dropPodIntro.spawnPos;
+    const yaw = dropPodIntro.yaw || 0;
+    if (sp && playerController) {
+      const fwdX = -Math.sin(yaw);
+      const fwdZ = -Math.cos(yaw);
+      const exitX = sp.x + fwdX * 2.55;
+      const exitZ = sp.z + fwdZ * 2.55;
+      const exitGround = collisionWorld
+        ? collisionWorld.getGroundHeightAt(exitX, exitZ, sp.y + 1.5)
+        : sp.y;
+      if (Number.isFinite(exitGround) && exitGround >= sp.y - 0.6) {
+        playerController.reset({ x: exitX, y: exitGround, z: exitZ }, yaw);
+        parkLandedDropPodAt(sp, yaw, true);
+      } else {
+        playerController.reset(sp, yaw);
+        clearLandedDropPod();
+      }
+    } else {
+      clearLandedDropPod();
     }
+
     engine.viewmodelScene.visible = true;
     engine.setFov(playerController ? playerController.currentFov : 80);
     if (weaponSystem && typeof weaponSystem.triggerDeployDraw === 'function') {
       weaponSystem.triggerDeployDraw();
     }
-    if (skipped && vfxManager && dropPodIntro.spawnPos && !dropPodIntro.impacted) {
-      vfxManager.spawnDropPodLanding(dropPodIntro.spawnPos);
+    if (skipped && vfxManager && sp && !dropPodIntro.impacted) {
+      vfxManager.spawnDropPodLanding(sp);
       eventBus.emit(EVENTS.DROP_POD_PHASE, { phase: 'impact' });
     }
-    if (!waveDirector._active) {
-      waveDirector.start(selectedStartWaveIndex);
-    }
+    // Show Sector Arrival BEFORE WaveDirector emits WAVE_STARTED so banners queue cleanly without ever overlapping!
     hudManager.showSectorArrivalCard(
       dropPodIntro.sectorMeta || MAPS[0],
       dropPodIntro.opsMeta,
-      2.6
+      1.85
     );
+    if (!waveDirector._active) {
+      waveDirector.start(selectedStartWaveIndex);
+    }
     syncHudImmediate();
   }
 
@@ -4116,12 +4184,15 @@ function bootstrap() {
 
         const up = Math.min(1, (t - UNSEAL_T) / (END_T - UNSEAL_T));
         const openEase = 1 - Math.pow(1 - up, 3);
-        rig.leftDoor.position.set(-0.34 - openEase * 0.72, 0, -0.82 - openEase * 0.24);
+        const doorX = rig.glbDoorX || 0.36;
+        const doorZ = rig.glbDoorZ || -0.88;
+        rig.leftDoor.position.set(-doorX - openEase * 0.72, 0, doorZ - openEase * 0.24);
         rig.leftDoor.rotation.y = openEase * 0.85;
-        rig.rightDoor.position.set(0.34 + openEase * 0.72, 0, -0.82 - openEase * 0.24);
+        rig.rightDoor.position.set(doorX + openEase * 0.72, 0, doorZ - openEase * 0.24);
         rig.rightDoor.rotation.y = -openEase * 0.85;
 
-        camLocalZ = 0.34 * (1 - openEase);
+        // Smooth camera step forward out of the open drop pod hatch onto combat apron
+        camLocalZ = 0.34 - openEase * 2.89;
         camPitchOffset = -0.02 * (1 - openEase);
         engine.setFov(82 - openEase * 2);
 
@@ -4275,6 +4346,7 @@ function bootstrap() {
       playerController.setScreenShakeScale(settings.screenShake / 100);
     }
     mapManager = new MapManager(engine.scene, collisionWorld, engine);
+    MapPropFactory.getShared().preloadProps().catch(() => {});
     arenaData = mapManager.loadMap(0);
 
     interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
@@ -5235,13 +5307,14 @@ function bootstrap() {
           !skipDropIntro &&
           beginDropPodIntro(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw, targetMapIndex);
         if (!useDropIntro) {
-          waveDirector.start(targetWaveIndex);
+          clearLandedDropPod();
           if (!tutorialState.active) {
             const sectorMeta = MAPS[targetMapIndex] || MAPS[0];
             if (sectorMeta) {
-              hudManager.showSectorArrivalCard(sectorMeta, buildDropOpsMetaText(), 2.2);
+              hudManager.showSectorArrivalCard(sectorMeta, buildDropOpsMetaText(), 1.85);
             }
           }
+          waveDirector.start(targetWaveIndex);
         }
         syncHudImmediate();
 
@@ -5277,6 +5350,7 @@ function bootstrap() {
         interactables = null;
       }
 
+      clearLandedDropPod();
       arenaData = mapManager.loadMap(nextMapIndex);
       interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
       vfxManager.reset();
@@ -5295,13 +5369,13 @@ function bootstrap() {
       engine.bakeStaticShadows();
       engine.prewarmShaders();
 
+      const nextMeta = MAPS[nextMapIndex] || null;
+      if (nextMeta) {
+        hudManager.showSectorArrivalCard(nextMeta, buildDropOpsMetaText(), 1.9);
+      }
       waveDirector.completeMapTransition(arenaData, interactables);
       if (vfxManager) {
         vfxManager.spawnTeleport(playerController.position, 0x38bdf8);
-      }
-      const nextMeta = MAPS[nextMapIndex] || null;
-      if (nextMeta) {
-        hudManager.showSectorArrivalCard(nextMeta, buildDropOpsMetaText(), 2.8);
       }
       syncHudImmediate();
       engine.render();
@@ -5674,7 +5748,7 @@ function bootstrap() {
       if (runtimeReady) {
         dropPodIntro.active = false;
         dropPodIntro.phase = 'idle';
-        if (dropPodRig && dropPodRig.group) dropPodRig.group.visible = false;
+        clearLandedDropPod();
         const hudRootEl = document.getElementById('hud-root');
         if (hudRootEl) hudRootEl.classList.remove('drop-intro-active');
         releaseGameplayShortcutLock(false, false);

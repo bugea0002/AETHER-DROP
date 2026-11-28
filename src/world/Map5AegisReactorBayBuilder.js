@@ -2,6 +2,7 @@
 __define("src/world/Map5AegisReactorBayBuilder.js", (__exports, __require) => {
 const { ARENA_CONFIG } = __require("src/config/constants.js");
 const { TextureGenerator } = __require("src/world/TextureGenerator.js");
+const { MapPropFactory } = __require("src/world/MapPropFactory.js");
 
 function createRng(seed) {
   let a = seed >>> 0;
@@ -82,6 +83,7 @@ class Map5AegisReactorBayBuilder {
     this._distantBeaconMat = null;
     this._coreReactorLight = null;
     this._spireGlowLight = null;
+    this._propMounts = [];
 
     this._built = false;
   }
@@ -106,8 +108,8 @@ class Map5AegisReactorBayBuilder {
     this.root.name = 'ArenaRoot_SECTOR74_AegisReactorBay';
     this.scene.add(this.root);
 
-    const half = ARENA_CONFIG.halfSize; // 32
-    const innerBound = half - 0.5; // 31.5
+    const half = 33; // 66m x 66m Reactor Donut Loop
+    const innerBound = half - 0.5; // 32.5
     const wallH = ARENA_CONFIG.wallHeight; // 11
 
     this.collisionWorld.setArenaBounds(-innerBound, innerBound, -innerBound, innerBound, 0, 28);
@@ -122,48 +124,46 @@ class Map5AegisReactorBayBuilder {
     this._buildLighting();
     this.setQuality(this.qualityConfig);
 
-    // Jump pad calibration: deckY = 3.6m, g = 26 m/s^2, Vh = 11.0 m/s, Vy = 16.8 m/s
-    // Peak y = 5.43m, descending landing at y = 3.6m occurs at t = 1.021s -> d = 11.23m.
     return {
       mapId: 'aegis_reactor_bay',
       mapIndex: 4,
       mapCode: '제74구역',
       mapName: '제74구역 · 이지스 원자로실',
-      mapSubtitle: '추진 노심 및 방열 냉각 구역',
+      mapSubtitle: '도넛 추진 노심 & 하층 고전압 방전 구역',
       atmosphere: {
         bgColor: 0x0e061c,
         fogColor: 0x1a0b32,
         fogDensity: 0.0086,
       },
       playerSpawn: {
-        pos: new THREE.Vector3(0, 0.05, 24.5),
+        pos: new THREE.Vector3(0, 0.05, 25.5),
         yaw: 0,
       },
       enemySpawns: [
-        { pos: new THREE.Vector3(0.0, 0.05, -19.0), isElevated: false },
-        { pos: new THREE.Vector3(-4.5, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(4.5, 0.05, -19.5), isElevated: false },
-        { pos: new THREE.Vector3(0.0, 0.05, -9.5), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.05, -21.0), isElevated: false },
+        { pos: new THREE.Vector3(-8.5, 0.05, -19.5), isElevated: false },
+        { pos: new THREE.Vector3(8.5, 0.05, -19.5), isElevated: false },
         { pos: new THREE.Vector3(-19.5, 0.05, -6.0), isElevated: false },
         { pos: new THREE.Vector3(19.5, 0.05, -6.0), isElevated: false },
         { pos: new THREE.Vector3(-15.5, 0.05, 17.5), isElevated: false },
         { pos: new THREE.Vector3(15.5, 0.05, 17.5), isElevated: false },
+        { pos: new THREE.Vector3(0.0, 0.05, -12.0), isElevated: false },
         { pos: new THREE.Vector3(-25.5, 3.65, -25.5), isElevated: true },
         { pos: new THREE.Vector3(25.5, 3.65, -25.5), isElevated: true },
         { pos: new THREE.Vector3(-25.5, 3.65, 25.5), isElevated: true },
         { pos: new THREE.Vector3(25.5, 3.65, 25.5), isElevated: true },
       ],
       pickupSpawns: [
-        { pos: new THREE.Vector3(-28.5, 3.60, 0.0), type: 'shield' },
-        { pos: new THREE.Vector3(28.5, 3.60, 0.0), type: 'health' },
-        { pos: new THREE.Vector3(0.0, 3.60, -28.5), type: 'ammo' },
+        { pos: new THREE.Vector3(-29.0, 3.60, 0.0), type: 'shield' },
+        { pos: new THREE.Vector3(29.0, 3.60, 0.0), type: 'health' },
+        { pos: new THREE.Vector3(0.0, 3.60, -29.0), type: 'ammo' },
         { pos: new THREE.Vector3(-14.0, 0.0, 26.5), type: 'ammo' },
         { pos: new THREE.Vector3(14.0, 0.0, 26.5), type: 'shield' },
         { pos: new THREE.Vector3(0.0, 0.0, 14.5), type: 'health' },
       ],
       barrelSpawns: [
-        new THREE.Vector3(-7.5, 0.0, 0.0),
-        new THREE.Vector3(7.5, 0.0, 0.0),
+        new THREE.Vector3(-8.5, 0.0, 0.0),
+        new THREE.Vector3(8.5, 0.0, 0.0),
         new THREE.Vector3(-4.0, 0.0, -13.0),
         new THREE.Vector3(4.0, 0.0, -13.0),
         new THREE.Vector3(-16.0, 0.0, 11.5),
@@ -175,7 +175,16 @@ class Map5AegisReactorBayBuilder {
         { pos: new THREE.Vector3(-9.0, 0.0, -17.3), launchVy: 16.8, launchDirX: 0, launchDirZ: -1 },
         { pos: new THREE.Vector3(9.0, 0.0, -17.3), launchVy: 16.8, launchDirX: 0, launchDirZ: -1 },
       ],
-      controlZoneCenter: new THREE.Vector3(0, 0.2, 0),
+      reactorFlood: {
+        floorMaxY: 1.45,
+        excludeCenterRadius: 5.5,
+        maxRadius: 33.5,
+        warnDuration: 4.0,
+        activeDuration: 3.4,
+        cooldown: 8.5,
+        dps: 24,
+      },
+      controlZoneCenter: new THREE.Vector3(0, 0.2, -16.5),
       controlZoneRadius: ARENA_CONFIG.controlZoneRadius,
       arenaBounds: {
         minX: -innerBound,
@@ -397,6 +406,37 @@ class Map5AegisReactorBayBuilder {
     emberRing.rotation.x = -Math.PI * 0.5;
     emberRing.position.y = 0.207;
     this.root.add(emberRing);
+
+    // Mount sculpted Blender Reactor Turbine Core Monolith dead center (turns arena into Donut Loop!)
+    const factory = MapPropFactory.getShared();
+    const corePos = new THREE.Vector3(0, 0.2, 0);
+    const coreMount = factory.mountProp(this.root, 'reactor_turbine_core', {
+      position: corePos,
+      rotationY: 0,
+      scale: 1.0,
+      onMounted: (inst) => {
+        MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, corePos, 0, 1.0, 'pillar');
+      },
+    });
+    this._propMounts.push(coreMount);
+
+    // Mount 6 sculpted Aegis Cover Crates across donut loop lanes
+    for (const cr of [
+      { x: -13.5, z: 0, r: Math.PI * 0.5 }, { x: 13.5, z: 0, r: Math.PI * 0.5 },
+      { x: -10.5, z: -15.5, r: 0 }, { x: 10.5, z: -15.5, r: 0 },
+      { x: -10.5, z: 14.5, r: 0 }, { x: 10.5, z: 14.5, r: 0 },
+    ]) {
+      const p = new THREE.Vector3(cr.x, 0, cr.z);
+      const m = factory.mountProp(this.root, 'aegis_cover_crate', {
+        position: p,
+        rotationY: cr.r,
+        scale: 1,
+        onMounted: (inst) => {
+          MapPropFactory.registerTransformedColliders(inst.colliderSpecs, this.collisionWorld, p, cr.r, 1, 'cover');
+        },
+      });
+      this._propMounts.push(m);
+    }
   }
 
   _buildPerimeterWalls(mats, innerBound, wallH) {
@@ -1010,6 +1050,18 @@ class Map5AegisReactorBayBuilder {
     this._containmentRingA = null;
     this._containmentRingB = null;
     this._distantBeaconMat = null;
+    if (this._propMounts) {
+      for (let i = 0; i < this._propMounts.length; i++) {
+        const m = this._propMounts[i];
+        if (m) {
+          m.userData.disposed = true;
+          if (m.userData.propInstance && typeof m.userData.propInstance.dispose === 'function') {
+            m.userData.propInstance.dispose();
+          }
+        }
+      }
+      this._propMounts.length = 0;
+    }
 
     if (this._ownsTexGen && this._texGen) {
       this._texGen.dispose();

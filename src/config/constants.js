@@ -750,11 +750,11 @@ const PLAYER_CONFIG = {
   dashMaxCharges: 2,
   dashCooldown: 2.2,
 
-  // Vitality & aggressive shield-siphon loop
+  // Vitality & shield sustain (slow out-of-combat shield regen + guard/pickups)
   maxHealth: 100,
   maxShield: 100,
   shieldRegenDelay: 3.0,
-  shieldRegenRate: 0,
+  shieldRegenRate: 6.5,
   killShieldBonus: 0,
   headshotShieldBonus: 0,
 
@@ -852,7 +852,7 @@ const MAPS = [
     id: 'dead_metropolis',
     code: '제09구역',
     name: '제09구역 · 폐허 메트로폴리스',
-    subtitle: '붕괴된 고가도로 및 테라비콘 광장',
+    subtitle: '무너진 S자 고가도로 · 크레인 함정 구역',
     waves: [1, 2],
   },
   {
@@ -860,7 +860,7 @@ const MAPS = [
     id: 'sunken_refinery',
     code: '제14구역',
     name: '제14구역 · 가라앉은 정유소',
-    subtitle: '매연이 가득한 산업 용광로 구역',
+    subtitle: '중앙 개방 용융 슬래그 핏 & 고압 증기 밸브',
     waves: [3, 4],
   },
   {
@@ -868,7 +868,7 @@ const MAPS = [
     id: 'crater_citadel',
     code: '제00구역',
     name: '제00구역 · 분화구 요새',
-    subtitle: '파괴된 궤도 승강기 — 보스 결전 구역',
+    subtitle: '3단 계단식 분화구 참호 — 1막 보스 결전 구역',
     waves: [5],
   },
   {
@@ -876,7 +876,7 @@ const MAPS = [
     id: 'aegis_flight_deck',
     code: '제61구역',
     name: '제61구역 · 이지스 비행갑판',
-    subtitle: '궤도 격납고 및 공중 통로',
+    subtitle: '가속 레일 & 외곽 개방 성층권 낭떠러지',
     waves: [6, 7],
   },
   {
@@ -884,7 +884,7 @@ const MAPS = [
     id: 'aegis_reactor_bay',
     code: '제74구역',
     name: '제74구역 · 이지스 원자로실',
-    subtitle: '추진 노심 및 방열 냉각 구역',
+    subtitle: '도넛형 원자로 코어 & 하층 고전압 방전 구역',
     waves: [8, 9],
   },
   {
@@ -892,7 +892,7 @@ const MAPS = [
     id: 'aegis_drydock',
     code: '제99구역',
     name: '제99구역 · 이지스 건조 도크',
-    subtitle: '궤도 사령부 및 기함 선체 — 2막 보스 구역',
+    subtitle: '3열 병렬 현수 갠트리 브리지 — 2막 보스 구역',
     waves: [10],
   },
   {
@@ -907,8 +907,8 @@ const MAPS = [
     index: 7,
     id: 'abyss_conduit_ring',
     code: '제108구역',
-    name: '제108구역 · 심연 도관 링',
-    subtitle: '저중력 궤도 도관 및 차원 균열',
+    name: '제108구역 · 심연 부유 군도',
+    subtitle: '차원 워프 포탈 & 특이점 중력 붕괴 군도',
     waves: [11, 12, 13],
   },
   {
@@ -916,7 +916,7 @@ const MAPS = [
     id: 'transcendent_sanctum',
     code: '제120구역',
     name: '제120구역 · 초월 심연 성소',
-    subtitle: '궤도 특이점 노심 — 최종 결전 구역',
+    subtitle: '3단 팔각 부유 성소 — 최종 결전 구역',
     waves: [14, 15],
   },
 ];

@@ -112,6 +112,16 @@ class PlayerController {
     this._justLanded = false;
     this._footstepArmed = true;
 
+    // 2-Tier Fall Hazards, Boost Rails & Portals state (zero-GC)
+    this._lastSafeGroundPos = new THREE.Vector3(0, 0, 0);
+    this._pitRecoveryCooldown = 0;
+    this._portalCooldown = 0;
+    this._boostTimer = 0;
+    this._boostDirX = 0;
+    this._boostDirZ = 0;
+    this._boostSpeed = 0;
+    this._pitWarnCooldown = 0;
+
     // Camera juice: landing dip, per-weapon recoil spring, trauma screen shake
     this._landDip = 0;
     this._landDipVel = 0;
@@ -183,6 +193,7 @@ class PlayerController {
       moveSpeedMult: 1.0,
       dashCooldownMult: 1.0,
       shieldRegenMult: 1.0,
+      passiveShieldRegenRate: PLAYER_CONFIG.shieldRegenRate || 6.5,
       killShieldBonus: 0,
       maxHealthBonus: 0,
       maxShieldBonus: 0,
@@ -288,6 +299,16 @@ class PlayerController {
     this._wasGrounded = false;
     this._justLanded = false;
     this._footstepArmed = true;
+
+    // 2-Tier Fall Hazards, Boost Rails & Portals state (zero-GC)
+    this._lastSafeGroundPos = new THREE.Vector3(0, 0, 0);
+    this._pitRecoveryCooldown = 0;
+    this._portalCooldown = 0;
+    this._boostTimer = 0;
+    this._boostDirX = 0;
+    this._boostDirZ = 0;
+    this._boostSpeed = 0;
+    this._pitWarnCooldown = 0;
 
     this._landDip = 0;
     this._landDipVel = 0;
@@ -663,6 +684,100 @@ class PlayerController {
       this.eventBus.emit(EVENTS.PLAYER_JUMPPAD, this._jumpPadPayload);
     }
 
+    // 9.5 Track last safe ground ledge, Boost Rails, Dimensional Portals & 2-Tier Fall Hazards
+    if (this._pitRecoveryCooldown > 0) this._pitRecoveryCooldown = Math.max(0, this._pitRecoveryCooldown - clampedDt);
+    if (this._portalCooldown > 0) this._portalCooldown = Math.max(0, this._portalCooldown - clampedDt);
+    if (this._boostTimer > 0) this._boostTimer = Math.max(0, this._boostTimer - clampedDt);
+    if (this._pitWarnCooldown > 0) this._pitWarnCooldown = Math.max(0, this._pitWarnCooldown - clampedDt);
+
+    if (
+      this.isGrounded &&
+      !this.isDashing &&
+      typeof this.collisionWorld.getPitAtXZ === 'function' &&
+      !this.collisionWorld.getPitAtXZ(this.position.x, this.position.z)
+    ) {
+      const groundCheckY = this.collisionWorld.getGroundHeightAt(this.position.x, this.position.z, this.position.y + 0.5, -9999);
+      if (groundCheckY > -50) {
+        this._lastSafeGroundPos.copy(this.position);
+      }
+    }
+
+    // Act 2 Flight Deck EMP Boost Rails
+    const boostRails = typeof this.collisionWorld.getBoostRails === 'function' ? this.collisionWorld.getBoostRails() : null;
+    if (boostRails && boostRails.length > 0 && this.position.y >= -1.0) {
+      for (let i = 0; i < boostRails.length; i++) {
+        const rail = boostRails[i];
+        if (
+          this.position.x >= rail.minX &&
+          this.position.x <= rail.maxX &&
+          this.position.z >= rail.minZ &&
+          this.position.z <= rail.maxZ &&
+          Math.abs(this.position.y - (rail.y || 0)) <= 1.55
+        ) {
+          const boostSpd = rail.speed || 25.0;
+          this.velocity.x = rail.dirX * boostSpd;
+          this.velocity.z = rail.dirZ * boostSpd;
+          if (this._boostTimer <= 0.04) {
+            this.addScreenShake(0.08);
+          }
+          this._boostTimer = 0.28;
+          this._boostDirX = rail.dirX;
+          this._boostDirZ = rail.dirZ;
+          this._boostSpeed = boostSpd;
+          this.isSprinting = true;
+          break;
+        }
+      }
+    }
+
+    // Act 3 Bidirectional Dimensional Warp Portals
+    const portals = typeof this.collisionWorld.getPortals === 'function' ? this.collisionWorld.getPortals() : null;
+    if (portals && portals.length > 0 && this._portalCooldown <= 0) {
+      for (let i = 0; i < portals.length; i++) {
+        const portal = portals[i];
+        const pdx = this.position.x - portal.x;
+        const pdz = this.position.z - portal.z;
+        const r = portal.radius || 2.15;
+        if (pdx * pdx + pdz * pdz <= r * r && Math.abs(this.position.y - portal.y) <= 2.5) {
+          this.position.set(portal.targetX, portal.targetY + 0.12, portal.targetZ);
+          this._lastSafeGroundPos.copy(this.position);
+          this.velocity.y = Math.max(1.2, this.velocity.y);
+          const horizSpd = Math.min(18, Math.hypot(this.velocity.x, this.velocity.z));
+          if (Number.isFinite(portal.exitYaw)) {
+            this.velocity.x = -Math.sin(portal.exitYaw) * horizSpd;
+            this.velocity.z = -Math.cos(portal.exitYaw) * horizSpd;
+          }
+          this._portalCooldown = 1.45;
+          this._doubleJumpAvailable = true;
+          this.addScreenShake(0.16);
+          if (this.eventBus) {
+            this.eventBus.emit('player:portal_warp', { from: portal, position: this.position });
+          }
+          break;
+        }
+      }
+    }
+
+    // Tier 1: Molten Pit Zones (drain all remaining shield + fixed HP damage -> launch/reset to safe ledge)
+    const activePit = typeof this.collisionWorld.getPitAt === 'function'
+      ? this.collisionWorld.getPitAt(this.position.x, this.position.y, this.position.z)
+      : null;
+    if (activePit && this._pitRecoveryCooldown <= 0) {
+      this.applyPitFall(activePit);
+    }
+
+    // Tier 2: Open Abyss / Stratosphere Void Cliffs -> instant fatal fall (Game Over)
+    const voidFallY = typeof this.collisionWorld.getVoidFallY === 'function' ? this.collisionWorld.getVoidFallY() : -999;
+    if (this.isAlive && this.position.y <= voidFallY) {
+      this.applyDamage(99999, null, {
+        bypassInvuln: true,
+        bypassGuard: true,
+        bypassShield: true,
+        isHazard: true,
+        hazardType: 'void_fall',
+      });
+    }
+
     // 10. Speed, standing headbob & rhythmic footsteps
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);
     let bobX = 0;
@@ -702,7 +817,9 @@ class PlayerController {
     const frameBaseFov = (this.mods && this.mods.baseFov) || PLAYER_CONFIG.baseFov;
     let targetFov = this.isAds && adsFov > 0 ? adsFov : frameBaseFov;
     if (!this.isAds) {
-      if (this.isDashing) {
+      if (this._boostTimer > 0) {
+        targetFov += PLAYER_CONFIG.dashFovBonus * 0.95;
+      } else if (this.isDashing) {
         targetFov += PLAYER_CONFIG.dashFovBonus;
       } else if (this.isSliding) {
         targetFov += PLAYER_CONFIG.slideFovBonus;
@@ -778,14 +895,20 @@ class PlayerController {
     }
 
     this._timeSinceDamaged += clampedDt;
+    const regenRate =
+      this.mods && Number.isFinite(this.mods.passiveShieldRegenRate)
+        ? this.mods.passiveShieldRegenRate
+        : PLAYER_CONFIG.shieldRegenRate || 0;
+    const regenDelay = Number.isFinite(PLAYER_CONFIG.shieldRegenDelay)
+      ? PLAYER_CONFIG.shieldRegenDelay
+      : 3.0;
     if (
-      this.mods &&
-      this.mods.passiveShieldRegenRate > 0 &&
+      regenRate > 0 &&
       this._timeSinceCombat >= 2.5 &&
-      this._timeSinceDamaged >= 3.0 &&
+      this._timeSinceDamaged >= regenDelay &&
       this.shield < this.maxShield
     ) {
-      const sRate = this.mods.passiveShieldRegenRate * (this.mods.shieldRegenMult || 1.0);
+      const sRate = regenRate * ((this.mods && this.mods.shieldRegenMult) || 1.0);
       this.shield = Math.min(this.maxShield, this.shield + sRate * clampedDt);
     }
     if (this.inZoneBuff && this.mods && this.mods.zoneRegenHp > 0 && this.health < this.maxHealth) {
@@ -1076,20 +1199,23 @@ class PlayerController {
 
   /**
    * Apply incoming damage: absorbs into shield first, then overflows into health.
+   * Supports optional hazard overrides (bypassShield / bypassGuard / bypassInvuln).
    * Emits EVENTS.PLAYER_DAMAGED.
    * @param {number} amount
    * @param {THREE.Vector3|null} [sourcePos=null]
+   * @param {{ bypassInvuln?: boolean, bypassGuard?: boolean, bypassShield?: boolean, isHazard?: boolean, hazardType?: string }|null} [options=null]
    */
-  applyDamage(amount, sourcePos = null) {
+  applyDamage(amount, sourcePos = null, options = null) {
     if (!this.isAlive || !Number.isFinite(amount) || amount <= 0) {
       return { shieldDamage: 0, healthDamage: 0, killed: false };
     }
 
-    if (this.phaseInvulnTimer > 0 || this.ultInvulnTimer > 0) {
+    const opts = options || {};
+    if (!opts.bypassInvuln && (this.phaseInvulnTimer > 0 || this.ultInvulnTimer > 0)) {
       return { shieldDamage: 0, healthDamage: 0, killed: false, invulnerable: true };
     }
 
-    if (this.isGuarding && this.guardEnergy > 0) {
+    if (!opts.bypassGuard && this.isGuarding && this.guardEnergy > 0) {
       let isFrontal = true;
       if (sourcePos && Number.isFinite(sourcePos.x)) {
         this.getLookDirection(this._lookDir);
@@ -1132,19 +1258,24 @@ class PlayerController {
     this._timeSinceDamaged = 0;
     this._timeSinceCombat = 0;
 
-    const dmgScale = this.reactiveArmorTimer > 0 ? 0.55 : 1.0;
+    const dmgScale = !opts.isHazard && this.reactiveArmorTimer > 0 ? 0.55 : 1.0;
     let remaining = amount * dmgScale;
     let shieldDamage = 0;
     let healthDamage = 0;
     const hadShield = this.shield > 0;
 
-    if (this.shield > 0) {
+    if (opts.bypassShield) {
+      if (hadShield) {
+        shieldDamage = this.shield;
+        this.shield = 0;
+      }
+    } else if (this.shield > 0) {
       shieldDamage = Math.min(this.shield, remaining);
       this.shield -= shieldDamage;
       remaining -= shieldDamage;
     }
     const shieldBroken = hadShield && this.shield <= 0.01;
-    if (shieldBroken && this.mods && this.mods.reactiveArmor) {
+    if (shieldBroken && !opts.isHazard && this.mods && this.mods.reactiveArmor) {
       this.reactiveArmorTimer = 1.8;
       this.health = Math.min(this.maxHealth, this.health + 15);
     }
@@ -1169,9 +1300,54 @@ class PlayerController {
       sourcePos,
       shieldBroken,
       isFatal: !this.isAlive,
+      isHazard: Boolean(opts.isHazard),
+      hazardType: opts.hazardType || '',
     });
 
     return { shieldDamage, healthDamage, killed: !this.isAlive };
+  }
+
+  /**
+   * Handle Tier-1 Pit Hazard fall: drains remaining shield + deals fixed HP penalty,
+   * then launches player cleanly back onto designated safe return pad.
+   * @param {{ returnPos?: {x:number,y:number,z:number}, damage?: number }} pit
+   */
+  applyPitFall(pit) {
+    if (!this.isAlive) return;
+    this._pitRecoveryCooldown = 0.85;
+    const hpDmg = pit && Number.isFinite(pit.damage) ? pit.damage : 35;
+    this.applyDamage(hpDmg, null, {
+      bypassInvuln: true,
+      bypassGuard: true,
+      bypassShield: true,
+      isHazard: true,
+      hazardType: 'pit_fall',
+    });
+    if (!this.isAlive) return;
+
+    const rp = pit && pit.returnPos ? pit.returnPos : this._lastSafeGroundPos;
+    const safeY = Math.max(0.25, Number.isFinite(rp.y) ? rp.y : this._lastSafeGroundPos.y);
+    this.position.set(
+      Number.isFinite(rp.x) ? rp.x : this._lastSafeGroundPos.x,
+      safeY + 0.35,
+      Number.isFinite(rp.z) ? rp.z : this._lastSafeGroundPos.z
+    );
+    this.velocity.set(0, 4.6, 0);
+    this.isGrounded = false;
+    this.isSliding = false;
+    this.isDashing = false;
+    this._doubleJumpAvailable = true;
+    this.addScreenShake(0.32);
+
+    if (this.eventBus && this._pitWarnCooldown <= 0) {
+      this._pitWarnCooldown = 1.6;
+      this.eventBus.emit(EVENTS.ANNOUNCEMENT, {
+        kicker: '환경 위험 경고',
+        title: '용융 구덩이 추락 — 비상 복귀',
+        subtitle: '잔여 쉴드 전량 소실 및 선체 피해 (-35 HP)',
+        duration: 2.0,
+      });
+    }
   }
 
   /**
