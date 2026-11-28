@@ -430,6 +430,11 @@ class SoundEngine {
     on(EVENTS.ENEMY_OVERLOAD, (p) => this._playEnemyOverload(p));
     on(EVENTS.BOSS_TURRET_SHATTERED, (p) => this._playTurretShatter(p));
     on(EVENTS.BOSS_WING_CORE_SHATTERED, (p) => this._playTurretShatter(p));
+    on(EVENTS.BOSS_SINGULARITY_PULL, () => this._playBossTelegraph({ type: 'shockwave' }));
+    on(EVENTS.BOSS_EMP_PULSE, (p) => this._playEmpPulse(p));
+    on(EVENTS.BOSS_HAZARD_FIELD, (p) => this._playHazardDeploy(p));
+    on(EVENTS.BOSS_HOMING_MISSILES, (p) => this._playBossTelegraph({ type: 'missile_launch', ...(p || {}) }));
+    on('hud:missile_intercepted', () => this._playTurretShatter({ shieldBroken: false }));
     on(EVENTS.DROP_POD_PHASE, (p) => this._playDropPodPhase(p));
     on(EVENTS.TRANSFER_GATE_OPEN, () => this._playTransferGateOpen());
     on(EVENTS.TRANSFER_GATE_ENTERED, () => this._playTransferGateEnter());
@@ -1770,6 +1775,13 @@ class SoundEngine {
       if (type === 'shockwave') {
         this._playHeavyPunch(dest, now, 0.52, 86, 20, 0.84);
         this._playNoiseBurst(dest, now, 0.45, 0.54, 'lowpass', 880, 110, 0.9, true);
+      } else if (type === 'emp_charge') {
+        this._playTone(dest, 'sine', now, 0.95, 580, 110, 0.28, 0.04, 2400);
+        this._playNoiseBurst(dest, now + 0.1, 0.72, 0.34, 'bandpass', 1800, 420, 3.2, true);
+      } else if (type === 'missile_launch') {
+        this._playHeavyPunch(dest, now, 0.18, 130, 48, 0.55);
+        this._playNoiseBurst(dest, now, 0.22, 0.38, 'bandpass', 1600, 620, 1.5, true);
+        this._playNoiseBurst(dest, now + 0.09, 0.22, 0.38, 'bandpass', 1750, 680, 1.5, true);
       } else {
         this._playHeavyPunch(dest, now, 0.20, 108, 34, 0.52);
         this._playNoiseBurst(dest, now, 0.18, 0.34, 'bandpass', 850, 280, 1.8, true);
@@ -1964,6 +1976,31 @@ class SoundEngine {
       if (payload && payload.shieldBroken) {
         this._playTone(this._sfxGain, 'triangle', now + 0.06, 0.62, 520, 140, 0.32, 0.05, 1900);
       }
+    } catch {}
+  }
+
+  /** @private */
+  _playEmpPulse(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = payload && payload.origin ? payload.origin : null;
+      const dest = pos ? this._getSpatialPanner(pos, 10.0, 95, 0.9) : this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.68, 220, 32, 0.95);
+      this._playTone(this._sfxGain, 'sawtooth', now, 0.72, 680, 58, 0.32, 0.03, 2800);
+      this._playNoiseBurst(this._sfxGain, now, 0.64, 0.68, 'bandpass', 3400, 240, 2.2, true);
+    } catch {}
+  }
+
+  /** @private */
+  _playHazardDeploy(payload) {
+    if (!this._isReady()) return;
+    try {
+      const now = this.ctx.currentTime;
+      const pos = payload && payload.center ? payload.center : null;
+      const dest = pos ? this._getSpatialPanner(pos, 7.0, 80, 1.0) : this._sfxGain;
+      this._playHeavyPunch(dest, now, 0.28, 98, 36, 0.56);
+      this._playNoiseBurst(dest, now, 0.34, 0.42, 'lowpass', 1400, 220, 1.2, true);
     } catch {}
   }
 

@@ -100,6 +100,11 @@ function bootstrap() {
   const titleAchBadge = byId('title-ach-badge');
   const titleEquippedTitleBadge = byId('title-equipped-title-badge');
   const titlePilotCallsign = byId('title-pilot-callsign');
+  const titleTestBadge = byId('title-test-badge');
+  const titleTestModePanel = byId('title-test-mode-panel');
+  const testStageGroups = byId('test-stage-groups');
+  const chkTestSkipDroppod = byId('chk-test-skip-droppod');
+  const testPanelOpsSummary = byId('test-panel-ops-summary');
   const titleUnlockToast = byId('title-unlock-toast');
 
   const panelArsenal = byId('title-panel-arsenal');
@@ -245,6 +250,10 @@ function bootstrap() {
   // 1.5. Persistent Gold & Meta Armory + In-Run Tactical Cards & Synergies
   // ---------------------------------------------------------------------------
   const META_STORAGE_KEY = 'aether_drop_meta_v1';
+  const TEST_MODE_STORAGE_KEY = 'aether_drop_test_mode_v1';
+  let testModeActive = false;
+  let preTestMetaSnapshot = null;
+  let selectedStartWaveIndex = 0;
   const defaultWeaponStats = {};
   const defaultWeaponSkins = {};
   for (let wi = 0; wi < WEAPONS.length; wi++) {
@@ -988,8 +997,12 @@ function bootstrap() {
       if (b) b.classList.toggle('active', selectedMissionMode === m);
     }
 
+    const summaryTxt = isDailyMode ? `${modeLabel} · ${todayDaily.name}` : `${modeLabel} · ${heat.label}`;
     if (descEl) {
-      descEl.textContent = isDailyMode ? `${modeLabel} · ${todayDaily.name}` : `${modeLabel} · ${heat.label}`;
+      descEl.textContent = summaryTxt;
+    }
+    if (testPanelOpsSummary) {
+      testPanelOpsSummary.textContent = summaryTxt;
     }
 
     const deployPanel = byId('title-panel-deploy');
@@ -3913,11 +3926,11 @@ function bootstrap() {
     return `${modeName} · ${heatTxt}`;
   }
 
-  function beginDropPodIntro(spawnPos, yaw) {
+  function beginDropPodIntro(spawnPos, yaw, mapIndex = 0) {
     const rig = ensureDropPodRig();
     if (!rig || !spawnPos) return false;
 
-    const mapMeta = MAPS[0] || { code: '제09구역', name: '제09구역 · 폐허 메트로폴리스', subtitle: '' };
+    const mapMeta = MAPS[mapIndex] || MAPS[0] || { code: '제09구역', name: '제09구역 · 폐허 메트로폴리스', subtitle: '' };
     dropPodIntro.active = true;
     dropPodIntro.elapsed = 0;
     dropPodIntro.phase = 'descent';
@@ -3990,7 +4003,7 @@ function bootstrap() {
       eventBus.emit(EVENTS.DROP_POD_PHASE, { phase: 'impact' });
     }
     if (!waveDirector._active) {
-      waveDirector.start();
+      waveDirector.start(selectedStartWaveIndex);
     }
     hudManager.showSectorArrivalCard(
       dropPodIntro.sectorMeta || MAPS[0],
@@ -5099,8 +5112,16 @@ function bootstrap() {
     }
   }
 
-  function startNewGame() {
+  function startNewGame(startWaveIndex = 0, options = null) {
     if (isTransitioning) return;
+    const maxWaveIdx = Math.max(0, WAVES.length - 1);
+    const targetWaveIndex = Math.max(0, Math.min(maxWaveIdx, Math.floor(Number(startWaveIndex) || 0)));
+    selectedStartWaveIndex = targetWaveIndex;
+    const targetWaveCfg = WAVES[targetWaveIndex] || WAVES[0];
+    const targetMapIndex =
+      targetWaveCfg && typeof targetWaveCfg.mapIndex === 'number' ? targetWaveCfg.mapIndex : 0;
+    const skipDropIntro = Boolean(options && options.skipDropIntro);
+
     closeWeaponInspector();
     unlockAudioOnGesture();
     if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
@@ -5127,13 +5148,13 @@ function bootstrap() {
         tutorialState.active = false;
         const _tb = document.getElementById('tutorial-banner');
         if (_tb) _tb.classList.add('hidden');
-        // Always start fresh campaign on Map 0 (SEC-09 Dead Metropolis)
-        if (mapManager.getCurrentMapIndex() !== 0) {
+        // Load exact target sector map for selected stage (Wave 1 -> Map 0, Wave N -> WAVES[N-1].mapIndex)
+        if (mapManager.getCurrentMapIndex() !== targetMapIndex) {
           if (interactables) {
             interactables.dispose();
             interactables = null;
           }
-          arenaData = mapManager.loadMap(0);
+          arenaData = mapManager.loadMap(targetMapIndex);
           interactables = new Interactables(engine.scene, collisionWorld, eventBus, arenaData);
         } else {
           interactables.reset();
@@ -5185,7 +5206,11 @@ function bootstrap() {
           soundEngine.setSceneMode('playing');
         }
         if (soundEngine && typeof soundEngine.setBgmTrack === 'function') {
-          soundEngine.setBgmTrack('zone1_normal', true);
+          const initialTrack =
+            typeof soundEngine.resolveTrackForWave === 'function'
+              ? soundEngine.resolveTrackForWave(targetWaveIndex + 1, Boolean(targetWaveCfg && targetWaveCfg.isBossWave))
+              : 'zone1_normal';
+          soundEngine.setBgmTrack(initialTrack, true);
         }
         const maxUnlocked = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, metaState.maxUnlockedHeat || 0));
         if (selectedHeatLevel > maxUnlocked) selectedHeatLevel = maxUnlocked;
@@ -5205,9 +5230,18 @@ function bootstrap() {
         if (interactables) {
           interactables.enemyDamageMult = waveDirector.getEffectiveEnemyDmgMult();
         }
-        const useDropIntro = !tutorialState.active && beginDropPodIntro(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw);
+        const useDropIntro =
+          !tutorialState.active &&
+          !skipDropIntro &&
+          beginDropPodIntro(arenaData.playerSpawn.pos, arenaData.playerSpawn.yaw, targetMapIndex);
         if (!useDropIntro) {
-          waveDirector.start();
+          waveDirector.start(targetWaveIndex);
+          if (!tutorialState.active) {
+            const sectorMeta = MAPS[targetMapIndex] || MAPS[0];
+            if (sectorMeta) {
+              hudManager.showSectorArrivalCard(sectorMeta, buildDropOpsMetaText(), 2.2);
+            }
+          }
         }
         syncHudImmediate();
 
@@ -5622,7 +5656,7 @@ function bootstrap() {
   }
 
   function returnToTitle() {
-    if (isTransitioning) return;
+    if (isTransitioning || gameState === 'title') return;
     if (soundEngine && typeof soundEngine.stopBgmHard === 'function') {
       soundEngine.stopBgmHard();
     }
@@ -5886,7 +5920,7 @@ function bootstrap() {
   // ---------------------------------------------------------------------------
   if (btnDeploy) btnDeploy.addEventListener('click', () => showTitleSubpanel('deploy'));
   if (btnDeployBack) btnDeployBack.addEventListener('click', () => showTitleSubpanel('main'));
-  if (btnDeployLaunch) btnDeployLaunch.addEventListener('click', () => startNewGame());
+  if (btnDeployLaunch) btnDeployLaunch.addEventListener('click', () => startNewGame(0, { skipDropIntro: false }));
   if (btnTitleArmory) btnTitleArmory.addEventListener('click', () => showTitleSubpanel('armory'));
   if (btnArmoryBack) btnArmoryBack.addEventListener('click', () => showTitleSubpanel('main'));
   if (btnTitleArsenal) btnTitleArsenal.addEventListener('click', () => showTitleSubpanel('arsenal'));
@@ -6170,7 +6204,9 @@ function bootstrap() {
     if (tutorialState.active) {
       startTutorialRun();
     } else {
-      startNewGame();
+      const skipDrop =
+        testModeActive && Boolean(chkTestSkipDroppod && chkTestSkipDroppod.checked);
+      startNewGame(selectedStartWaveIndex, { skipDropIntro: skipDrop });
     }
   }
 
@@ -6299,7 +6335,7 @@ function bootstrap() {
   if (btnPauseFullscreen) btnPauseFullscreen.addEventListener('click', () => toggleFullscreenMode());
 
   // ---------------------------------------------------------------------------
-  // 7.9. Strict Title Screen Test Unlock (9 x 10 discrete taps within 10s, no hold, no extra input)
+  // 7.9. Strict Title Screen Test Mode Toggle (9 x 10 discrete taps within 10s, no hold, no extra input)
   // ---------------------------------------------------------------------------
   let nineTapTimestamps = [];
   let nineKeyHeld = false;
@@ -6343,6 +6379,144 @@ function bootstrap() {
     return e.key === '9' || e.code === 'Digit9' || e.code === 'Numpad9';
   }
 
+  function cloneJsonSafe(obj) {
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch {
+      return null;
+    }
+  }
+
+  function refreshAllTitleMetaUIs() {
+    renderArmoryUI();
+    renderCosmeticsTab();
+    renderArsenalMasteryUI();
+    renderArsenalPreviews();
+    updateMissionConfigUI();
+    renderMedalsStrip();
+    renderTitleBadgeUI();
+    renderDailyPanel();
+    updateDailyNavBadge();
+  }
+
+  function saveTestModeStorage() {
+    try {
+      if (testModeActive) {
+        window.localStorage.setItem(
+          TEST_MODE_STORAGE_KEY,
+          JSON.stringify({ active: true, snapshot: preTestMetaSnapshot })
+        );
+      } else {
+        window.localStorage.removeItem(TEST_MODE_STORAGE_KEY);
+      }
+    } catch {}
+  }
+
+  function loadSavedTestMode() {
+    try {
+      const raw = window.localStorage.getItem(TEST_MODE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.active) {
+        testModeActive = true;
+        if (parsed.snapshot && typeof parsed.snapshot === 'object') {
+          preTestMetaSnapshot = parsed.snapshot;
+        }
+      }
+    } catch {}
+  }
+
+  function renderTestStageButtons() {
+    if (!testStageGroups) return;
+    testStageGroups.innerHTML = '';
+
+    const actGroups = [
+      { act: 1, title: 'ACT 1 · 폐허 지구 ~ 분화구 요새', range: '1~5 스테이지', minWave: 1, maxWave: 5 },
+      { act: 2, title: 'ACT 2 · 궤도 전함 이지스-IX', range: '6~10 스테이지', minWave: 6, maxWave: 10 },
+      { act: 3, title: 'ACT 3 · 심연 특이점 오메가', range: '11~15 스테이지', minWave: 11, maxWave: 15 },
+    ];
+
+    for (let g = 0; g < actGroups.length; g++) {
+      const grp = actGroups[g];
+      const section = document.createElement('div');
+      section.className = 'test-act-group';
+
+      const labelRow = document.createElement('div');
+      labelRow.className = `test-act-label act-${grp.act}`;
+      const leftSpan = document.createElement('span');
+      leftSpan.textContent = grp.title;
+      const rightSpan = document.createElement('span');
+      rightSpan.textContent = grp.range;
+      labelRow.appendChild(leftSpan);
+      labelRow.appendChild(rightSpan);
+      section.appendChild(labelRow);
+
+      const grid = document.createElement('div');
+      grid.className = 'test-stage-grid';
+
+      for (let wi = 0; wi < WAVES.length; wi++) {
+        const w = WAVES[wi];
+        if (!w || w.wave < grp.minWave || w.wave > grp.maxWave) continue;
+        const mapMeta = MAPS[w.mapIndex] || null;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `test-stage-btn act-${grp.act}${w.isBossWave ? ' is-boss' : ''}`;
+        btn.setAttribute('data-test-wave', String(wi));
+        btn.title = `${w.wave}스테이지 · ${w.name} (${mapMeta ? mapMeta.name : ''})`;
+
+        const topRow = document.createElement('div');
+        topRow.className = 'test-stage-top';
+
+        const numEl = document.createElement('span');
+        numEl.className = 'test-stage-num';
+        numEl.textContent = `${w.wave}W`;
+        topRow.appendChild(numEl);
+
+        if (w.isBossWave) {
+          const bossEl = document.createElement('span');
+          bossEl.className = 'test-stage-boss-tag';
+          bossEl.textContent = 'BOSS';
+          topRow.appendChild(bossEl);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'test-stage-name';
+        nameEl.textContent = w.name.includes(' · ') ? w.name.replace(' · ', '\n') : w.name;
+
+        const secEl = document.createElement('span');
+        secEl.className = 'test-stage-sector';
+        secEl.textContent = mapMeta ? mapMeta.code : `MAP ${w.mapIndex}`;
+
+        btn.appendChild(topRow);
+        btn.appendChild(nameEl);
+        btn.appendChild(secEl);
+
+        btn.addEventListener('click', () => {
+          const skipDrop = Boolean(chkTestSkipDroppod && chkTestSkipDroppod.checked);
+          startNewGame(wi, { skipDropIntro: skipDrop });
+        });
+
+        grid.appendChild(btn);
+      }
+
+      section.appendChild(grid);
+      testStageGroups.appendChild(section);
+    }
+  }
+
+  function syncTestModeUI() {
+    if (sceneTitle) {
+      sceneTitle.classList.toggle('test-mode-active', testModeActive);
+    }
+    if (titleTestBadge) {
+      titleTestBadge.classList.toggle('hidden', !testModeActive);
+    }
+    if (titleTestModePanel) {
+      titleTestModePanel.classList.toggle('hidden', !testModeActive);
+    }
+  }
+
   function unlockAllTestItems() {
     for (let i = 0; i < PILOT_FRAMES.length; i++) {
       const fid = PILOT_FRAMES[i].id;
@@ -6373,19 +6547,51 @@ function bootstrap() {
     }
     metaState.gold = Math.max(Number(metaState.gold) || 0, 99999);
     saveMetaState();
+  }
 
-    renderArmoryUI();
-    renderCosmeticsTab();
-    renderArsenalMasteryUI();
-    renderArsenalPreviews();
-    updateMissionConfigUI();
-    renderMedalsStrip();
-    renderTitleBadgeUI();
-    renderDailyPanel();
-    updateDailyNavBadge();
+  function restorePreTestSnapshot() {
+    if (!preTestMetaSnapshot || !preTestMetaSnapshot.meta) return;
+    const snap = preTestMetaSnapshot.meta;
+    const keys = Object.keys(metaState);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (Object.prototype.hasOwnProperty.call(snap, k)) {
+        metaState[k] = cloneJsonSafe(snap[k]);
+      }
+    }
+    if (Number.isFinite(preTestMetaSnapshot.selectedHeatLevel)) {
+      const maxUnlocked = Math.max(0, Math.min(HEAT_CONTRACTS.length - 1, metaState.maxUnlockedHeat || 0));
+      selectedHeatLevel = Math.max(0, Math.min(maxUnlocked, Math.floor(preTestMetaSnapshot.selectedHeatLevel)));
+    }
+    preTestMetaSnapshot = null;
+    saveMetaState();
+  }
 
-    playUiSfx('buy');
-    showTitleUnlockToast('테스트 모드 활성화: 모든 기체 · 칭호 · 무기 마스터리 스킨 · 위협 10단계 · 99,999 G 해금 완료');
+  function toggleTestMode() {
+    if (!testModeActive) {
+      preTestMetaSnapshot = {
+        meta: cloneJsonSafe(metaState),
+        selectedHeatLevel,
+      };
+      testModeActive = true;
+      unlockAllTestItems();
+      saveTestModeStorage();
+      syncTestModeUI();
+      refreshAllTitleMetaUIs();
+      playUiSfx('buy');
+      showTitleUnlockToast(
+        '테스트 모드 ON — 1~15 스테이지 바로 출격 · 전 장비·위협 해금 (9×10회 재입력 시 종료)'
+      );
+    } else {
+      testModeActive = false;
+      selectedStartWaveIndex = 0;
+      restorePreTestSnapshot();
+      saveTestModeStorage();
+      syncTestModeUI();
+      refreshAllTitleMetaUIs();
+      playUiSfx('tab');
+      showTitleUnlockToast('테스트 모드 OFF — 일반 모드로 전환되었습니다 (9×10회 입력 시 재활성화)');
+    }
   }
 
   window.addEventListener('keydown', (e) => {
@@ -6434,7 +6640,7 @@ function bootstrap() {
             nineCommitTimer = null;
             nineTapTimestamps = [];
             if (gameState === 'title') {
-              unlockAllTestItems();
+              toggleTestMode();
             }
           }, 1150);
         } else {
@@ -6462,6 +6668,12 @@ function bootstrap() {
   });
 
   // Initialize Title state & badges (ZERO WebGL, ZERO rAF!)
+  loadSavedTestMode();
+  if (testModeActive) {
+    unlockAllTestItems();
+  }
+  renderTestStageButtons();
+  syncTestModeUI();
   applyQuality(settings.quality);
   applySensitivity(settings.sensitivity);
   applyVolume(settings.volume);

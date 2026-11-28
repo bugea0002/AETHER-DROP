@@ -71,6 +71,9 @@ class PlayerController {
     this.hyperBarrageTimer = 0;
     this.arenaGravityScale = 1.0;
     this.inLowGravityZone = false;
+    this._pullVelX = 0;
+    this._pullVelZ = 0;
+    this._pullTimer = 0;
     this._guardCheckVec = new THREE.Vector3();
     this.isAlive = true;
 
@@ -253,6 +256,9 @@ class PlayerController {
     this.reactiveArmorTimer = 0;
     this.arenaGravityScale = 1.0;
     this.inLowGravityZone = false;
+    this._pullVelX = 0;
+    this._pullVelZ = 0;
+    this._pullTimer = 0;
     this.isAlive = true;
 
     this.isGrounded = false;
@@ -469,6 +475,19 @@ class PlayerController {
       }
     }
 
+    if (this._pullTimer > 0 && !this.isDashing) {
+      this._pullTimer = Math.max(0, this._pullTimer - clampedDt);
+      if (this._pullTimer <= 0) {
+        const decay = Math.exp(-10 * clampedDt);
+        this._pullVelX *= decay;
+        this._pullVelZ *= decay;
+      }
+    } else {
+      this._pullTimer = 0;
+      this._pullVelX = 0;
+      this._pullVelZ = 0;
+    }
+
     // 7. Horizontal locomotion & gravity integration
     if (this.isDashing) {
       this._dashTimer -= clampedDt;
@@ -532,12 +551,16 @@ class PlayerController {
         targetSpeed *= 1.25;
       }
 
-      if (this.isGrounded) {
-        const targetVx = this._wishDir.x * targetSpeed * wishMag;
-        const targetVz = this._wishDir.z * targetSpeed * wishMag;
+      const hasPull = this._pullTimer > 0;
+      const pullVx = hasPull ? this._pullVelX : 0;
+      const pullVz = hasPull ? this._pullVelZ : 0;
 
-        if (wishMag > 0.05) {
-          // Responsive ground acceleration
+      if (this.isGrounded) {
+        const targetVx = this._wishDir.x * targetSpeed * wishMag + pullVx;
+        const targetVz = this._wishDir.z * targetSpeed * wishMag + pullVz;
+
+        if (wishMag > 0.05 || hasPull) {
+          // Responsive ground acceleration (incorporating smooth Singularity Pull when active)
           const accelStep = PLAYER_CONFIG.groundAccel * clampedDt;
           const dx = targetVx - this.velocity.x;
           const dz = targetVz - this.velocity.z;
@@ -584,6 +607,10 @@ class PlayerController {
             this.velocity.x *= scale;
             this.velocity.z *= scale;
           }
+        }
+        if (hasPull) {
+          this.velocity.x += (pullVx - (this.velocity.x * 0.25)) * Math.min(1, 3.2 * clampedDt);
+          this.velocity.z += (pullVz - (this.velocity.z * 0.25)) * Math.min(1, 3.2 * clampedDt);
         }
       }
 
@@ -1290,6 +1317,32 @@ class PlayerController {
     const safeScale = Number.isFinite(scale) ? Math.max(0.25, Math.min(1.5, scale)) : 1.0;
     this.arenaGravityScale = safeScale;
     this.inLowGravityZone = Boolean(active);
+  }
+
+  /**
+   * Apply a smooth, clamped gravitational pull toward a singularity hazard.
+   * Immediately broken and ignored while dashing so escape counterplay always wins.
+   * @param {number} dirX
+   * @param {number} dirZ
+   * @param {number} [pullAccel=13.5]
+   * @param {number} [maxPullSpeed=6.6]
+   * @param {number} [dt=0.016]
+   */
+  applyGravitationalPull(dirX, dirZ, pullAccel = 13.5, maxPullSpeed = 6.6, dt = 0.016) {
+    if (!this.isAlive || this.isDashing || !Number.isFinite(dt) || dt <= 0) return;
+    const len = Math.hypot(dirX, dirZ);
+    if (len < 1e-4) return;
+    const nx = dirX / len;
+    const nz = dirZ / len;
+    this._pullVelX += nx * pullAccel * dt;
+    this._pullVelZ += nz * pullAccel * dt;
+    const mag = Math.hypot(this._pullVelX, this._pullVelZ);
+    if (mag > maxPullSpeed && mag > 1e-5) {
+      const s = maxPullSpeed / mag;
+      this._pullVelX *= s;
+      this._pullVelZ *= s;
+    }
+    this._pullTimer = Math.max(this._pullTimer, 0.14);
   }
 
   /** @private */

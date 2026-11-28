@@ -15,19 +15,24 @@ __define("src/ai/EnemyModelFactory.js", (__exports, __require) => {
  */
 const GLB_MODEL_REGISTRY = Object.freeze({
   // Act 1: Ash-Furnace Legion (Waves 1-5)
-  rusher_drone: './assets/models/rusher_drone.glb?v=20261127e',
-  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261127e',
-  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261127e',
-  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261127e',
-  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261127e',
+  rusher_drone: './assets/models/rusher_drone.glb?v=20261128a',
+  tactical_trooper: './assets/models/tactical_trooper.glb?v=20261128a',
+  heavy_enforcer: './assets/models/heavy_enforcer.glb?v=20261128a',
+  sniper_stalker: './assets/models/sniper_stalker.glb?v=20261128a',
+  cyber_mech_boss: './assets/models/colossus_iv.glb?v=20261128a',
   // Act 2: Aegis Orbital Vanguard (Waves 6-10)
-  interceptor_drone: './assets/models/interceptor_drone.glb?v=20261127e',
-  shock_breacher: './assets/models/shock_breacher.glb?v=20261127e',
-  rail_warden: './assets/models/rail_warden.glb?v=20261127e',
-  mortar_artillery: './assets/models/mortar_artillery.glb?v=20261127e',
-  vanguard_assassin: './assets/models/vanguard_assassin.glb?v=20261127e',
-  aegis_overlord_boss: './assets/models/aegis_overlord.glb?v=20261127f',
-  // Act 3 GLBs queued for Phase 3 — fallback to intact procedural Act 3 rigs with zero 404s
+  interceptor_drone: './assets/models/interceptor_drone.glb?v=20261128a',
+  shock_breacher: './assets/models/shock_breacher.glb?v=20261128a',
+  rail_warden: './assets/models/rail_warden.glb?v=20261128a',
+  mortar_artillery: './assets/models/mortar_artillery.glb?v=20261128a',
+  vanguard_assassin: './assets/models/vanguard_assassin.glb?v=20261128a',
+  aegis_overlord_boss: './assets/models/aegis_overlord.glb?v=20261128f',
+  // Act 3: Abyssal Singularity Swarm (Waves 11-15)
+  volatile_rusher: './assets/models/volatile_rusher.glb?v=20261128a',
+  void_warper: './assets/models/void_warper.glb?v=20261128a',
+  void_swarmer: './assets/models/void_swarmer.glb?v=20261128a',
+  abyss_sentinel: './assets/models/abyss_sentinel.glb?v=20261128a',
+  transcendent_omega_boss: './assets/models/transcendent_omega.glb?v=20261128f',
 });
 const ALL_GLB_MODELS = GLB_MODEL_REGISTRY;
 
@@ -1477,9 +1482,12 @@ class EnemyModelFactory {
         );
         break;
       case 'void_warper':
+        leftWeaponMuzzle = new THREE.Object3D();
+        leftWeaponMuzzle.position.set(0, -0.32, 0.56);
+        leftArm.add(leftWeaponMuzzle);
         this._buildWithGlb(
           'void_warper',
-          buildCtx(),
+          buildCtx({ leftWeaponMuzzle }),
           () =>
             this._buildVoidWarper(
               palette,
@@ -1648,6 +1656,8 @@ class EnemyModelFactory {
     rig.overloadRing = overloadRing;
     rig.healthBarFill = healthBarFill;
     rig.healthBarBg = healthBarBg;
+    rig.resetPose = () => this.resetRigPose(rig);
+    this._cacheAllRigRestPoses(rig);
     rig.dispose = dispose;
 
     return rig;
@@ -3758,6 +3768,107 @@ class EnemyModelFactory {
     return overloadRing;
   }
 
+  _cachePivotRestPose(obj) {
+    if (!obj) return;
+    if (!obj.userData.basePosition) obj.userData.basePosition = obj.position.clone();
+    else obj.userData.basePosition.copy(obj.position);
+    if (!obj.userData.baseRotation) obj.userData.baseRotation = obj.rotation.clone();
+    else obj.userData.baseRotation.copy(obj.rotation);
+    if (!obj.userData.baseScale) obj.userData.baseScale = obj.scale.clone();
+    else obj.userData.baseScale.copy(obj.scale);
+  }
+
+  _cacheAllRigRestPoses(rig) {
+    if (!rig) return;
+    const singleKeys = [
+      'bodyGroup',
+      'pelvis',
+      'headGroup',
+      'leftArm',
+      'rightArm',
+      'leftThigh',
+      'leftShin',
+      'leftFoot',
+      'rightThigh',
+      'rightShin',
+      'rightFoot',
+      'weaponSlide',
+      'leftWeaponSlide',
+      'shieldFrame',
+      'coreShutter',
+      'wingCoreL',
+      'wingCoreR',
+    ];
+    for (let i = 0; i < singleKeys.length; i++) {
+      this._cachePivotRestPose(rig[singleKeys[i]]);
+    }
+    const arrayKeys = [
+      'barrelSlides',
+      'heatVents',
+      'missilePods',
+      'wingShieldFins',
+      'stabilizers',
+      'rotors',
+      'coreRings',
+    ];
+    for (let k = 0; k < arrayKeys.length; k++) {
+      const arr = rig[arrayKeys[k]];
+      if (!arr) continue;
+      for (let j = 0; j < arr.length; j++) {
+        this._cachePivotRestPose(arr[j]);
+      }
+    }
+  }
+
+  _restorePivotRestPose(obj) {
+    if (!obj) return;
+    if (obj.userData.basePosition) obj.position.copy(obj.userData.basePosition);
+    if (obj.userData.baseRotation) obj.rotation.copy(obj.userData.baseRotation);
+    if (obj.userData.baseScale) obj.scale.copy(obj.userData.baseScale);
+  }
+
+  resetRigPose(rig) {
+    if (!rig) return;
+    const singleKeys = [
+      'bodyGroup',
+      'pelvis',
+      'headGroup',
+      'leftArm',
+      'rightArm',
+      'leftThigh',
+      'leftShin',
+      'leftFoot',
+      'rightThigh',
+      'rightShin',
+      'rightFoot',
+      'weaponSlide',
+      'leftWeaponSlide',
+      'shieldFrame',
+      'coreShutter',
+      'wingCoreL',
+      'wingCoreR',
+    ];
+    for (let i = 0; i < singleKeys.length; i++) {
+      this._restorePivotRestPose(rig[singleKeys[i]]);
+    }
+    const arrayKeys = [
+      'barrelSlides',
+      'heatVents',
+      'missilePods',
+      'wingShieldFins',
+      'stabilizers',
+      'rotors',
+      'coreRings',
+    ];
+    for (let k = 0; k < arrayKeys.length; k++) {
+      const arr = rig[arrayKeys[k]];
+      if (!arr) continue;
+      for (let j = 0; j < arr.length; j++) {
+        this._restorePivotRestPose(arr[j]);
+      }
+    }
+  }
+
   _findGlbPivot(rootObj, names) {
     if (!rootObj) return null;
     for (let i = 0; i < names.length; i++) {
@@ -3772,14 +3883,14 @@ class EnemyModelFactory {
     const seen = new Set(outArr);
     for (let i = 0; i < exactNames.length; i++) {
       const hit = rootObj.getObjectByName(exactNames[i]);
-      if (hit && !seen.has(hit)) {
+      if (hit && !hit.isMesh && !seen.has(hit)) {
         seen.add(hit);
         outArr.push(hit);
       }
     }
     if (pattern) {
       rootObj.traverse((node) => {
-        if (node.name && pattern.test(node.name) && !seen.has(node)) {
+        if (!node.isMesh && node.name && pattern.test(node.name) && !seen.has(node)) {
           seen.add(node);
           outArr.push(node);
         }
@@ -4151,8 +4262,8 @@ class EnemyModelFactory {
     if (barrelSlides) {
       this._collectGlbPivots(
         bodyGroup,
-        ['BarrelSlide_L', 'BarrelSlide_R', 'BarrelSlideL', 'BarrelSlideR'],
-        /^BarrelSlide(_[-\w]+)?$/i,
+        ['BarrelSlide_L', 'BarrelSlide_R', 'BarrelSlideL', 'BarrelSlideR', 'RailBarrelSlide'],
+        /(?:^|_)BarrelSlide(_[-\w]+)?$/i,
         barrelSlides
       );
     }
@@ -4257,6 +4368,7 @@ class EnemyModelFactory {
       rigRef.wingCoreR = wingCoreR;
       rigRef.coreShutter = coreShutter;
       if (resolvedLeftMuzzle) rigRef.leftWeaponMuzzle = resolvedLeftMuzzle;
+      this._cacheAllRigRestPoses(rigRef);
     }
 
     bodyGroup.userData.glbMounted = true;

@@ -47,6 +47,7 @@ class HudManager {
     this._hudRoot = byId('hud-root');
     this._damageVignette = byId('damage-vignette');
     this._healFlash = byId('heal-flash');
+    this._empGlitchOverlay = byId('emp-glitch-overlay');
     this._railgunScope = byId('railgun-scope');
     this._floatingLayer = byId('floating-damage-layer');
 
@@ -264,6 +265,7 @@ class HudManager {
     this._bannerTimer = 0;
     this._bannerVisible = false;
     this._zoneCapturedNotified = false;
+    this._empBlackoutTimer = 0;
 
     // Minimap Arena Cache
     this._arenaData = null;
@@ -425,6 +427,30 @@ class HudManager {
         'clear-alert',
         3.0
       );
+    });
+    on(EVENTS.BOSS_SINGULARITY_PULL, () => {
+      this._pushKillfeed('특이점 중력 파동! [Q] 대시로 이탈', 'boss');
+      this.showAnnouncement(
+        '경고 · 특이점 인력 파동',
+        '중력장 붕괴 개시 — 대시로 탈출하세요!',
+        '1.1초 후 OMEGA 중심으로 인력 파동이 발동합니다',
+        'boss-alert',
+        2.2
+      );
+    });
+    on(EVENTS.BOSS_EMP_PULSE, (p) => {
+      const dur = p && Number.isFinite(p.duration) ? p.duration : 5.0;
+      this._empBlackoutTimer = Math.max(this._empBlackoutTimer, dur);
+      if (this._hudRoot) this._hudRoot.classList.add('emp-blackout');
+      if (this._empGlitchOverlay) this._empGlitchOverlay.classList.add('active');
+      if (this._railgunScope) {
+        this._railgunScope.classList.remove('active');
+        this._cache.railScope = false;
+      }
+    });
+    on('hud:missile_intercepted', (p) => {
+      const pts = p && p.score ? ` +${p.score}` : ' +40';
+      this._pushKillfeed(`유도 미사일 요격!${pts}`, 'headshot');
     });
   }
 
@@ -643,6 +669,9 @@ class HudManager {
     const prefix = payload.isBoss ? '[보스 격파] ' : payload.isHeadshot ? '[헤드샷] ' : '';
     const cls = payload.isBoss ? 'boss' : payload.isHeadshot ? 'headshot' : '';
     this._pushKillfeed(`${prefix}${name}${pts}`, cls);
+    if (payload.isBoss) {
+      this._clearEmpBlackout();
+    }
 
     if (!this._onboardingFlags.firstKill) {
       this._onboardingFlags.firstKill = true;
@@ -1354,6 +1383,12 @@ class HudManager {
       if (this._bannerTimer <= 0) {
         this._bannerVisible = false;
         if (this._banner) this._banner.classList.remove('visible');
+      }
+    }
+    if (this._empBlackoutTimer > 0) {
+      this._empBlackoutTimer = Math.max(0, this._empBlackoutTimer - clampedDt);
+      if (this._empBlackoutTimer <= 0) {
+        this._clearEmpBlackout();
       }
     }
 
@@ -2182,6 +2217,7 @@ class HudManager {
       this._damageVignette.classList.remove('low-health', 'shield-hit');
     }
     if (this._healFlash) this._healFlash.style.opacity = '0';
+    this._clearEmpBlackout();
     if (this._banner) this._banner.classList.remove('visible', 'boss-alert', 'clear-alert', 'gate-alert');
     this.hideDropIntroUI();
     if (this._sectorArrCard) {
@@ -2226,6 +2262,13 @@ class HudManager {
     c.healOp = '0.000';
     c.lowG = false;
     c.voidGateCount = -1;
+  }
+
+  /** @private */
+  _clearEmpBlackout() {
+    this._empBlackoutTimer = 0;
+    if (this._hudRoot) this._hudRoot.classList.remove('emp-blackout');
+    if (this._empGlitchOverlay) this._empGlitchOverlay.classList.remove('active');
   }
 
   reset() {

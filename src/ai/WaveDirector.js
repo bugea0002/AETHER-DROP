@@ -8,7 +8,9 @@ const { Enemy } = __require("src/ai/EnemyAI.js");
 const MAX_PROJECTILES = 64;
 const MAX_MORTAR_RINGS = 16;
 const MAX_ORBITAL_SWEEPS = 2;
+const MAX_HOMING_MISSILES = 8;
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const ZERO_SPAWN_POS = new THREE.Vector3(0, 0, 0);
 
 const POOL_CAPACITIES = Object.freeze({
@@ -204,6 +206,18 @@ class WaveDirector {
     this._projectiles = this._createProjectilePool();
     this._mortarRings = this._createMortarRingPool();
     this._orbitalSweeps = this._createOrbitalSweepStatePool();
+    this._homingMissiles = this._createHomingMissilePool();
+    this._singularityPull = {
+      active: false,
+      age: 0,
+      telegraphDuration: 1.1,
+      pullDuration: 1.4,
+      pullRadius: 30.0,
+      pullAccel: 13.5,
+      maxPullSpeed: 6.6,
+      origin: new THREE.Vector3(),
+      boss: null,
+    };
     this._droneSalvoEscortCooldown = 0;
 
     // Bound callbacks (avoid per-frame closures)
@@ -217,6 +231,9 @@ class WaveDirector {
     this._boundOnWingCoreShattered = this._handleWingCoreShattered.bind(this);
     this._boundOnOrbitalSweep = this._handleOrbitalSweepEvent.bind(this);
     this._boundOnDroneSalvo = this._handleDroneSalvoEscort.bind(this);
+    this._boundOnSingularityPull = this._handleSingularityPullEvent.bind(this);
+    this._boundOnHomingMissiles = this._handleHomingMissilesEvent.bind(this);
+    this._boundOnHazardField = this._handleHazardFieldEvent.bind(this);
 
     this._unsubBossPhase = this.eventBus
       ? this.eventBus.on(EVENTS.BOSS_PHASE, this._boundOnBossPhase)
@@ -233,6 +250,15 @@ class WaveDirector {
     this._unsubDroneSalvo = this.eventBus
       ? this.eventBus.on(EVENTS.BOSS_DRONE_SALVO, this._boundOnDroneSalvo)
       : () => {};
+    this._unsubSingularityPull = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_SINGULARITY_PULL, this._boundOnSingularityPull)
+      : () => {};
+    this._unsubHomingMissiles = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_HOMING_MISSILES, this._boundOnHomingMissiles)
+      : () => {};
+    this._unsubHazardField = this.eventBus
+      ? this.eventBus.on(EVENTS.BOSS_HAZARD_FIELD, this._boundOnHazardField)
+      : () => {};
 
     // Pre-allocated scratch structures & zero-GC snapshots
     this._playerEye = new THREE.Vector3();
@@ -243,6 +269,8 @@ class WaveDirector {
     this._projSegDir = new THREE.Vector3();
     this._sweepBeamPos = new THREE.Vector3();
     this._escortSpawnPos = new THREE.Vector3();
+    this._hmSteerTarget = new THREE.Vector3();
+    this._hmDesiredDir = new THREE.Vector3();
     this._rayHit = {
       hit: false,
       distance: 0,
@@ -504,6 +532,99 @@ class WaveDirector {
   }
 
   /** @private */
+  _createHomingMissilePool() {
+    this._missileBodyGeo = new THREE.ConeGeometry(0.18, 0.92, 10);
+    this._missileBodyGeo.rotateX(Math.PI * 0.5);
+    this._missileGlowGeo = new THREE.SphereGeometry(0.24, 10, 8);
+    this._missileRingGeo = new THREE.RingGeometry(0.32, 0.44, 16);
+    this._missileBodyMat = new THREE.MeshStandardMaterial({
+      color: 0x3f434a,
+      metalness: 0.8,
+      roughness: 0.3,
+      emissive: 0x991b1b,
+      emissiveIntensity: 0.6,
+    });
+    this._missileGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xff5a1f,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    const pool = [];
+    for (let i = 0; i < MAX_HOMING_MISSILES; i++) {
+      const group = new THREE.Group();
+      const bodyMesh = new THREE.Mesh(this._missileBodyGeo, this._missileBodyMat);
+      const glowMesh = new THREE.Mesh(this._missileGlowGeo, this._missileGlowMat);
+      glowMesh.position.z = -0.36;
+      const ringMesh = new THREE.Mesh(this._missileRingGeo, this._missileGlowMat);
+      ringMesh.position.z = 0.05;
+      group.add(bodyMesh, glowMesh, ringMesh);
+      group.visible = false;
+      this._projGroup.add(group);
+
+      const pos = new THREE.Vector3();
+      const hitSphere = {
+        center: pos,
+        radius: 0.72,
+        isHead: false,
+        isShield: false,
+        entity: null,
+      };
+      const hitList = [hitSphere];
+      const self = this;
+      const hm = {
+        active: false,
+        age: 0,
+        armDelay: 0.38,
+        maxLife: 6.8,
+        speed: 17.5,
+        turnRate: 2.75,
+        damage: 28,
+        hp: 38,
+        maxHp: 38,
+        position: pos,
+        dir: new THREE.Vector3(0, 0, 1),
+        mesh: group,
+        ringMesh,
+        targetAdapter: null,
+      };
+      const adapter = {
+        id: -1000 - i,
+        isAlive: false,
+        isEnemy: false,
+        isHomingMissile: true,
+        archetype: { id: 'homing_missile', name: '유도 미사일', isBoss: false, score: 40 },
+        position: pos,
+        center: pos,
+        hp: 38,
+        maxHp: 38,
+        getHitSpheres() {
+          return hitList;
+        },
+        applyDamage(amount) {
+          if (!hm.active || !adapter.isAlive) {
+            return { dealt: 0, killed: false, blockedByShield: false };
+          }
+          const dealt = Math.max(1, Math.round(amount));
+          hm.hp = Math.max(0, hm.hp - dealt);
+          adapter.hp = hm.hp;
+          if (hm.hp <= 0) {
+            self._interceptHomingMissile(hm, true);
+            return { dealt, killed: true, blockedByShield: false };
+          }
+          return { dealt, killed: false, blockedByShield: false };
+        },
+      };
+      hitSphere.entity = adapter;
+      hm.targetAdapter = adapter;
+      pool.push(hm);
+    }
+    return pool;
+  }
+
+  /** @private */
   _clearActiveHazardsAndProjectiles() {
     for (let i = 0; i < this._projectiles.length; i++) {
       const proj = this._projectiles[i];
@@ -522,6 +643,18 @@ class WaveDirector {
       for (let i = 0; i < this._orbitalSweeps.length; i++) {
         this._orbitalSweeps[i].active = false;
       }
+    }
+    if (this._homingMissiles) {
+      for (let i = 0; i < this._homingMissiles.length; i++) {
+        const hm = this._homingMissiles[i];
+        hm.active = false;
+        hm.mesh.visible = false;
+        if (hm.targetAdapter) hm.targetAdapter.isAlive = false;
+      }
+    }
+    if (this._singularityPull) {
+      this._singularityPull.active = false;
+      this._singularityPull.boss = null;
     }
   }
 
@@ -558,15 +691,19 @@ class WaveDirector {
   }
 
   /**
-   * Begin a fresh 5-wave run starting at Wave 1.
+   * Begin a fresh run starting at the requested zero-based wave index (defaults to Wave 1).
+   *
+   * @param {number} [startWaveIndex=0]
    */
-  start() {
+  start(startWaveIndex = 0) {
     this.reset();
     if (!this._prewarmed) {
       this.prewarm();
     }
+    const maxIdx = Math.max(0, WAVES.length - 1);
+    const safeIdx = Math.max(0, Math.min(maxIdx, Math.floor(Number(startWaveIndex) || 0)));
     this._active = true;
-    this._startWave(0);
+    this._startWave(safeIdx);
   }
 
   /**
@@ -855,9 +992,52 @@ class WaveDirector {
 
   /** @private */
   _handleEnemyTeleport(payload) {
-    if (!payload || !this.vfxManager || typeof this.vfxManager.spawnTeleport !== 'function') return;
-    if (payload.fromPos) this.vfxManager.spawnTeleport(payload.fromPos, payload.color || 0xa855f7);
-    if (payload.toPos) this.vfxManager.spawnTeleport(payload.toPos, payload.color || 0xa855f7);
+    if (!payload || !this.vfxManager) return;
+    const col = payload.color || 0xa855f7;
+    if (payload.fromPos) {
+      if (typeof this.vfxManager.spawnTeleport === 'function') {
+        this.vfxManager.spawnTeleport(payload.fromPos, col);
+      }
+      if (typeof this.vfxManager.spawnBlinkAfterimage === 'function') {
+        this.vfxManager.spawnBlinkAfterimage(
+          payload.fromPos,
+          payload.yaw || 0,
+          payload.height || 1.9,
+          col,
+          Boolean(payload.isBoss)
+        );
+      }
+    }
+    if (payload.toPos && typeof this.vfxManager.spawnTeleport === 'function') {
+      this.vfxManager.spawnTeleport(payload.toPos, col);
+    }
+  }
+
+  /** @private */
+  _handleSingularityPullEvent(payload) {
+    if (!payload || !this._singularityPull) return;
+    const sp = this._singularityPull;
+    sp.active = true;
+    sp.age = 0;
+    sp.telegraphDuration = Number.isFinite(payload.telegraphDuration) ? payload.telegraphDuration : 1.1;
+    sp.pullDuration = Number.isFinite(payload.pullDuration) ? payload.pullDuration : 1.4;
+    sp.pullRadius = Number.isFinite(payload.pullRadius) ? payload.pullRadius : 30.0;
+    sp.pullAccel = Number.isFinite(payload.pullAccel) ? payload.pullAccel : 13.5;
+    sp.maxPullSpeed = Number.isFinite(payload.maxPullSpeed) ? payload.maxPullSpeed : 6.6;
+    sp.boss = payload.boss || null;
+    if (payload.origin) {
+      sp.origin.copy(payload.origin);
+    } else if (sp.boss && sp.boss.position) {
+      sp.origin.copy(sp.boss.position);
+    }
+    if (this.vfxManager && typeof this.vfxManager.spawnSingularityPull === 'function') {
+      this.vfxManager.spawnSingularityPull(
+        sp.origin,
+        sp.telegraphDuration,
+        sp.pullDuration,
+        sp.pullRadius
+      );
+    }
   }
 
   /** @private */
@@ -901,6 +1081,108 @@ class WaveDirector {
     }
     if (this.eventBus) {
       this.eventBus.emit('SFX_BOSS_TELEGRAPH', { type: 'missile' });
+    }
+  }
+
+  /** @private */
+  _handleHomingMissilesEvent(payload) {
+    if (!payload || !this._homingMissiles) return;
+    const damage = Math.max(
+      1,
+      Math.round((Number.isFinite(payload.damage) ? payload.damage : 28) * this.getEffectiveEnemyDmgMult())
+    );
+    const speed = Number.isFinite(payload.speed) ? payload.speed : 17.5;
+    const phase = Number(payload.phase) || 1;
+    const bossPos = payload.boss && payload.boss.position ? payload.boss.position : null;
+    const originL = payload.originL || bossPos;
+    const originR = payload.originR || bossPos;
+    if (originL) this._spawnSingleHomingMissile(originL, 1, damage, speed, phase);
+    if (originR) this._spawnSingleHomingMissile(originR, -1, damage, speed, phase);
+  }
+
+  /** @private */
+  _spawnSingleHomingMissile(origin, sideSign, damage, speed, phase) {
+    let slot = null;
+    let oldest = this._homingMissiles[0];
+    for (let i = 0; i < MAX_HOMING_MISSILES; i++) {
+      const m = this._homingMissiles[i];
+      if (!m.active) {
+        slot = m;
+        break;
+      }
+      if (m.age > oldest.age) oldest = m;
+    }
+    if (!slot) slot = oldest;
+
+    slot.active = true;
+    slot.age = 0;
+    slot.armDelay = 0.36;
+    slot.maxLife = 6.8;
+    slot.speed = speed;
+    slot.turnRate = 2.35 + phase * 0.25;
+    slot.damage = damage;
+    slot.hp = 38;
+    slot.maxHp = 38;
+    slot.position.copy(origin);
+
+    const bossYaw = this._bossEntity ? this._bossEntity._yaw : 0;
+    const rx = Math.cos(bossYaw) * sideSign;
+    const rz = -Math.sin(bossYaw) * sideSign;
+    slot.dir.set(Math.sin(bossYaw) * 0.4 + rx * 0.45, 0.82, Math.cos(bossYaw) * 0.4 + rz * 0.45).normalize();
+
+    slot.mesh.position.copy(slot.position);
+    slot.mesh.quaternion.setFromUnitVectors(Z_AXIS, slot.dir);
+    slot.mesh.visible = true;
+    slot.targetAdapter.hp = 38;
+    slot.targetAdapter.isAlive = true;
+  }
+
+  /** @private */
+  _interceptHomingMissile(hm, byPlayer) {
+    if (!hm || !hm.active) return;
+    hm.active = false;
+    hm.mesh.visible = false;
+    if (hm.targetAdapter) hm.targetAdapter.isAlive = false;
+
+    if (this.vfxManager && typeof this.vfxManager.spawnExplosion === 'function') {
+      this.vfxManager.spawnExplosion(hm.position, byPlayer ? 2.6 : 2.1, byPlayer ? 0xf59e0b : 0xff5a1f);
+    }
+    if (this._soundEngine && typeof this._soundEngine._playBarrelExplosion === 'function') {
+      this._soundEngine._playBarrelExplosion({ position: hm.position });
+    }
+    if (byPlayer) {
+      this.score += 40;
+      if (this.eventBus) {
+        this.eventBus.emit('hud:missile_intercepted', { score: 40, position: hm.position });
+      }
+    }
+  }
+
+  /** @private */
+  _handleHazardFieldEvent(payload) {
+    const activeInteractables = this._interactables;
+    if (!payload || !activeInteractables || typeof activeInteractables.spawnHazardField !== 'function') return;
+    const c = payload.center || (this._lastPlayerController && this._lastPlayerController.position);
+    if (!c) return;
+    const phase = Number(payload.phase) || 1;
+    const count = phase >= 3 ? 5 : phase === 2 ? 4 : 3;
+    const radius = Number.isFinite(payload.radius) ? payload.radius : 3.2;
+    const duration = Number.isFinite(payload.duration) ? payload.duration : 9.0;
+    const damage = Number.isFinite(payload.damage) ? payload.damage : 14;
+    const ringDist = phase >= 3 ? 4.8 : 5.2;
+    const baseAng = Math.random() * Math.PI * 2;
+    for (let i = 0; i < count; i++) {
+      const ang = baseAng + (i / count) * Math.PI * 2;
+      const dist = i === 0 ? 1.4 : ringDist;
+      const tx = Math.max(-27, Math.min(27, c.x + Math.cos(ang) * dist));
+      const tz = Math.max(-27, Math.min(27, c.z + Math.sin(ang) * dist));
+      this._spawnCandidate.set(tx, c.y || 0, tz);
+      activeInteractables.spawnHazardField(this._spawnCandidate, {
+        radius,
+        duration,
+        damage,
+        armTime: phase >= 3 ? 0.72 : 0.85,
+      });
     }
   }
 
@@ -1057,8 +1339,11 @@ class WaveDirector {
           });
         }
       }
-      // Clear lingering enemy projectiles & mortar/laser hazards for a clean boss finish
+      // Clear lingering enemy projectiles, homing missiles & floor hazards for a clean boss finish
       this._clearActiveHazardsAndProjectiles();
+      if (this._interactables && typeof this._interactables.clearHazardFields === 'function') {
+        this._interactables.clearHazardFields();
+      }
     }
 
     // Step 2: Gold Drop + Low-Chance Weapon Drop (with pity for locked BR-12 / HV-7)
@@ -1176,9 +1461,11 @@ class WaveDirector {
     }
     const activeInteractables = interactables || this._interactables;
 
-    // Always update active projectiles & orbital laser sweeps cleanly even during intermissions
+    // Always update active projectiles, homing missiles, orbital sweeps & singularity pulls even during intermissions
     this._updateProjectiles(clampedDt, playerController);
+    this._updateHomingMissiles(clampedDt, playerController);
     this._updateOrbitalSweeps(clampedDt, playerController);
+    this._updateSingularityPull(clampedDt, playerController);
     if (this._droneSalvoEscortCooldown > 0) {
       this._droneSalvoEscortCooldown = Math.max(0, this._droneSalvoEscortCooldown - clampedDt);
     }
@@ -1435,7 +1722,7 @@ class WaveDirector {
       }
     }
 
-    // 4.5. Diversified Boss Arena Hazard Patterns (Carpet Salvo / Cross-Ring Strike / Seismic Shockwave)
+    // 4.5. Boss-Exclusive Arena Hazard Patterns (Siege Shockwaves / Ion Hazard Traps / Void Implosion)
     if (
       this._bossEntity &&
       this._bossEntity.isAlive &&
@@ -1444,69 +1731,114 @@ class WaveDirector {
     ) {
       this._bossMissileTimer -= clampedDt;
       if (this._bossMissileTimer <= 0) {
+        const bossId = this._bossEntity.archetype.id;
         const phase = this._bossEntity.currentPhase || 1;
-        const isOverlord = this._bossEntity.archetype.id === 'aegis_overlord_boss';
-        const cycle = this._bossSpecialCycle++ % 3;
-        this._bossMissileTimer = phase >= 3 ? 3.6 : phase === 2 ? 4.6 : 5.6;
+        const cycle = this._bossSpecialCycle++ % 2;
+        this._bossMissileTimer =
+          bossId === 'transcendent_omega_boss'
+            ? phase >= 3
+              ? 3.2
+              : phase === 2
+              ? 4.0
+              : 4.8
+            : bossId === 'aegis_overlord_boss'
+            ? phase >= 3
+              ? 3.6
+              : phase === 2
+              ? 4.4
+              : 5.2
+            : phase >= 3
+            ? 4.0
+            : phase === 2
+            ? 4.8
+            : 5.6;
 
-        if (cycle === 0) {
-          // Pattern A: Targeted Carpet-Bombing Line across player path
-          const dirX = playerPos.x - this._bossEntity.position.x;
-          const dirZ = playerPos.z - this._bossEntity.position.z;
-          const dLen = Math.hypot(dirX, dirZ) || 1;
-          const nx = dirX / dLen;
-          const nz = dirZ / dLen;
-          const count = phase >= 3 ? 5 : 4;
-          for (let m = 0; m < count; m++) {
-            const offset = (m - 1.5) * 3.4;
-            const tx = Math.max(-28, Math.min(28, playerPos.x + nx * offset));
-            const tz = Math.max(-28, Math.min(28, playerPos.z + nz * offset));
-            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+        if (bossId === 'aegis_overlord_boss') {
+          if (cycle === 0 && typeof activeInteractables.spawnHazardField === 'function') {
+            this._handleHazardFieldEvent({
+              center: playerPos,
+              phase,
+              radius: phase >= 3 ? 3.5 : 3.15,
+              duration: phase >= 3 ? 10.0 : 8.5,
+              damage: Math.round(14 * (phase >= 3 ? 1.2 : 1.0)),
+            });
+          } else {
+            const bDx = playerPos.x - this._bossEntity.position.x;
+            const bDz = playerPos.z - this._bossEntity.position.z;
+            const bLen = Math.hypot(bDx, bDz) || 1;
+            const perpX = -bDz / bLen;
+            const perpZ = bDx / bLen;
+            const dirSign = (this._bossSpecialCycle & 1) === 0 ? 1 : -1;
+            const halfSpan = phase >= 3 ? 9.5 : 8.0;
+            const sx = Math.max(-25, Math.min(25, playerPos.x - perpX * halfSpan * dirSign));
+            const sz = Math.max(-25, Math.min(25, playerPos.z - perpZ * halfSpan * dirSign));
+            const ex = Math.max(-25, Math.min(25, playerPos.x + perpX * halfSpan * dirSign));
+            const ez = Math.max(-25, Math.min(25, playerPos.z + perpZ * halfSpan * dirSign));
+            const sy = this.collisionWorld.getGroundHeightAt(sx, sz, playerPos.y + 1.5);
+            const ey = this.collisionWorld.getGroundHeightAt(ex, ez, playerPos.y + 1.5);
+            this._handleOrbitalSweepEvent({
+              startPos: this._spawnCandidate.set(sx, Number.isFinite(sy) ? sy : 0, sz),
+              endPos: this._spawnEye.set(ex, Number.isFinite(ey) ? ey : 0, ez),
+              telegraphDuration: phase >= 3 ? 0.95 : 1.15,
+              sweepDuration: 1.25,
+              beamRadius: phase >= 3 ? 2.35 : 2.1,
+              damage: 28,
+            });
+            if (phase >= 2 && typeof activeInteractables.spawnHazardField === 'function') {
+              activeInteractables.spawnHazardField(
+                { x: playerPos.x, y: playerPos.y, z: playerPos.z },
+                { radius: 3.1, duration: 8.5, damage: 14 }
+              );
+            }
           }
-        } else if (cycle === 1) {
-          // Pattern B: Cross / Orbital X-Formation Strike around player
-          const offsets = isOverlord || phase >= 3
-            ? [[0, 0], [4.2, 4.2], [-4.2, 4.2], [4.2, -4.2], [-4.2, -4.2]]
-            : [[0, 0], [4.5, 0], [-4.5, 0], [0, 4.5]];
-          for (let m = 0; m < offsets.length; m++) {
-            const tx = Math.max(-28, Math.min(28, playerPos.x + offsets[m][0]));
-            const tz = Math.max(-28, Math.min(28, playerPos.z + offsets[m][1]));
-            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+        } else if (bossId === 'transcendent_omega_boss') {
+          if (cycle === 0) {
+            const offsets =
+              phase >= 2
+                ? [[0, 0], [4.0, 4.0], [-4.0, 4.0], [4.0, -4.0], [-4.0, -4.0]]
+                : [[0, 0], [4.4, 0], [-4.4, 0], [0, 4.4]];
+            for (let m = 0; m < offsets.length; m++) {
+              const tx = Math.max(-28, Math.min(28, playerPos.x + offsets[m][0]));
+              const tz = Math.max(-28, Math.min(28, playerPos.z + offsets[m][1]));
+              activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz, fuse: 1.05, damage: 30 });
+            }
+          } else {
+            if (typeof activeInteractables.spawnBossShockwave === 'function') {
+              activeInteractables.spawnBossShockwave(this._bossEntity.position);
+            }
+            const ringN = phase >= 3 ? 5 : 4;
+            for (let m = 0; m < ringN; m++) {
+              const ang = (m / ringN) * Math.PI * 2 + 0.35;
+              const tx = Math.max(-28, Math.min(28, playerPos.x + Math.cos(ang) * 3.8));
+              const tz = Math.max(-28, Math.min(28, playerPos.z + Math.sin(ang) * 3.8));
+              activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz, fuse: 1.1 });
+            }
           }
-        } else if (isOverlord) {
-          // AEGIS-IX signature arena hazard: targeted vertical Orbital Laser Sweep lane
-          const bDx = playerPos.x - this._bossEntity.position.x;
-          const bDz = playerPos.z - this._bossEntity.position.z;
-          const bLen = Math.hypot(bDx, bDz) || 1;
-          const perpX = -bDz / bLen;
-          const perpZ = bDx / bLen;
-          const dirSign = (this._bossSpecialCycle & 1) === 0 ? 1 : -1;
-          const halfSpan = phase >= 3 ? 9.0 : 7.5;
-          const sx = Math.max(-25, Math.min(25, playerPos.x - perpX * halfSpan * dirSign));
-          const sz = Math.max(-25, Math.min(25, playerPos.z - perpZ * halfSpan * dirSign));
-          const ex = Math.max(-25, Math.min(25, playerPos.x + perpX * halfSpan * dirSign));
-          const ez = Math.max(-25, Math.min(25, playerPos.z + perpZ * halfSpan * dirSign));
-          const sy = this.collisionWorld.getGroundHeightAt(sx, sz, playerPos.y + 1.5);
-          const ey = this.collisionWorld.getGroundHeightAt(ex, ez, playerPos.y + 1.5);
-          this._handleOrbitalSweepEvent({
-            startPos: this._spawnCandidate.set(sx, Number.isFinite(sy) ? sy : 0, sz),
-            endPos: this._spawnEye.set(ex, Number.isFinite(ey) ? ey : 0, ez),
-            telegraphDuration: phase >= 3 ? 1.0 : 1.2,
-            sweepDuration: 1.3,
-            beamRadius: phase >= 3 ? 2.3 : 2.05,
-            damage: 28,
-          });
         } else {
-          // Pattern C (COLOSSUS / OMEGA): Seismic Ground Shockwave Ring (jump to evade!) + flanking missile strikes
-          if (typeof activeInteractables.spawnBossShockwave === 'function') {
-            activeInteractables.spawnBossShockwave(this._bossEntity.position);
-          }
-          const flankCount = phase >= 2 ? 3 : 2;
-          for (let m = 0; m < flankCount; m++) {
-            const ang = (m / flankCount) * Math.PI * 2 + Math.random() * 0.6;
-            const tx = Math.max(-28, Math.min(28, playerPos.x + Math.cos(ang) * 4.0));
-            const tz = Math.max(-28, Math.min(28, playerPos.z + Math.sin(ang) * 4.0));
-            activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+          // Stage 5 COLOSSUS-IV: Seismic Ground Shockwave Ring OR Focused Mortar Carpet Line
+          if (cycle === 0) {
+            if (typeof activeInteractables.spawnBossShockwave === 'function') {
+              activeInteractables.spawnBossShockwave(this._bossEntity.position);
+            }
+            for (let m = 0; m < 2; m++) {
+              const ang = m * Math.PI + Math.random() * 0.8;
+              const tx = Math.max(-28, Math.min(28, playerPos.x + Math.cos(ang) * 4.2));
+              const tz = Math.max(-28, Math.min(28, playerPos.z + Math.sin(ang) * 4.2));
+              activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+            }
+          } else {
+            const dirX = playerPos.x - this._bossEntity.position.x;
+            const dirZ = playerPos.z - this._bossEntity.position.z;
+            const dLen = Math.hypot(dirX, dirZ) || 1;
+            const nx = dirX / dLen;
+            const nz = dirZ / dLen;
+            const count = phase >= 3 ? 5 : 4;
+            for (let m = 0; m < count; m++) {
+              const offset = (m - 1.5) * 3.4;
+              const tx = Math.max(-28, Math.min(28, playerPos.x + nx * offset));
+              const tz = Math.max(-28, Math.min(28, playerPos.z + nz * offset));
+              activeInteractables.spawnBossMissile({ x: tx, y: playerPos.y, z: tz });
+            }
           }
         }
       }
@@ -1521,7 +1853,7 @@ class WaveDirector {
       const relayHeal = 5 * activeRelays * clampedDt;
       for (let i = 0; i < this._livingTargets.length; i++) {
         const enemy = this._livingTargets[i];
-        if (!enemy || !enemy.isAlive || enemy.hp >= enemy.maxHp) continue;
+        if (!enemy || !enemy.isAlive || enemy.isHomingMissile || enemy.hp >= enemy.maxHp) continue;
         enemy.hp = Math.min(enemy.maxHp, enemy.hp + relayHeal);
       }
     }
@@ -1530,9 +1862,19 @@ class WaveDirector {
       if (!linker || !linker.isAlive || linker.eliteAffix !== 'shield_link') continue;
       for (let j = 0; j < this._livingTargets.length; j++) {
         const ally = this._livingTargets[j];
-        if (!ally || !ally.isAlive || ally === linker || ally.hp >= ally.maxHp) continue;
+        if (!ally || !ally.isAlive || ally.isHomingMissile || ally === linker || ally.hp >= ally.maxHp) continue;
         if (ally.position.distanceToSquared(linker.position) <= 100) {
           ally.hp = Math.min(ally.maxHp, ally.hp + 6 * clampedDt);
+        }
+      }
+    }
+
+    // 4.9. Expose active interceptable boss homing missiles to player weapons AFTER livingCount tally
+    if (this._homingMissiles) {
+      for (let m = 0; m < MAX_HOMING_MISSILES; m++) {
+        const hm = this._homingMissiles[m];
+        if (hm.active && hm.targetAdapter && hm.targetAdapter.isAlive) {
+          this._livingTargets.push(hm.targetAdapter);
         }
       }
     }
@@ -1605,7 +1947,11 @@ class WaveDirector {
     const waveBonus = wave.scoreBonus || SCORE_CONFIG.waveClearBaseBonus * wave.wave;
     this.score += waveBonus;
 
+    this._clearActiveHazardsAndProjectiles();
     if (this._interactables) {
+      if (typeof this._interactables.clearHazardFields === 'function') {
+        this._interactables.clearHazardFields();
+      }
       if (typeof this._interactables.setCaptureSpeedMultiplier === 'function') {
         this._interactables.setCaptureSpeedMultiplier(1.0);
       }
@@ -2240,6 +2586,105 @@ class WaveDirector {
   }
 
   /**
+   * Advance TRANSCENDENT-OMEGA Singularity Gravitational Pull hazard.
+   * After a clear telegraph window (~1.1s), smoothly tugs player velocity inward inside pullRadius
+   * while respecting Dash escape immunity and a safe melee floor clearance.
+   * @private
+   */
+  _updateSingularityPull(dt, playerController) {
+    const sp = this._singularityPull;
+    if (!sp || !sp.active) return;
+
+    sp.age += dt;
+    const totalDur = sp.telegraphDuration + sp.pullDuration;
+    if (sp.age >= totalDur) {
+      sp.active = false;
+      sp.boss = null;
+      return;
+    }
+
+    if (sp.age < sp.telegraphDuration) return;
+    if (!playerController || !playerController.isAlive || playerController.isDashing) return;
+    if (typeof playerController.applyGravitationalPull !== 'function') return;
+
+    const pPos = playerController.position;
+    const dx = sp.origin.x - pPos.x;
+    const dz = sp.origin.z - pPos.z;
+    const horizSq = dx * dx + dz * dz;
+    const maxSq = sp.pullRadius * sp.pullRadius;
+    if (horizSq > 10.24 && horizSq <= maxSq) {
+      playerController.applyGravitationalPull(dx, dz, sp.pullAccel, sp.maxPullSpeed, dt);
+    }
+  }
+
+  /**
+   * Advance interceptable shoulder-launched boss homing missiles (Zero-GC).
+   * Climbs briefly after pod launch, steers toward player eye, and detonates cleanly
+   * on impact OR mid-air weapon interception.
+   * @private
+   */
+  _updateHomingMissiles(dt, playerController) {
+    if (!this._homingMissiles) return;
+    const playerAlive = Boolean(playerController && playerController.isAlive);
+    const pPos = playerAlive ? playerController.position : null;
+    if (playerAlive) {
+      playerController.getEyePosition(this._hmSteerTarget);
+      this._hmSteerTarget.y -= 0.25;
+    }
+
+    for (let i = 0; i < MAX_HOMING_MISSILES; i++) {
+      const hm = this._homingMissiles[i];
+      if (!hm.active) continue;
+
+      hm.age += dt;
+      if (hm.age >= hm.maxLife) {
+        this._interceptHomingMissile(hm, false);
+        continue;
+      }
+
+      if (playerAlive && hm.age >= hm.armDelay) {
+        this._hmDesiredDir.subVectors(this._hmSteerTarget, hm.position);
+        const dist = this._hmDesiredDir.length();
+        if (dist > 0.05) {
+          this._hmDesiredDir.multiplyScalar(1 / dist);
+          const blend = 1 - Math.exp(-hm.turnRate * dt);
+          hm.dir.lerp(this._hmDesiredDir, blend).normalize();
+        }
+      } else {
+        hm.dir.y = Math.max(-0.2, hm.dir.y - dt * 0.55);
+        hm.dir.normalize();
+      }
+
+      const speedScale = hm.age < hm.armDelay ? 0.68 : 1.0;
+      const stepDist = hm.speed * speedScale * dt;
+      const wallHit = this.collisionWorld.raycastWorld(hm.position, hm.dir, stepDist + 0.25, this._rayHit);
+      if (wallHit && wallHit.distance <= stepDist + 0.15) {
+        hm.position.copy(wallHit.point);
+        this._interceptHomingMissile(hm, false);
+        continue;
+      }
+
+      hm.position.addScaledVector(hm.dir, stepDist);
+      hm.mesh.position.copy(hm.position);
+      hm.mesh.quaternion.setFromUnitVectors(Z_AXIS, hm.dir);
+      if (hm.ringMesh) {
+        hm.ringMesh.rotation.z += dt * 7.5;
+      }
+
+      if (playerAlive && pPos) {
+        const dx = pPos.x - hm.position.x;
+        const dz = pPos.z - hm.position.z;
+        const dy = hm.position.y - (pPos.y + 0.9);
+        const hitR = PLAYER_CONFIG.radius + 0.52;
+        if (dx * dx + dz * dz + dy * dy <= hitR * hitR) {
+          playerController.applyDamage(hm.damage, hm.position);
+          this._interceptHomingMissile(hm, false);
+        }
+      }
+    }
+  }
+
+  /**
    * Return pre-allocated list of currently living Enemy targets (zero allocation).
    * @returns {Array<Enemy>}
    */
@@ -2359,6 +2804,18 @@ class WaveDirector {
       this._unsubDroneSalvo();
       this._unsubDroneSalvo = null;
     }
+    if (this._unsubSingularityPull) {
+      this._unsubSingularityPull();
+      this._unsubSingularityPull = null;
+    }
+    if (this._unsubHomingMissiles) {
+      this._unsubHomingMissiles();
+      this._unsubHomingMissiles = null;
+    }
+    if (this._unsubHazardField) {
+      this._unsubHazardField();
+      this._unsubHazardField = null;
+    }
 
     this.reset();
 
@@ -2392,6 +2849,11 @@ class WaveDirector {
     if (this._projOuterGeo) this._projOuterGeo.dispose();
     if (this._projCoreGeo) this._projCoreGeo.dispose();
     if (this._projCoreMat) this._projCoreMat.dispose();
+    if (this._missileBodyGeo) this._missileBodyGeo.dispose();
+    if (this._missileGlowGeo) this._missileGlowGeo.dispose();
+    if (this._missileRingGeo) this._missileRingGeo.dispose();
+    if (this._missileBodyMat) this._missileBodyMat.dispose();
+    if (this._missileGlowMat) this._missileGlowMat.dispose();
     if (this.modelFactory) this.modelFactory.dispose();
   }
 }

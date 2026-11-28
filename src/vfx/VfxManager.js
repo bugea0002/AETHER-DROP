@@ -11,6 +11,8 @@ const MAX_RAIL_BEAMS = 4;
 const MAX_RINGS = 28;
 const MAX_EXPLOSIONS = 6;
 const MAX_ORBITAL_SWEEPS = 2;
+const MAX_SINGULARITY_PULLS = 2;
+const MAX_BLINK_AFTERIMAGES = 6;
 const MAX_DYNAMIC_LIGHTS = 4;
 
 /**
@@ -74,6 +76,8 @@ class VfxManager {
     this._initImpactRings();
     this._initExplosions();
     this._initOrbitalSweeps();
+    this._initSingularityPulls();
+    this._initBlinkAfterimages();
 
     if (qualityConfig) {
       this.setQuality(qualityConfig);
@@ -900,6 +904,147 @@ class VfxManager {
     }
   }
 
+  /** @private */
+  _initSingularityPulls() {
+    const outerRingGeo = new THREE.RingGeometry(0.86, 1.0, 48);
+    outerRingGeo.rotateX(-Math.PI * 0.5);
+    const innerRingGeo = new THREE.RingGeometry(0.55, 0.78, 36);
+    innerRingGeo.rotateX(-Math.PI * 0.5);
+    const coreGeo = new THREE.IcosahedronGeometry(0.85, 1);
+
+    this._geometries.push(outerRingGeo, innerRingGeo, coreGeo);
+    this._singularityPulls = [];
+    this._singularityPullCursor = 0;
+
+    for (let i = 0; i < MAX_SINGULARITY_PULLS; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        transparent: true,
+        opacity: 0.78,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const pulseMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xe879f9,
+        transparent: true,
+        opacity: 0.58,
+        wireframe: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+
+      const outerRing = new THREE.Mesh(outerRingGeo, outerMat);
+      outerRing.position.y = 0.04;
+      const pulseRing = new THREE.Mesh(innerRingGeo, pulseMat);
+      pulseRing.position.y = 0.06;
+      const vortexCore = new THREE.Mesh(coreGeo, coreMat);
+      vortexCore.position.y = 2.4;
+
+      group.add(outerRing, pulseRing, vortexCore);
+      group.frustumCulled = false;
+      group.renderOrder = 7;
+      this.worldScene.add(group);
+      this._materials.push(outerMat, pulseMat, coreMat);
+
+      this._singularityPulls.push({
+        active: false,
+        age: 0,
+        telegraphDuration: 1.1,
+        pullDuration: 1.4,
+        pullRadius: 30.0,
+        origin: new THREE.Vector3(),
+        group,
+        outerRing,
+        pulseRing,
+        vortexCore,
+        outerMat,
+        pulseMat,
+        coreMat,
+      });
+    }
+  }
+
+  /** @private */
+  _initBlinkAfterimages() {
+    const torsoGeo = new THREE.CylinderGeometry(0.24, 0.34, 1.05, 8);
+    torsoGeo.translate(0, 0.95, 0);
+    const headGeo = new THREE.OctahedronGeometry(0.22, 0);
+    headGeo.translate(0, 1.65, 0);
+    const strandGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.65, 6);
+    strandGeo.translate(0, 0.9, 0);
+    const haloGeo = new THREE.RingGeometry(0.45, 0.72, 20);
+    haloGeo.rotateX(-Math.PI * 0.5);
+
+    this._geometries.push(torsoGeo, headGeo, strandGeo, haloGeo);
+    this._blinkAfterimages = [];
+    this._blinkAfterimageCursor = 0;
+
+    for (let i = 0; i < MAX_BLINK_AFTERIMAGES; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      const shellMat = new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        transparent: true,
+        opacity: 0.65,
+        wireframe: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xe879f9,
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+
+      const torso = new THREE.Mesh(torsoGeo, shellMat);
+      const head = new THREE.Mesh(headGeo, shellMat);
+      const strandL = new THREE.Mesh(strandGeo, shellMat);
+      strandL.position.set(-0.32, 0, 0);
+      const strandR = new THREE.Mesh(strandGeo, shellMat);
+      strandR.position.set(0.32, 0, 0);
+      const baseRing = new THREE.Mesh(haloGeo, ringMat);
+      baseRing.position.y = 0.08;
+
+      group.add(torso, head, strandL, strandR, baseRing);
+      group.frustumCulled = false;
+      group.renderOrder = 6;
+      this.worldScene.add(group);
+      this._materials.push(shellMat, ringMat);
+
+      this._blinkAfterimages.push({
+        active: false,
+        age: 0,
+        maxLife: 0.68,
+        baseScale: 1.0,
+        group,
+        baseRing,
+        shellMat,
+        ringMat,
+      });
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Internal Pool Helpers (Zero GC)
   // ---------------------------------------------------------------------------
@@ -1592,6 +1737,82 @@ class VfxManager {
     sw.impactDisc.scale.setScalar(sw.beamRadius);
   }
 
+  /**
+   * Spawn a Stage 15 TRANSCENDENT-OMEGA Singularity Gravitational Pull telegraph + inward vortex.
+   * @param {THREE.Vector3} origin
+   * @param {number} [telegraphDuration=1.1]
+   * @param {number} [pullDuration=1.4]
+   * @param {number} [pullRadius=30.0]
+   */
+  spawnSingularityPull(origin, telegraphDuration = 1.1, pullDuration = 1.4, pullRadius = 30.0) {
+    if (!origin || !this._singularityPulls) return;
+    let slot = null;
+    for (let i = 0; i < MAX_SINGULARITY_PULLS; i++) {
+      if (!this._singularityPulls[i].active) {
+        slot = this._singularityPulls[i];
+        break;
+      }
+    }
+    if (!slot) {
+      slot = this._singularityPulls[this._singularityPullCursor];
+      this._singularityPullCursor = (this._singularityPullCursor + 1) % MAX_SINGULARITY_PULLS;
+    }
+    slot.active = true;
+    slot.age = 0;
+    slot.telegraphDuration = Math.max(0.35, telegraphDuration || 1.1);
+    slot.pullDuration = Math.max(0.4, pullDuration || 1.4);
+    slot.pullRadius = Math.max(6.0, pullRadius || 30.0);
+    slot.origin.set(origin.x, (origin.y || 0) + 0.08, origin.z);
+    slot.group.position.copy(slot.origin);
+    slot.outerRing.rotation.set(0, 0, 0);
+    slot.outerRing.scale.setScalar(Math.min(13.5, slot.pullRadius * 0.44));
+    slot.pulseRing.scale.setScalar(1.0);
+    slot.vortexCore.scale.setScalar(0.8);
+    slot.group.visible = true;
+
+    if (this._maxDynamicLights > 1) {
+      const lSlot = this._allocWorldLightSlot();
+      this._spawnDynamicLight(lSlot, slot.origin, 0xa855f7, 9.0, 16.0, 0.55);
+    }
+  }
+
+  /**
+   * Spawn a lingering dimensional hologram silhouette at an enemy's blink departure point.
+   * @param {THREE.Vector3} fromPos
+   * @param {number} [yaw=0]
+   * @param {number} [height=1.9]
+   * @param {number} [colorHex=0xa855f7]
+   * @param {boolean} [isBoss=false]
+   */
+  spawnBlinkAfterimage(fromPos, yaw = 0, height = 1.9, colorHex = 0xa855f7, isBoss = false) {
+    if (!fromPos || !this._blinkAfterimages) return;
+    let slot = null;
+    for (let i = 0; i < MAX_BLINK_AFTERIMAGES; i++) {
+      if (!this._blinkAfterimages[i].active) {
+        slot = this._blinkAfterimages[i];
+        break;
+      }
+    }
+    if (!slot) {
+      slot = this._blinkAfterimages[this._blinkAfterimageCursor];
+      this._blinkAfterimageCursor = (this._blinkAfterimageCursor + 1) % MAX_BLINK_AFTERIMAGES;
+    }
+    slot.active = true;
+    slot.age = 0;
+    slot.maxLife = isBoss ? 0.85 : 0.64;
+    slot.baseScale = Math.max(0.75, (height || 1.9) / 1.9);
+    slot.shellMat.color.setHex(colorHex || 0xa855f7);
+    slot.ringMat.color.setHex(isBoss ? 0x38bdf8 : 0xe879f9);
+    slot.shellMat.opacity = 0.72;
+    slot.ringMat.opacity = 0.82;
+
+    slot.group.position.copy(fromPos);
+    slot.group.rotation.set(0, yaw || 0, 0);
+    slot.group.scale.setScalar(slot.baseScale);
+    slot.baseRing.scale.setScalar(1.0);
+    slot.group.visible = true;
+  }
+
   // ---------------------------------------------------------------------------
   // Quality Scaling, Per-Frame Update, Reset & Disposal
   // ---------------------------------------------------------------------------
@@ -1951,6 +2172,72 @@ class VfxManager {
         }
       }
     }
+
+    // 11. OMEGA Singularity Gravitational Pull Vortexes
+    if (this._singularityPulls) {
+      for (let i = 0; i < MAX_SINGULARITY_PULLS; i++) {
+        const sp = this._singularityPulls[i];
+        if (!sp.active) continue;
+        sp.age += clampedDt;
+        const totalDur = sp.telegraphDuration + sp.pullDuration;
+        if (sp.age >= totalDur) {
+          sp.active = false;
+          sp.group.visible = false;
+          continue;
+        }
+        const outerR = Math.min(13.5, sp.pullRadius * 0.44);
+        if (sp.age < sp.telegraphDuration) {
+          const tp = sp.age / sp.telegraphDuration;
+          const warnPulse = 0.55 + 0.45 * Math.sin(sp.age * (tp > 0.6 ? 26 : 12));
+          sp.outerRing.scale.setScalar(outerR * (0.35 + 0.65 * tp));
+          sp.outerRing.rotation.y += clampedDt * 0.9;
+          sp.pulseRing.scale.setScalar(outerR * (1.0 - tp * 0.85));
+          sp.vortexCore.scale.setScalar(0.65 + tp * 1.15);
+          sp.vortexCore.rotation.y += clampedDt * 5.0;
+          sp.outerMat.opacity = (0.35 + 0.45 * tp) * warnPulse;
+          sp.pulseMat.opacity = 0.78 * warnPulse;
+          sp.coreMat.opacity = 0.42 + 0.35 * tp;
+        } else {
+          const pt = Math.min(1, (sp.age - sp.telegraphDuration) / sp.pullDuration);
+          const fadeOut = pt > 0.8 ? Math.max(0, (1 - pt) / 0.2) : 1.0;
+          const cycle = (pt * 3.0) % 1.0;
+          sp.outerRing.scale.setScalar(outerR);
+          sp.outerRing.rotation.y -= clampedDt * 1.8;
+          sp.pulseRing.scale.setScalar(outerR * Math.max(0.08, 1.0 - cycle * 0.92));
+          sp.pulseRing.rotation.y += clampedDt * 2.4;
+          sp.vortexCore.scale.setScalar(1.65 + Math.sin(sp.age * 22) * 0.22);
+          sp.vortexCore.rotation.y += clampedDt * 12.0;
+          sp.vortexCore.rotation.x += clampedDt * 7.0;
+          sp.outerMat.opacity = 0.78 * fadeOut;
+          sp.pulseMat.opacity = (1.0 - cycle * 0.65) * 0.92 * fadeOut;
+          sp.coreMat.opacity = 0.75 * fadeOut;
+        }
+      }
+    }
+
+    // 12. Dimensional Blink Afterimage Holograms
+    if (this._blinkAfterimages) {
+      for (let i = 0; i < MAX_BLINK_AFTERIMAGES; i++) {
+        const bi = this._blinkAfterimages[i];
+        if (!bi.active) continue;
+        bi.age += clampedDt;
+        if (bi.age >= bi.maxLife) {
+          bi.active = false;
+          bi.group.visible = false;
+          continue;
+        }
+        const t = bi.age / bi.maxLife;
+        const fade = 1 - t;
+        bi.group.scale.set(
+          bi.baseScale * (1 - t * 0.25),
+          bi.baseScale * (1 + t * 0.48),
+          bi.baseScale * (1 - t * 0.25)
+        );
+        bi.baseRing.scale.setScalar(1.0 + t * 2.2);
+        bi.shellMat.opacity = 0.72 * fade * fade;
+        bi.ringMat.opacity = 0.82 * fade;
+      }
+    }
   }
 
   /**
@@ -2010,6 +2297,18 @@ class VfxManager {
         this._orbitalSweeps[i].beamGroup.visible = false;
       }
     }
+    if (this._singularityPulls) {
+      for (let i = 0; i < MAX_SINGULARITY_PULLS; i++) {
+        this._singularityPulls[i].active = false;
+        this._singularityPulls[i].group.visible = false;
+      }
+    }
+    if (this._blinkAfterimages) {
+      for (let i = 0; i < MAX_BLINK_AFTERIMAGES; i++) {
+        this._blinkAfterimages[i].active = false;
+        this._blinkAfterimages[i].group.visible = false;
+      }
+    }
 
     this._sparksDirty = false;
     this._casingsDirty = false;
@@ -2035,6 +2334,16 @@ class VfxManager {
       for (let i = 0; i < MAX_ORBITAL_SWEEPS; i++) {
         this.worldScene.remove(this._orbitalSweeps[i].laneGroup);
         this.worldScene.remove(this._orbitalSweeps[i].beamGroup);
+      }
+    }
+    if (this._singularityPulls) {
+      for (let i = 0; i < MAX_SINGULARITY_PULLS; i++) {
+        this.worldScene.remove(this._singularityPulls[i].group);
+      }
+    }
+    if (this._blinkAfterimages) {
+      for (let i = 0; i < MAX_BLINK_AFTERIMAGES; i++) {
+        this.worldScene.remove(this._blinkAfterimages[i].group);
       }
     }
 

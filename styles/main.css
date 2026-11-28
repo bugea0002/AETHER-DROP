@@ -9790,6 +9790,364 @@ body.ui-scale-desktop #title-panel-settings .setting-row {
   pointer-events: none !important;
 }
 
+/* ============================================================================
+   STAGE 15 BOSS EMP HUD BLACKOUT OVERLAY
+   ============================================================================ */
+#emp-glitch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0) 44%, rgba(56, 189, 248, 0.14) 80%, rgba(126, 34, 206, 0.34) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(56, 189, 248, 0.045) 0px,
+      rgba(56, 189, 248, 0.045) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  transition: opacity 0.22s ease;
+}
+
+#emp-glitch-overlay.active {
+  opacity: 1;
+  animation: empScanFlicker 0.36s steps(2, end) infinite;
+}
+
+@keyframes empScanFlicker {
+  0%, 100% { filter: saturate(1.15); }
+  50% { filter: saturate(1.45) contrast(1.08); }
+}
+
+#hud-root.emp-blackout > *,
+#hud-root.emp-blackout #crosshair,
+#hud-root.emp-blackout #hitmarker,
+#hud-root.emp-blackout #hitmarker-headshot,
+#hud-root.emp-blackout #hitmarker-shield,
+#hud-root.emp-blackout #beacon-waypoint,
+#hud-root.emp-blackout #sniper-warning,
+#hud-root.emp-blackout #railgun-scope,
+#hud-root.emp-blackout #announcement-banner,
+#hud-root.emp-blackout .hud-top-left,
+#hud-root.emp-blackout .hud-top-center,
+#hud-root.emp-blackout .hud-top-right,
+#hud-root.emp-blackout .hud-bottom-left,
+#hud-root.emp-blackout .hud-bottom-center,
+#hud-root.emp-blackout .weapon-rack {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.14s ease;
+}
+
+/* ============================================================================
+   DEVELOPER TEST MODE (9 x 10 TOGGLE) — STAGE 1~15 DIRECT LAUNCH PANEL
+   ============================================================================ */
+#scene-title:not(.subpanel-open) .title-stage {
+  position: relative !important;
+}
+
+.title-test-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 3px;
+  font-family: var(--ad-font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #0f172a;
+  background: linear-gradient(135deg, #facc15 0%, #f59e0b 100%);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.55);
+}
+
+.title-test-badge.hidden {
+  display: none !important;
+}
+
+#scene-title.subpanel-open .title-test-mode-panel,
+.title-test-mode-panel.hidden {
+  display: none !important;
+}
+
+.title-test-mode-panel {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 548px;
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(155deg, rgba(16, 14, 12, 0.94) 0%, rgba(10, 12, 16, 0.96) 100%);
+  border: 1px solid rgba(250, 204, 21, 0.44);
+  border-left: 3px solid #f59e0b;
+  border-radius: 6px;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.78), 0 0 24px rgba(245, 158, 11, 0.14);
+  backdrop-filter: blur(8px);
+  z-index: 28;
+  overflow-y: auto;
+}
+
+body.ui-scale-desktop .title-test-mode-panel {
+  max-height: 920px;
+}
+
+.test-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.test-panel-kicker {
+  display: block;
+  font-family: var(--ad-font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #fbbf24;
+  margin-bottom: 3px;
+}
+
+.test-panel-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  color: #fafaf9;
+  letter-spacing: 0.04em;
+}
+
+.test-panel-toggle-hint {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  color: #fde68a;
+  font-family: var(--ad-font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.test-panel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+.test-skip-drop-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e7e5e4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.test-skip-drop-label input {
+  accent-color: #f59e0b;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.test-panel-ops-summary {
+  font-family: var(--ad-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #a8a29e;
+  white-space: nowrap;
+}
+
+.test-stage-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.test-act-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.test-act-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--ad-font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  color: #d6d3d1;
+}
+
+.test-act-label.act-2 {
+  color: #7dd3fc;
+}
+
+.test-act-label.act-3 {
+  color: #d8b4fe;
+}
+
+.test-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.test-stage-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 82px;
+  padding: 7px 7px 6px;
+  text-align: left;
+  background: rgba(24, 24, 27, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-top: 2px solid rgba(245, 158, 11, 0.45);
+  border-radius: 4px;
+  color: #f5f5f4;
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+}
+
+.test-stage-btn.act-2 {
+  border-top-color: rgba(56, 189, 248, 0.55);
+}
+
+.test-stage-btn.act-3 {
+  border-top-color: rgba(168, 85, 247, 0.65);
+}
+
+.test-stage-btn.is-boss {
+  background: linear-gradient(160deg, rgba(58, 18, 18, 0.92) 0%, rgba(22, 16, 18, 0.96) 100%);
+  border-color: rgba(248, 113, 113, 0.55);
+  border-top-color: #ef4444;
+}
+
+.test-stage-btn.act-2.is-boss {
+  background: linear-gradient(160deg, rgba(12, 42, 62, 0.92) 0%, rgba(15, 20, 32, 0.96) 100%);
+  border-color: rgba(56, 189, 248, 0.62);
+  border-top-color: #38bdf8;
+}
+
+.test-stage-btn.act-3.is-boss {
+  background: linear-gradient(160deg, rgba(46, 16, 70, 0.94) 0%, rgba(16, 12, 28, 0.96) 100%);
+  border-color: rgba(192, 132, 252, 0.68);
+  border-top-color: #c084fc;
+}
+
+.test-stage-btn:hover,
+.test-stage-btn:focus-visible {
+  transform: translateY(-2px);
+  border-color: #fbbf24;
+  background: rgba(45, 36, 22, 0.95);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(245, 158, 11, 0.25);
+  outline: none;
+}
+
+.test-stage-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.test-stage-num {
+  font-family: var(--ad-font-mono);
+  font-size: 12px;
+  font-weight: 900;
+  color: #fbbf24;
+}
+
+.test-stage-btn.act-2 .test-stage-num {
+  color: #38bdf8;
+}
+
+.test-stage-btn.act-3 .test-stage-num {
+  color: #c084fc;
+}
+
+.test-stage-btn.is-boss .test-stage-num {
+  color: #fef08a;
+}
+
+.test-stage-boss-tag {
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family: var(--ad-font-mono);
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.25);
+  color: #fecaca;
+}
+
+.test-stage-btn.act-2.is-boss .test-stage-boss-tag {
+  background: rgba(56, 189, 248, 0.24);
+  color: #bae6fd;
+}
+
+.test-stage-btn.act-3.is-boss .test-stage-boss-tag {
+  background: rgba(168, 85, 247, 0.28);
+  color: #e9d5ff;
+}
+
+.test-stage-name {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.24;
+  color: #fafaf9;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.test-stage-sector {
+  font-family: var(--ad-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #a8a29e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@media (max-width: 1080px), (pointer: coarse) {
+  .title-test-mode-panel {
+    position: static;
+    transform: none;
+    width: min(640px, 100%);
+    max-height: none;
+    margin-top: 12px;
+  }
+  .test-stage-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 
 
 

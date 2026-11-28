@@ -68,7 +68,7 @@ const MODULE_FILES = [
 ];
 
 async function bootModularGame() {
-  const firebaseImport = import("./firebase/FirebaseService.js?v=20261127f").catch((err) => {
+  const firebaseImport = import("./firebase/FirebaseService.js?v=20261128f").catch((err) => {
     console.warn("[AETHER DROP] Firebase module unavailable, continuing in local mode:", err);
     if (typeof globalThis.__define === "function") {
       globalThis.__define("src/firebase/FirebaseService.js", (__exports) => {
@@ -103,7 +103,7 @@ async function bootModularGame() {
 
   await Promise.all([
     firebaseImport,
-    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261127f")),
+    ...MODULE_FILES.map((relPath) => import(relPath + "?v=20261128f")),
   ]);
   globalThis.__require("src/main.js");
 }

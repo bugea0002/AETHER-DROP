@@ -2275,6 +2275,86 @@ class Interactables {
         mat,
       });
     }
+
+    // Persistent Boss Area-Denial Floor Hazard Zones (Stage 10 AEGIS-IX tactical area restriction)
+    this._hazardFields = [];
+    const hazRingGeo = this._trackGeo(new THREE.RingGeometry(0.88, 1.0, 36));
+    hazRingGeo.rotateX(-Math.PI * 0.5);
+    const hazDiscGeo = this._trackGeo(new THREE.CircleGeometry(0.95, 32));
+    hazDiscGeo.rotateX(-Math.PI * 0.5);
+    const hazInnerGeo = this._trackGeo(new THREE.RingGeometry(0.46, 0.56, 24));
+    hazInnerGeo.rotateX(-Math.PI * 0.5);
+    const hazPylonGeo = this._trackGeo(new THREE.CylinderGeometry(0.06, 0.14, 0.58, 8));
+    for (let i = 0; i < 12; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+      const ringMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.78,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const discMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.22,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const innerMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      const pylonMat = this._trackMat(
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.72,
+        })
+      );
+      const outerMesh = new THREE.Mesh(hazRingGeo, ringMat);
+      const discMesh = new THREE.Mesh(hazDiscGeo, discMat);
+      discMesh.position.y = 0.015;
+      const innerMesh = new THREE.Mesh(hazInnerGeo, innerMat);
+      innerMesh.position.y = 0.025;
+      const pylonMesh = new THREE.Mesh(hazPylonGeo, pylonMat);
+      pylonMesh.position.y = 0.29;
+      group.add(outerMesh, discMesh, innerMesh, pylonMesh);
+      this.root.add(group);
+      this._hazardFields.push({
+        active: false,
+        age: 0,
+        armTime: 0.85,
+        duration: 9.0,
+        radius: 3.2,
+        damage: 14,
+        tickInterval: 0.45,
+        tickTimer: 0,
+        pos: new THREE.Vector3(),
+        group,
+        outerMesh,
+        discMesh,
+        innerMesh,
+        pylonMesh,
+        ringMat,
+        discMat,
+        innerMat,
+        pylonMat,
+      });
+    }
   }
 
   spawnGoldDrop(pos, amount = 15) {
@@ -2431,6 +2511,47 @@ class Interactables {
       });
     }
     return true;
+  }
+
+  spawnHazardField(targetPos, opts = null) {
+    if (!this._hazardFields || !targetPos) return;
+    let slot = null;
+    let oldest = this._hazardFields[0];
+    for (let i = 0; i < this._hazardFields.length; i++) {
+      const cand = this._hazardFields[i];
+      if (!cand.active) {
+        slot = cand;
+        break;
+      }
+      if (cand.age > oldest.age) oldest = cand;
+    }
+    if (!slot) slot = oldest;
+    const floorY = this.collisionWorld
+      ? this.collisionWorld.getGroundHeightAt(targetPos.x, targetPos.z, (targetPos.y || 0) + 1.5)
+      : 0;
+    const radius = opts && Number.isFinite(opts.radius) ? opts.radius : 3.2;
+    slot.active = true;
+    slot.age = 0;
+    slot.armTime = opts && Number.isFinite(opts.armTime) ? opts.armTime : 0.85;
+    slot.duration = opts && Number.isFinite(opts.duration) ? opts.duration : 9.0;
+    slot.radius = radius;
+    slot.damage = opts && Number.isFinite(opts.damage) ? opts.damage : 14;
+    slot.tickInterval = opts && Number.isFinite(opts.tickInterval) ? opts.tickInterval : 0.45;
+    slot.tickTimer = 0;
+    slot.pos.set(targetPos.x, floorY + 0.06, targetPos.z);
+    slot.group.position.copy(slot.pos);
+    slot.outerMesh.scale.setScalar(radius);
+    slot.innerMesh.scale.setScalar(radius);
+    slot.discMesh.scale.setScalar(radius * 0.15);
+    slot.group.visible = true;
+  }
+
+  clearHazardFields() {
+    if (!this._hazardFields) return;
+    for (let i = 0; i < this._hazardFields.length; i++) {
+      this._hazardFields[i].active = false;
+      this._hazardFields[i].group.visible = false;
+    }
   }
 
   spawnBossMissile(targetPos, opts = null) {
@@ -2673,6 +2794,54 @@ class Interactables {
             sw.hitPlayer = true;
             const dmgMult = Number.isFinite(this.enemyDamageMult) ? this.enemyDamageMult : 1.0;
             playerController.applyDamage(Math.max(1, Math.round(28 * dmgMult)), sw.origin);
+          }
+        }
+      }
+    }
+
+    // 5. Persistent Area-Denial Floor Hazard Zones (Damage over time while standing inside)
+    if (this._hazardFields) {
+      for (let i = 0; i < this._hazardFields.length; i++) {
+        const hf = this._hazardFields[i];
+        if (!hf.active) continue;
+        hf.age += dt;
+        if (hf.age >= hf.duration) {
+          hf.active = false;
+          hf.group.visible = false;
+          continue;
+        }
+        const fade = hf.age > hf.duration - 1.0 ? Math.max(0, hf.duration - hf.age) : 1.0;
+        if (hf.age < hf.armTime) {
+          const p = Math.max(0.12, hf.age / Math.max(0.05, hf.armTime));
+          hf.discMesh.scale.setScalar(hf.radius * p);
+          hf.innerMesh.rotation.y += dt * 3.2;
+          hf.ringMat.color.setHex(0x38bdf8);
+          hf.discMat.color.setHex(0xf59e0b);
+          hf.pylonMat.color.setHex(0x38bdf8);
+          hf.ringMat.opacity = (0.45 + 0.35 * Math.sin(t * 22)) * fade;
+          hf.discMat.opacity = 0.14 * fade;
+          hf.innerMat.opacity = 0.45 * fade;
+          hf.pylonMat.opacity = 0.55 * fade;
+        } else {
+          const pulse = 0.5 + 0.5 * Math.sin(t * 8.5 + i);
+          hf.discMesh.scale.setScalar(hf.radius);
+          hf.innerMesh.rotation.y -= dt * 2.1;
+          hf.ringMat.color.setHex(0xff3b1f);
+          hf.discMat.color.setHex(0xf97316);
+          hf.pylonMat.color.setHex(0xff4500);
+          hf.ringMat.opacity = (0.70 + 0.24 * pulse) * fade;
+          hf.discMat.opacity = (0.24 + 0.14 * pulse) * fade;
+          hf.innerMat.opacity = (0.50 + 0.28 * pulse) * fade;
+          hf.pylonMat.opacity = (0.65 + 0.25 * pulse) * fade;
+          hf.tickTimer -= dt;
+          if (canCheck && hf.tickTimer <= 0) {
+            const dx = playerController.position.x - hf.pos.x;
+            const dz = playerController.position.z - hf.pos.z;
+            if (dx * dx + dz * dz <= hf.radius * hf.radius && playerController.position.y < hf.pos.y + 1.85) {
+              hf.tickTimer = hf.tickInterval;
+              const dmgMult = Number.isFinite(this.enemyDamageMult) ? this.enemyDamageMult : 1.0;
+              playerController.applyDamage(Math.max(1, Math.round(hf.damage * dmgMult)), hf.pos);
+            }
           }
         }
       }
@@ -3731,6 +3900,7 @@ class Interactables {
         this._bossShockwaves[i].mesh.visible = false;
       }
     }
+    this.clearHazardFields();
 
     this.setWaveGimmicks(null);
     this.setVoidGatesEnabled(0);

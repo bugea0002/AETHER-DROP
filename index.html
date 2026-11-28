@@ -24,7 +24,7 @@
   </script>
 
   <link rel="preload" href="./assets/DungGeunMo.ttf" as="font" type="font/ttf" crossorigin />
-  <link rel="stylesheet" href="./styles/main.css?v=20261127a" />
+  <link rel="stylesheet" href="./styles/main.css?v=20261128c" />
 </head>
 <body>
   <!-- ======================================================================
@@ -53,6 +53,7 @@
               <strong id="title-pilot-callsign" class="title-pilot-callsign">PILOT</strong>
               <span class="title-pilot-dot" aria-hidden="true"></span>
               <span id="title-unit-badge">VANGUARD-09</span>
+              <span id="title-test-badge" class="title-test-badge hidden">테스트 모드</span>
             </div>
           </div>
 
@@ -146,6 +147,25 @@
             </div>
           </nav>
         </div>
+
+        <!-- Developer Test Mode: Stage 1-15 Quick Launch Panel (Toggled by pressing 9 x10) -->
+        <aside id="title-test-mode-panel" class="title-test-mode-panel hidden" aria-label="테스트 모드 스테이지 선택">
+          <div class="test-panel-head">
+            <div class="test-panel-title-wrap">
+              <span class="test-panel-kicker">TEST MODE · 1~15 STAGE DIRECT LAUNCH</span>
+              <h2 class="test-panel-title">테스트 모드 · 스테이지 바로 출격</h2>
+            </div>
+            <span class="test-panel-toggle-hint">9키 10회 재입력 시 OFF</span>
+          </div>
+          <div class="test-panel-controls">
+            <label class="test-skip-drop-label" for="chk-test-skip-droppod">
+              <input id="chk-test-skip-droppod" type="checkbox" checked />
+              <span>강하 연출 스킵 (즉시 투입)</span>
+            </label>
+            <span id="test-panel-ops-summary" class="test-panel-ops-summary">캠페인 · 위협 0</span>
+          </div>
+          <div id="test-stage-groups" class="test-stage-groups" role="region" aria-label="1~15 스테이지 목록"></div>
+        </aside>
 
         <!-- Sub-Panel Deploy: Two-Column Mode Selector & Threat 0-10 / Daily Ops -->
         <section id="title-panel-deploy" class="title-subpanel hidden" aria-label="작전 개시 설정">
@@ -896,6 +916,7 @@
       <div id="dmg-edge-left" class="damage-edge-blur"></div>
     </div>
     <div id="heal-flash" aria-hidden="true"></div>
+    <div id="emp-glitch-overlay" aria-hidden="true"></div>
 
     <!-- 360-Degree Directional Damage Arc Pool (4 Simultaneous Threats, z: 15) -->
     <div id="damage-indicator-container" aria-hidden="true">
@@ -1624,6 +1645,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/runtime.js?v=20261127f"></script>
+  <script type="module" src="./src/runtime.js?v=20261128f"></script>
 </body>
 </html>
